@@ -10,7 +10,8 @@
         "ghcr.io/devcontainers/features/github-cli:1": {},
         "ghcr.io/devcontainers/features/common-utils:2.5.3": {
             "installSsh": true
-        }
+        },
+        "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
     },
     "customizations": {
         "vscode": {
