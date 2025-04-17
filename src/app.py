@@ -13,7 +13,6 @@ from geojson_pydantic.geometries import Geometry
 from .process import process_remote_sensing_data
 
 app = FastAPI(title="Fire Recovery Backend")
-
 STAC_URL = "https://earth-search.aws.element84.com/v1/"
 
 class ProcessingRequest(BaseModel):
