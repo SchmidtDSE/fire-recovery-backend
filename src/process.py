@@ -1,6 +1,3 @@
-from fastapi import FastAPI, BackgroundTasks, File, UploadFile
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
 import coiled
 import dask.distributed
 import rioxarray
@@ -10,8 +7,25 @@ from rio_cogeo.cogeo import cog_validate, cog_translate
 from rio_cogeo.profiles import cog_profiles
 import os
 import uuid
+from typing import List, Dict, Optional, Any
 
-async def process_remote_sensing_data(job_id, stac_url, bbox, time_range, operation, include_attribute_table):
+@coiled.function(
+    name="process-remote-sensing",
+    software="ghcr.io/yourusername/fire-recovery-env:latest",
+    memory="16 GiB", 
+    cpu=4, 
+    workers=5, 
+    run_on_coiled=True # Toggle for running on Coiled / local
+)
+def process_remote_sensing_data(
+    job_id: str, 
+    stac_url: str, 
+    bbox: List[float], 
+    time_range: Optional[List[str]], 
+    operation: str, 
+    include_attribute_table: bool
+) -> Dict[str, Any]:
+
     # Create output directory
     output_dir = f"/tmp/{job_id}"
     os.makedirs(output_dir, exist_ok=True)
@@ -23,15 +37,11 @@ async def process_remote_sensing_data(job_id, stac_url, bbox, time_range, operat
     with open(status_file, "w") as f:
         f.write("started")
     
-    # Create or connect to a Coiled cluster
-    cluster = coiled.Cluster(
-        name=f"remote-sensing-cluster-{job_id}",
-        n_workers=5,
-        software="coiled/default-py310",  # Use a software environment with your dependencies
-    )
-    client = dask.distributed.Client(cluster)
-    
     try:
+        # When using the @coiled.function decorator
+        # you can access the client directly
+        client = dask.distributed.get_client()
+        
         # Access STAC catalog
         catalog = pystac.Client.open(stac_url)
         
@@ -47,18 +57,15 @@ async def process_remote_sensing_data(job_id, stac_url, bbox, time_range, operat
         
         # Perform distributed computation based on operation
         if operation == "ndvi":
-            # Calculate NDVI
             nir = data.sel(band="nir")
             red = data.sel(band="red")
             ndvi = (nir - red) / (nir + red)
-            result = ndvi.compute()  # Triggers distributed computation
+            result = ndvi.compute()
         elif operation == "cloud_mask":
-            # Simple cloud detection (example)
             qa = data.sel(band="qa")
-            cloud_mask = (qa & 0x8000) > 0  # Example bitwise operation
+            cloud_mask = (qa & 0x8000) > 0
             result = cloud_mask.compute()
         else:
-            # Default: temporal mean
             result = data.mean(dim="time").compute()
         
         # Save result to intermediate GeoTIFF
@@ -69,15 +76,12 @@ async def process_remote_sensing_data(job_id, stac_url, bbox, time_range, operat
         
         # Add RAT if requested
         if include_attribute_table:
-            # Generate attribute table data
-            # This is a simple example that adds class labels
             attribute_data = {
                 "Value": [0, 1, 2, 3, 4],
                 "Label": ["No Data", "Very Low", "Low", "Medium", "High"],
                 "Color": ["#000000", "#0000FF", "#00FF00", "#FFFF00", "#FF0000"]
             }
             
-            # Set RAT options in the profile
             rat_options = {
                 "tags": {"RASTER_ATTRIBUTE_TABLE": str(attribute_data)}
             }
@@ -105,11 +109,14 @@ async def process_remote_sensing_data(job_id, stac_url, bbox, time_range, operat
         with open(f"{output_dir}/validation.txt", "w") as f:
             f.write(str(validation_result))
             
+        return {
+            "status": "completed" if is_valid else "failed_validation",
+            "output_file": final_cog,
+            "validation": validation_result
+        }
+            
     except Exception as e:
         # Update status on error
         with open(status_file, "w") as f:
             f.write(f"error: {str(e)}")
-    finally:
-        # Clean up resources
-        await client.close()
-        await cluster.close()
+        return {"status": f"error: {str(e)}"}
