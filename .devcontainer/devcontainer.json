@@ -15,7 +15,9 @@
     "customizations": {
         "vscode": {
             "extensions": [
-                "ms-python.debugpy"
+                "ms-python.debugpy",
+                "ms-toolsai.jupyter",
+                "ms-python.python"
             ]
         }
     }
