@@ -14,6 +14,7 @@ RUN pixi shell-hook -s bash > /shell-hook
 RUN echo "#!/bin/bash" > /src/entrypoint.sh
 RUN cat /shell-hook >> /src/entrypoint.sh
 RUN echo 'exec "$@"' >> /src/entrypoint.sh
+RUN chmod +x /src/entrypoint.sh
 
 # Set entrypoint to use pixi
 ENTRYPOINT [ "/src/entrypoint.sh" ]
