@@ -20,10 +20,19 @@ job_timestamps = {}
 app = FastAPI(title="Fire Recovery Backend")
 STAC_URL = "https://earth-search.aws.element84.com/v1/"
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500"],  # Frontend origin
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
+
 class ProcessingRequest(BaseModel):
     geometry: Geometry  # Geojson of bounding box AOI 
     prefire_date_range: list[str] = None  # ["2023-01-01", "2023-12-31"]
-    posfire_date_range: list[str] = None  # ["2024-01-01", "2024-12-31"]
+    postfire_date_range: list[str] = None  # ["2024-01-01", "2024-12-31"]
 
 @app.get("/")
 async def root():
@@ -38,7 +47,7 @@ async def process_data(request: ProcessingRequest, background_tasks: BackgroundT
         STAC_URL,
         request.geometry,
         request.prefire_date_range,
-        request.posfire_date_range,
+        request.postfire_date_range,
     )
     return {"status": "Processing started", "job_id": job_id}
 
