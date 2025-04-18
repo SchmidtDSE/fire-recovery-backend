@@ -11,6 +11,11 @@ import os
 import uuid
 from geojson_pydantic.geometries import Geometry
 from .process import process_remote_sensing_data
+import random
+import time
+
+# Dictionary to track when job requests were first received, for testing
+job_timestamps = {}
 
 app = FastAPI(title="Fire Recovery Backend")
 STAC_URL = "https://earth-search.aws.element84.com/v1/"
@@ -37,27 +42,53 @@ async def process_data(request: ProcessingRequest, background_tasks: BackgroundT
     )
     return {"status": "Processing started", "job_id": job_id}
 
-@app.get("/status/{job_id}")
-async def get_status(job_id: str):
-    status_file = f"/tmp/{job_id}/status.txt"
-    if os.path.exists(status_file):
-        with open(status_file, "r") as f:
-            status = f.read().strip()
-        return {"status": status, "job_id": job_id}
-    return {"status": "not_found", "job_id": job_id}
+@app.post("process-test/")
+async def process_data_test(request: ProcessingRequest, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    return {"status": "Processing started", "job_id": job_id}
 
-@app.get("/validation/{job_id}")
-async def get_validation(job_id: str):
-    validation_file = f"/tmp/{job_id}/validation.txt"
-    if os.path.exists(validation_file):
-        with open(validation_file, "r") as f:
-            validation = f.read()
-        return {"validation": validation, "job_id": job_id}
-    return {"status": "not_found", "job_id": job_id}
+@app.get("/result-test/{job_id}")
+async def get_result_test(job_id: str):
+    # Record timestamp on first request
+    if job_id not in job_timestamps:
+        job_timestamps[job_id] = time.time()
+    
+    # Check elapsed time
+    elapsed = time.time() - job_timestamps[job_id]
+    
+    # Return pending for first 5 seconds
+    if elapsed < 10:
+        return {"status": "pending", "job_id": job_id}
+    
+    # After 5 seconds, return complete response
+    cog_file = "test/assets/geology_intermediate_rbr.tif"
+    return {
+        "status": "complete", 
+        "job_id": job_id, 
+        "cog_url": "https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/MN_Geo/intermediate_rbr.tif"
+    }
 
-@app.get("/result/{job_id}")
-async def get_result(job_id: str):
-    cog_file = f"/tmp/{job_id}/result.tif"
-    if os.path.exists(cog_file):
-        return FileResponse(cog_file, media_type="image/tiff", filename=f"{job_id}.tif")
-    return {"status": "not_found", "job_id": job_id}
+# @app.get("/status/{job_id}")
+# async def get_status(job_id: str):
+#     status_file = f"/tmp/{job_id}/status.txt"
+#     if os.path.exists(status_file):
+#         with open(status_file, "r") as f:
+#             status = f.read().strip()
+#         return {"status": status, "job_id": job_id}
+#     return {"status": "not_found", "job_id": job_id}
+
+# @app.get("/validation/{job_id}")
+# async def get_validation(job_id: str):
+#     validation_file = f"/tmp/{job_id}/validation.txt"
+#     if os.path.exists(validation_file):
+#         with open(validation_file, "r") as f:
+#             validation = f.read()
+#         return {"validation": validation, "job_id": job_id}
+#     return {"status": "not_found", "job_id": job_id}
+
+# @app.get("/result/{job_id}")
+# async def get_result(job_id: str):
+#     cog_file = f"/tmp/{job_id}/result.tif"
+#     if os.path.exists(cog_file):
+#         return FileResponse(cog_file, media_type="image/tiff", filename=f"{job_id}.tif")
+#     return {"status": "not_found", "job_id": job_id}
