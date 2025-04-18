@@ -1,5 +1,6 @@
 from fastapi import FastAPI, BackgroundTasks, File, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import coiled
 import dask.distributed
