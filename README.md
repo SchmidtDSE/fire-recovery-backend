@@ -5,7 +5,7 @@
 ```bash
 curl -X POST "http://localhost:8000/process-test/" \
   -H "Content-Type: application/json" \
-  -d '{"geometry": {"type": "Polygon", "coordinates": [[[-120.0, 38.0], [-120.0, 39.0], [-119.0, 39.0], [-119.0, 38.0], [-120.0, 38.0]]]}, "prefire_date_range": ["2023-01-01", "2023-06-30"], "posfire_date_range": ["2023-07-01", "2023-12-31"]}'
+  -d '{"geometry": {"type": "Polygon", "coordinates": [[[-120.0, 38.0], [-120.0, 39.0], [-119.0, 39.0], [-119.0, 38.0], [-120.0, 38.0]]]}, "prefire_date_range": ["2023-01-01", "2023-06-30"], "postfire_date_range": ["2023-07-01", "2023-12-31"]}'
 ```
 
 ### Result endpoint (polling strategy)
@@ -19,5 +19,5 @@ curl -X GET "http://localhost:8000/result-test/JOB_ID"
 With a valid `JOB_ID`:
 
 ```bash
-curl -X GET "http://localhost:8000/result-test/a319924a-ed09-42a3-b4ef-e9e5e34f8890"
+curl -X GET "http://localhost:8000/result-test/8b6cf846-3a9b-43fa-a0c5-604e98b1d732"
 ```
