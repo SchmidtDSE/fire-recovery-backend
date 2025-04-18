@@ -1,7 +1,10 @@
 {
     "build": {
         "dockerfile": "Dockerfile",
-        "context": "../"
+        "context": "../", 
+        "options": [
+            "--platform=linux/amd64"
+        ]
     },
     "mounts": [
         "source=${localWorkspaceFolderBasename}-pixi,target=${containerWorkspaceFolder}/.pixi,type=volume" // Pixi virtualenv (to address OSX filesystem issues)
