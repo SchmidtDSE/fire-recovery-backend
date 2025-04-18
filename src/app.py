@@ -42,7 +42,7 @@ async def process_data(request: ProcessingRequest, background_tasks: BackgroundT
     )
     return {"status": "Processing started", "job_id": job_id}
 
-@app.post("process-test/")
+@app.post("/process-test/")
 async def process_data_test(request: ProcessingRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
     return {"status": "Processing started", "job_id": job_id}
