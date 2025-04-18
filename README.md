@@ -19,5 +19,5 @@ curl -X GET "http://localhost:8000/result-test/JOB_ID"
 With a valid `JOB_ID`:
 
 ```bash
-curl -X GET "http://localhost:8000/result-test/a319924a-ed09-42a3-b4ef-e9e5e34f8890"
+curl -X GET "http://localhost:8000/result-test/8b6cf846-3a9b-43fa-a0c5-604e98b1d732"
 ```
