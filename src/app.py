@@ -16,7 +16,7 @@ app = FastAPI(title="Fire Recovery Backend")
 STAC_URL = "https://earth-search.aws.element84.com/v1/"
 
 class ProcessingRequest(BaseModel):
-    geometry: Geometry  # Geojson of bounding box AOI
+    geometry: Geometry  # Geojson of bounding box AOI 
     prefire_date_range: list[str] = None  # ["2023-01-01", "2023-12-31"]
     posfire_date_range: list[str] = None  # ["2024-01-01", "2024-12-31"]
 
