@@ -11,14 +11,16 @@ from typing import List, Dict, Optional, Any
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
-@coiled.function(
-    name="process-remote-sensing",
-    container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
-    memory="4 GiB", 
-    cpu=4, 
-    n_workers=5, 
-    local=RUN_LOCAL
-)
+# @coiled.function(
+#     name="process-remote-sensing",
+#     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
+#     memory="4 GiB", 
+#     cpu=4, 
+#     # n_workers=5,
+#     n_workers = 1,
+#     # local=RUN_LOCAL
+#     local=True
+# )
 def process_remote_sensing_data(
     job_id: str, 
     stac_url: str, 
@@ -27,6 +29,9 @@ def process_remote_sensing_data(
     postfire_date_range: Optional[List[str]]
 ) -> Dict[str, Any]:
 
+    # Debug
+    breakpoint()
+
     # Initialize workspace
     workspace = initialize_workspace(job_id)
     output_dir = workspace["output_dir"]
@@ -34,11 +39,8 @@ def process_remote_sensing_data(
     
     try:
         # Get the client
-        client = dask.distributed.get_client()
-        
-        # Extract bbox from geometry
-        bbox = geometry.bbox()
-        
+        # client = dask.distributed.get_client()
+
         # Access STAC catalog
         catalog = PystacClient.open(stac_url)
         
@@ -49,8 +51,8 @@ def process_remote_sensing_data(
             raise ValueError("Postfire date range is required")
         
         # Fetch data
-        prefire_data = fetch_stac_data(catalog, bbox, prefire_date_range)
-        postfire_data = fetch_stac_data(catalog, bbox, postfire_date_range)
+        prefire_data = fetch_stac_data(catalog, geometry, prefire_date_range)
+        postfire_data = fetch_stac_data(catalog, geometry, postfire_date_range)
         
         # Calculate burn indices
         indices = calculate_burn_indices(prefire_data, postfire_data)
@@ -97,9 +99,9 @@ def initialize_workspace(job_id: str) -> Dict[str, str]:
         "status_file": status_file
     }
 
-def fetch_stac_data(catalog: PystacClient, bbox: List[float], date_range: List[str]):
+def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]):
     """Fetch and stack STAC items for the given bbox and date range"""
-    search = {"bbox": bbox, "datetime": "/".join(date_range)}
+    search = {"intersects": geometry, "datetime": "/".join(date_range)}
     items = catalog.search(**search).get_all_items()
     return stackstac.stack(items, resolution=30)
 
