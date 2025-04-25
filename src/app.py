@@ -10,10 +10,10 @@ from rio_cogeo.cogeo import cog_validate, cog_translate
 from rio_cogeo.profiles import cog_profiles
 import os
 import uuid
-from geojson_pydantic.geometries import Geometry
 from .process import process_remote_sensing_data
 import random
 import time
+import src.msgspec_geojson
 
 # Dictionary to track when job requests were first received, for testing
 job_timestamps = {}
@@ -31,7 +31,7 @@ app.add_middleware(
 )
 
 class ProcessingRequest(BaseModel):
-    geometry: Geometry  # Geojson of bounding box AOI 
+    geometry: dict  # Geojson of bounding box AOI - to be validated later
     prefire_date_range: list[str] = None  # ["2023-01-01", "2023-12-31"]
     postfire_date_range: list[str] = None  # ["2024-01-01", "2024-12-31"]
 
@@ -41,6 +41,12 @@ async def root():
 
 @app.post("/process/")
 async def process_data(request: ProcessingRequest, background_tasks: BackgroundTasks):
+
+    try:
+        geojson = mgspec_geojson.loads(request.geometry)
+    except Exception as e:
+        return {"error": "Invalid GeoJSON", "details": str(e)}
+        
     job_id = str(uuid.uuid4())
     background_tasks.add_task(
         process_remote_sensing_data,

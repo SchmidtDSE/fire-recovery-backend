@@ -8,7 +8,6 @@ from rio_cogeo.cogeo import cog_validate, cog_translate
 from rio_cogeo.profiles import cog_profiles
 import os
 from typing import List, Dict, Optional, Any
-from geojson_pydantic.geometries import Geometry
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
@@ -23,7 +22,7 @@ RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 def process_remote_sensing_data(
     job_id: str, 
     stac_url: str, 
-    geometry: Geometry,
+    geometry: dict,
     prefire_date_range: Optional[List[str]], 
     postfire_date_range: Optional[List[str]]
 ) -> Dict[str, Any]:
