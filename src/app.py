@@ -43,7 +43,7 @@ async def root():
 async def process_data(request: ProcessingRequest, background_tasks: BackgroundTasks):
 
     try:
-        geojson = mgspec_geojson.loads(request.geometry)
+        geometry = msgspec_geojson.loads(json.dumps(request.geometry))
     except Exception as e:
         return {"error": "Invalid GeoJSON", "details": str(e)}
         
