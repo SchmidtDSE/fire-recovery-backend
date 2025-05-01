@@ -36,18 +36,22 @@ app.add_middleware(
 )
 
 class ProcessingRequest(BaseModel):
+    fire_event_name: str = Field(..., description="Name of the fire event")
     geometry: dict = Field(..., description="GeoJSON of bounding box AOI")
     prefire_date_range: list[str] = Field(None, description="Date range for prefire imagery (e.g. ['2023-01-01', '2023-12-31'])")
     postfire_date_range: list[str] = Field(None, description="Date range for postfire imagery (e.g. ['2024-01-01', '2024-12-31'])")
 
 class RefineRequest(BaseModel):
+    fire_event_name: str = Field(..., description="Name of the fire event")
     refine_geojson: dict = Field(..., description="GeoJSON to be refined")
 
 class VegMapResolveRequest(BaseModel):
+    fire_event_name: str = Field(..., description="Name of the fire event")
     veg_cog_url: str = Field(..., description="URL to the vegetation map COG")
     fire_cog_url: str = Field(..., description="URL to the fire severity COG")
 
 class GeoJSONUploadRequest(BaseModel):
+    fire_event_name: str = Field(..., description="Name of the fire event")
     geojson: dict = Field(..., description="GeoJSON data to upload")
 
 # Response models
@@ -90,13 +94,17 @@ async def analyze_fire_severity(request: ProcessingRequest, background_tasks: Ba
     # MOCK IMPLEMENTATION FOR TESTING
     job_id = str(uuid.uuid4())
     job_timestamps[job_id] = time.time()
-    return {"status": "Processing started", "job_id": job_id}
+    return {
+        "fire_event_name": request.fire_event_name,
+        "status": "Processing started", 
+        "job_id": job_id
+    }
 
     # REAL IMPLEMENTATION
     # try:
     #     geometry = msgspec_geojson.loads(json.dumps(request.geometry))
     # except Exception as e:
-    #     return {"error": "Invalid GeoJSON", "details": str(e)}
+    #     raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {str(e)}")
         
     # job_id = str(uuid.uuid4())
     # background_tasks.add_task(
@@ -108,10 +116,14 @@ async def analyze_fire_severity(request: ProcessingRequest, background_tasks: Ba
     #     request.postfire_date_range,
     # )
     # job_timestamps[job_id] = time.time()
-    # return {"status": "Processing started", "job_id": job_id}
+    # return {
+    #    "fire_event_name": request.fire_event_name,
+    #    "status": "Processing started", 
+    #    "job_id": job_id
+    # }
 
-@app.get("/result/analyze_fire_severity/{job_id}", response_model=FireSeverityResponse, tags=["Fire Severity"])
-async def get_fire_severity_result(job_id: str):
+@app.get("/result/analyze_fire_severity/{fire_event_name}/{job_id}", response_model=FireSeverityResponse, tags=["Fire Severity"])
+async def get_fire_severity_result(fire_event_name: str, job_id: str):
     """
     Get the result of the fire severity analysis.
     """
@@ -126,33 +138,19 @@ async def get_fire_severity_result(job_id: str):
     
     # Return pending for first 2 seconds
     if elapsed < 2:
-        return {"status": "pending", "job_id": job_id}
+        return {
+            "fire_event_name": fire_event_name,
+            "status": "pending", 
+            "job_id": job_id
+        }
     
     # After 2 seconds, return complete response
     return {
+        "fire_event_name": fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "cog_url": "https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/MN_Geo/intermediate_rbr.tif"
+        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/intermediate_rbr.tif"
     }
-
-    # REAL IMPLEMENTATION
-    # # Check if job exists
-    # if job_id not in job_timestamps:
-    #     job_timestamps[job_id] = time.time()
-    
-    # # Check elapsed time
-    # elapsed = time.time() - job_timestamps[job_id]
-    
-    # # Return pending for first 2 seconds
-    # if elapsed < 2:
-    #     return {"status": "pending", "job_id": job_id}
-    
-    # # After 2 seconds, return complete response
-    # return {
-    #     "status": "complete", 
-    #     "job_id": job_id, 
-    #     "cog_url": "https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/MN_Geo/intermediate_rbr.tif"
-    # }
 
 @app.post("/process/refine", response_model=RefinedBoundaryResponse, tags=["Boundary Refinement"])
 async def refine_fire_boundary(request: RefineRequest):
@@ -165,9 +163,10 @@ async def refine_fire_boundary(request: RefineRequest):
     # Here you would actually save the GeoJSON to storage
     # For now, just return a mock URL
     return {
+        "fire_event_name": request.fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "refined_geojson_url": f"https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/{request.fire_event_name}/refined.geojson"
+        "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson"
     }
 
 @app.post("/process/resolve_against_veg_map", response_model=ProcessingStartedResponse, tags=["Vegetation Impact"])
@@ -179,31 +178,44 @@ async def resolve_against_veg_map(request: VegMapResolveRequest, background_task
     """
     job_id = str(uuid.uuid4())
     # Here you would add a background task to process the vegetation map
-    # background_tasks.add_task(process_veg_map, job_id, request.cog_url, request.fire_severity_geojson)
+    # background_tasks.add_task(process_veg_map, job_id, request.veg_cog_url, request.fire_cog_url)
     job_timestamps[job_id] = time.time()
-    return {"status": "Processing started", "job_id": job_id}
+    return {
+        "fire_event_name": request.fire_event_name,
+        "status": "Processing started", 
+        "job_id": job_id
+    }
 
-@app.get("/result/resolve_against_veg_map/{job_id}", response_model=VegMapMatrixResponse, tags=["Vegetation Impact"])
-async def get_veg_map_result(job_id: str):
+@app.get("/result/resolve_against_veg_map/{fire_event_name}/{job_id}", response_model=VegMapMatrixResponse, tags=["Vegetation Impact"])
+async def get_veg_map_result(fire_event_name: str, job_id: str):
     """
     Get the result of the vegetation map processing.
     """
     # Check if job exists
     if job_id not in job_timestamps:
-        return {"status": "not_found", "job_id": job_id}
+        return {
+            "fire_event_name": fire_event_name,
+            "status": "not_found", 
+            "job_id": job_id
+        }
     
     # Check elapsed time
     elapsed = time.time() - job_timestamps[job_id]
     
     # Return pending for first 2 seconds
     if elapsed < 2:
-        return {"status": "pending", "job_id": job_id}
+        return {
+            "fire_event_name": fire_event_name,
+            "status": "pending", 
+            "job_id": job_id
+        }
     
     # After 2 seconds, return complete response
     return {
+        "fire_event_name": fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "fire_veg_matrix": "https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/MN_Geo/fire_veg_matrix.csv"
+        "fire_veg_matrix": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/fire_veg_matrix.csv"
     }
 
 @app.post("/upload/shapefile", response_model=UploadedGeoJSONResponse, tags=["Upload"])
@@ -225,9 +237,10 @@ async def upload_shapefile(fire_event_name: str = Form(...), shapefile: UploadFi
     
     # For now, just return a mock response
     return {
+        "fire_event_name": fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "uploaded_geojson": f"https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/{fire_event_name}/uploaded.geojson"
+        "uploaded_geojson": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/uploaded.geojson"
     }
 
 @app.post("/upload/geojson", response_model=UploadedGeoJSONResponse, tags=["Upload"])
@@ -242,11 +255,16 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     
     # In a real implementation, you would:
     # 1. Validate the GeoJSON
+    # try:
+    #     validated_geojson = msgspec_geojson.loads(json.dumps(request.geojson))
+    # except Exception as e:
+    #     raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {str(e)}")
     # 2. Upload it to your storage (e.g., S3)
     
     # For now, just return a mock response
     return {
+        "fire_event_name": request.fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "uploaded_geojson": f"https://burn-severity-backend-prod.s3.us-east-2.amazonaws.com/public/dse/{request.fire_event_name}/uploaded.geojson"
+        "uploaded_geojson": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/uploaded.geojson"
     }
