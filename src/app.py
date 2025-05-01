@@ -166,7 +166,8 @@ async def refine_fire_boundary(request: RefineRequest):
         "fire_event_name": request.fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson"
+        "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{request.fire_event_name}/refined.geojson",
+        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{request.fire_event_name}/refined_rbr.tif"
     }
 
 @app.post("/process/resolve_against_veg_map", response_model=ProcessingStartedResponse, tags=["Vegetation Impact"])
@@ -266,5 +267,5 @@ async def upload_geojson(request: GeoJSONUploadRequest):
         "fire_event_name": request.fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "uploaded_geojson": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/uploaded.geojson"
+        "uploaded_geojson": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{request.fire_event_name}/uploaded.geojson"
     }
