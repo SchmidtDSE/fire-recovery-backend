@@ -65,6 +65,7 @@ class ProcessingStartedResponse(BaseResponse):
 
 class RefinedBoundaryResponse(BaseResponse):
     refined_geojson_url: str
+    cog_url: str
 
 class FireSeverityResponse(BaseResponse):
     cog_url: str = None
@@ -152,22 +153,54 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
         "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/intermediate_rbr.tif"
     }
 
-@app.post("/process/refine", response_model=RefinedBoundaryResponse, tags=["Boundary Refinement"])
-async def refine_fire_boundary(request: RefineRequest):
+@app.post("/process/refine", response_model=ProcessingStartedResponse, tags=["Boundary Refinement"])
+async def refine_fire_boundary(request: RefineRequest, background_tasks: BackgroundTasks):
     """
     Refine the fire boundary to the provided GeoJSON. It is assumed that the user will have seen the 
     fire severity COG and will have drawn a new boundary around the presumed fire boundary based on the
     fire severity values.
     """
     job_id = str(uuid.uuid4())
-    # Here you would actually save the GeoJSON to storage
-    # For now, just return a mock URL
+    # Here you would add a background task to refine the fire boundary
+    # background_tasks.add_task(process_refine_boundary, job_id, request.fire_event_name, request.refine_geojson)
+    job_timestamps[job_id] = time.time()
     return {
         "fire_event_name": request.fire_event_name,
+        "status": "Processing started", 
+        "job_id": job_id
+    }
+
+@app.get("/result/refine/{fire_event_name}/{job_id}", response_model=RefinedBoundaryResponse, tags=["Boundary Refinement"])
+async def get_refine_result(fire_event_name: str, job_id: str):
+    """
+    Get the result of the fire boundary refinement.
+    """
+    # Check if job exists
+    if job_id not in job_timestamps:
+        return {
+            "fire_event_name": fire_event_name,
+            "status": "not_found", 
+            "job_id": job_id
+        }
+    
+    # Check elapsed time
+    elapsed = time.time() - job_timestamps[job_id]
+    
+    # Return pending for first 2 seconds
+    if elapsed < 2:
+        return {
+            "fire_event_name": fire_event_name,
+            "status": "pending", 
+            "job_id": job_id
+        }
+    
+    # After 2 seconds, return complete response
+    return {
+        "fire_event_name": fire_event_name,
         "status": "complete", 
         "job_id": job_id, 
-        "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{request.fire_event_name}/refined.geojson",
-        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{request.fire_event_name}/refined_rbr.tif"
+        "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson",
+        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
     }
 
 @app.post("/process/resolve_against_veg_map", response_model=ProcessingStartedResponse, tags=["Vegetation Impact"])
