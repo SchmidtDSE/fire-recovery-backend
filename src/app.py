@@ -95,18 +95,18 @@ async def analyze_fire_severity(request: ProcessingRequest, background_tasks: Ba
     # MOCK IMPLEMENTATION FOR TESTING
     job_id = str(uuid.uuid4())
     job_timestamps[job_id] = time.time()
+    
     return {
         "fire_event_name": request.fire_event_name,
         "status": "Processing started", 
         "job_id": job_id
     }
-
-    # REAL IMPLEMENTATION
+    
     # try:
     #     geometry = msgspec_geojson.loads(json.dumps(request.geometry))
     # except Exception as e:
     #     raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {str(e)}")
-        
+    
     # job_id = str(uuid.uuid4())
     # background_tasks.add_task(
     #     process_remote_sensing_data,
@@ -117,6 +117,7 @@ async def analyze_fire_severity(request: ProcessingRequest, background_tasks: Ba
     #     request.postfire_date_range,
     # )
     # job_timestamps[job_id] = time.time()
+    
     # return {
     #    "fire_event_name": request.fire_event_name,
     #    "status": "Processing started", 
@@ -200,7 +201,8 @@ async def get_refine_result(fire_event_name: str, job_id: str):
         "status": "complete", 
         "job_id": job_id, 
         "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson",
-        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
+        # "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
+        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/intermediate_rbr.tif"
     }
 
 @app.post("/process/resolve_against_veg_map", response_model=ProcessingStartedResponse, tags=["Vegetation Impact"])
