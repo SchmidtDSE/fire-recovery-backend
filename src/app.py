@@ -201,8 +201,7 @@ async def get_refine_result(fire_event_name: str, job_id: str):
         "status": "complete", 
         "job_id": job_id, 
         "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson",
-        # "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
-        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/intermediate_rbr.tif"
+        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
     }
 
 @app.post("/process/resolve_against_veg_map", response_model=ProcessingStartedResponse, tags=["Vegetation Impact"])
