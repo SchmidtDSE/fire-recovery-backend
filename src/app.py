@@ -15,6 +15,7 @@ from .process import process_remote_sensing_data
 import random
 import time
 import src.msgspec_geojson
+from typing import Union, Optional
 
 # Dictionary to track when job requests were first received, for testing
 job_timestamps = {}
@@ -29,7 +30,7 @@ STAC_URL = "https://earth-search.aws.element84.com/v1/"
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],  # Frontend origin
+    allow_origins=["http://127.0.0.1:5500",  "http://localhost:5500"],  # Frontend origin
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
@@ -60,6 +61,10 @@ class BaseResponse(BaseModel):
     status: str
     job_id: str
 
+class TaskPendingResponse(BaseResponse):
+    """Response for when a task is still being processed"""
+    pass
+
 class ProcessingStartedResponse(BaseResponse):
     pass
 
@@ -68,10 +73,10 @@ class RefinedBoundaryResponse(BaseResponse):
     cog_url: str
 
 class FireSeverityResponse(BaseResponse):
-    cog_url: str = None
+    cog_url: Optional[str] = None
 
 class VegMapMatrixResponse(BaseResponse):
-    fire_veg_matrix: str = None
+    fire_veg_matrix: Optional[str] = None
 
 class UploadedGeoJSONResponse(BaseResponse):
     uploaded_geojson: str
@@ -124,7 +129,7 @@ async def analyze_fire_severity(request: ProcessingRequest, background_tasks: Ba
     #    "job_id": job_id
     # }
 
-@app.get("/result/analyze_fire_severity/{fire_event_name}/{job_id}", response_model=FireSeverityResponse, tags=["Fire Severity"])
+@app.get("/result/analyze_fire_severity/{fire_event_name}/{job_id}", response_model=Union[TaskPendingResponse, FireSeverityResponse], tags=["Fire Severity"])
 async def get_fire_severity_result(fire_event_name: str, job_id: str):
     """
     Get the result of the fire severity analysis.
@@ -140,19 +145,19 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
     
     # Return pending for first 2 seconds
     if elapsed < 2:
-        return {
-            "fire_event_name": fire_event_name,
-            "status": "pending", 
-            "job_id": job_id
-        }
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name,
+            status="pending", 
+            job_id=job_id
+        )
     
     # After 2 seconds, return complete response
-    return {
-        "fire_event_name": fire_event_name,
-        "status": "complete", 
-        "job_id": job_id, 
-        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/intermediate_rbr.tif"
-    }
+    return FireSeverityResponse(
+        fire_event_name=fire_event_name,
+        status="complete", 
+        job_id=job_id, 
+        cog_url=f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/intermediate_rbr.tif"
+    )
 
 @app.post("/process/refine", response_model=ProcessingStartedResponse, tags=["Boundary Refinement"])
 async def refine_fire_boundary(request: RefineRequest, background_tasks: BackgroundTasks):
@@ -171,38 +176,38 @@ async def refine_fire_boundary(request: RefineRequest, background_tasks: Backgro
         "job_id": job_id
     }
 
-@app.get("/result/refine/{fire_event_name}/{job_id}", response_model=RefinedBoundaryResponse, tags=["Boundary Refinement"])
+@app.get("/result/refine/{fire_event_name}/{job_id}", response_model=Union[TaskPendingResponse, RefinedBoundaryResponse], tags=["Boundary Refinement"])
 async def get_refine_result(fire_event_name: str, job_id: str):
     """
     Get the result of the fire boundary refinement.
     """
     # Check if job exists
     if job_id not in job_timestamps:
-        return {
-            "fire_event_name": fire_event_name,
-            "status": "not_found", 
-            "job_id": job_id
-        }
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name,
+            status="not_found", 
+            job_id=job_id
+        )
     
     # Check elapsed time
     elapsed = time.time() - job_timestamps[job_id]
     
-    # Return pending for first 2 seconds
-    if elapsed < 2:
-        return {
-            "fire_event_name": fire_event_name,
-            "status": "pending", 
-            "job_id": job_id
-        }
+    # Return pending for first 10 seconds
+    if elapsed < 10:
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name,
+            status="pending", 
+            job_id=job_id
+        )
     
-    # After 2 seconds, return complete response
-    return {
-        "fire_event_name": fire_event_name,
-        "status": "complete", 
-        "job_id": job_id, 
-        "refined_geojson_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson",
-        "cog_url": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
-    }
+    # After 10 seconds, return complete response
+    return RefinedBoundaryResponse(
+        fire_event_name=fire_event_name,
+        status="complete", 
+        job_id=job_id, 
+        refined_geojson_url=f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined.geojson",
+        cog_url=f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/refined_rbr.tif"
+    )
 
 @app.post("/process/resolve_against_veg_map", response_model=ProcessingStartedResponse, tags=["Vegetation Impact"])
 async def resolve_against_veg_map(request: VegMapResolveRequest, background_tasks: BackgroundTasks):
@@ -221,37 +226,37 @@ async def resolve_against_veg_map(request: VegMapResolveRequest, background_task
         "job_id": job_id
     }
 
-@app.get("/result/resolve_against_veg_map/{fire_event_name}/{job_id}", response_model=VegMapMatrixResponse, tags=["Vegetation Impact"])
+@app.get("/result/resolve_against_veg_map/{fire_event_name}/{job_id}", response_model=Union[TaskPendingResponse, VegMapMatrixResponse], tags=["Vegetation Impact"])
 async def get_veg_map_result(fire_event_name: str, job_id: str):
     """
     Get the result of the vegetation map processing.
     """
     # Check if job exists
     if job_id not in job_timestamps:
-        return {
-            "fire_event_name": fire_event_name,
-            "status": "not_found", 
-            "job_id": job_id
-        }
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name,
+            status="not_found", 
+            job_id=job_id
+        )
     
     # Check elapsed time
     elapsed = time.time() - job_timestamps[job_id]
     
-    # Return pending for first 2 seconds
-    if elapsed < 2:
-        return {
-            "fire_event_name": fire_event_name,
-            "status": "pending", 
-            "job_id": job_id
-        }
+    # Return pending for first 10 seconds
+    if elapsed < 10:
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name,
+            status="pending", 
+            job_id=job_id
+        )
     
-    # After 2 seconds, return complete response
-    return {
-        "fire_event_name": fire_event_name,
-        "status": "complete", 
-        "job_id": job_id, 
-        "fire_veg_matrix": f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/fire_veg_matrix.csv"
-    }
+    # After 10 seconds, return complete response
+    return VegMapMatrixResponse(
+        fire_event_name=fire_event_name,
+        status="complete", 
+        job_id=job_id, 
+        fire_veg_matrix=f"https://storage.googleapis.com/national_park_service/mock_assets_frontend/{fire_event_name}/fire_veg_matrix.csv"
+    )
 
 @app.post("/upload/shapefile", response_model=UploadedGeoJSONResponse, tags=["Upload"])
 async def upload_shapefile(fire_event_name: str = Form(...), shapefile: UploadFile = File(...)):
