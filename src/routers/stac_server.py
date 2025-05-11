@@ -17,6 +17,31 @@ BASE_URL = os.environ.get("STAC_BASE_URL", "https://storage.googleapis.com/natio
 STORAGE_DIR = os.environ.get("STAC_STORAGE_DIR", "/tmp/stac_geoparquet")
 stac_manager = STACGeoParquetManager(BASE_URL, STORAGE_DIR)
 
+@router.get("/", response_model=Dict[str, Any])
+async def get_stac_root():
+    """
+    Get the root STAC API
+    """
+    root = {
+        "stac_version": "1.0.0",
+        "stac_extensions": ["https://stac-extensions.github.io/collection/v1.0.0/schema.json"],
+        "description": "STAC API for Fire Recovery Analysis Products",
+        "links": [
+            {
+                "rel": "self",
+                "href": f"{BASE_URL}/stac",
+                "type": "application/json"
+            },
+            {
+                "rel": "root",
+                "href": f"{BASE_URL}/catalog.json",
+                "type": "application/json"
+            }
+        ]
+    }
+
+    return root
+
 @router.get("/catalog", response_model=Dict[str, Any])
 async def get_catalog():
     """

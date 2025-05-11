@@ -111,7 +111,7 @@ async def analyze_fire_severity(request: ProcessingRequest, background_tasks: Ba
 async def process_fire_severity(
     job_id: str,
     fire_event_name: str,
-    geometry: dict,
+    geometry: Polygon,
     prefire_date_range: list[str],
     postfire_date_range: list[str]
 ):
