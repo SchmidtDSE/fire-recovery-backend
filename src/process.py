@@ -29,9 +29,6 @@ def process_remote_sensing_data(
     postfire_date_range: Optional[List[str]]
 ) -> Dict[str, Any]:
 
-    # Debug
-    breakpoint()
-
     # Initialize workspace
     workspace = initialize_workspace(job_id)
     output_dir = workspace["output_dir"]

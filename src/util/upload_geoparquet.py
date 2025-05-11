@@ -2,28 +2,57 @@
 import argparse
 import os
 import sys
-from google.cloud import storage
+from minio import Minio
+from minio.error import S3Error
 from pathlib import Path
+from urllib.parse import urlparse
 
 def upload_to_gcs(source_file: str, bucket_name: str, destination_blob_name: str):
-    """Uploads a file to the specified GCS bucket."""
-    # Initialize the client
-    storage_client = storage.Client()
+    """Uploads a file to the specified GCS bucket using Minio client."""
+    # Get credentials from environment variables
+    access_key = os.environ.get('GCP_ACCESS_KEY_ID')
+    secret_key = os.environ.get('GCP_SECRET_ACCESS_KEY')
     
-    # Get the bucket
-    bucket = storage_client.bucket(bucket_name)
+    if not access_key or not secret_key:
+        raise ValueError("GCP_ACCESS_KEY_ID and GCP_SECRET_ACCESS_KEY environment variables must be set")
     
-    # Upload the file
-    blob = bucket.blob(destination_blob_name)
-    blob.upload_from_filename(source_file)
+    # Initialize Minio client - for GCS compatibility use their endpoint
+    endpoint = "storage.googleapis.com"
+    client = Minio(
+        endpoint,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=True,  # Use HTTPS
+        region="auto"
+    )
     
-    print(f"File {source_file} uploaded to gs://{bucket_name}/{destination_blob_name}")
+    # Check if bucket exists, create if not
+    if not client.bucket_exists(bucket_name):
+        print(f"Bucket {bucket_name} does not exist. Creating...")
+        client.make_bucket(bucket_name)
     
-    # Make the blob publicly readable
-    blob.make_public()
-    print(f"Public URL: {blob.public_url}")
-    
-    return blob.public_url
+    # Upload file
+    try:
+        client.fput_object(
+            bucket_name, 
+            destination_blob_name, 
+            source_file,
+            content_type="application/octet-stream"
+        )
+        
+        print(f"File {source_file} uploaded to gs://{bucket_name}/{destination_blob_name}")
+        
+        # Make object publicly readable by setting policy (if needed)
+        # This is simplified - you may need a more elaborate policy
+        client.set_object_acl(bucket_name, destination_blob_name, "public-read")
+        
+        # Construct public URL
+        public_url = f"https://{endpoint}/{bucket_name}/{destination_blob_name}"
+        print(f"Public URL: {public_url}")
+        
+        return public_url
+    except S3Error as e:
+        raise Exception(f"Error uploading to GCS: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Upload GeoParquet STAC files to Google Cloud Storage")
