@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
+from geojson_pydantic import Polygon
 import rustac
 import json
 import geopandas as gpd
@@ -61,13 +62,18 @@ class STACGeoParquetManager:
         fire_event_name: str,
         job_id: str,
         cog_url: str,
-        bbox: List[float],
+        geometry: Polygon,
         datetime_str: str,
+        boundary_type: str = "coarse",
     ) -> Dict[str, Any]:
         """
         Create a STAC item for fire severity analysis and add it to the GeoParquet file
         """
         item_id = f"{fire_event_name}-severity-{job_id}"
+
+        # Get stac compliant bbox from the geometry
+        geom_shape = shape(geometry)
+        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
 
         # Create the STAC item
         stac_item = {
@@ -79,19 +85,10 @@ class STACGeoParquetManager:
                 "fire_event_name": fire_event_name,
                 "job_id": job_id,
                 "product_type": "fire_severity",
+                "boundary_type": boundary_type,
             },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [bbox[0], bbox[1]],
-                        [bbox[2], bbox[1]],
-                        [bbox[2], bbox[3]],
-                        [bbox[0], bbox[3]],
-                        [bbox[0], bbox[1]],
-                    ]
-                ],
-            },
+            "geometry": geometry,
+            "bbox": bbox,
             "assets": {
                 "rbr": {
                     "href": cog_url,

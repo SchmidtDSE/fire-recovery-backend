@@ -168,17 +168,12 @@ async def process_fire_severity(
             cog_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
 
         # 3. Create a STAC item
-        # Extract bbox from geometry
-        geom_shape = shape(geometry)
-        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
-
-        # Create the STAC item
         datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
             cog_url=cog_url,
-            bbox=list(bbox),
+            geometry=geometry,
             datetime_str=datetime_str,
         )
 
