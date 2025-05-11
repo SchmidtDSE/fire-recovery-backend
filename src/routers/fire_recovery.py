@@ -194,7 +194,7 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
     """
     # Look up the STAC item
     stac_item = await stac_manager.get_item_by_id(
-        fire_event_name, f"{fire_event_name}-severity-{job_id}"
+        f"{fire_event_name}-severity-{job_id}"
     )
 
     if not stac_item:

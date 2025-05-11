@@ -200,20 +200,12 @@ class STACGeoParquetManager:
             await rustac.write(self.parquet_path, items, format="geoparquet")
             return self.parquet_path
 
-        # For existing files, we need to handle deduplication
         # Read existing items first
-        existing_items = await rustac.search(self.parquet_path, use_duckdb=True)
-
-        # Get IDs of new items for deduplication
-        new_item_ids = {item["id"] for item in items}
-
-        # Filter out existing items with the same IDs
-        filtered_items = [
-            item for item in existing_items if item["id"] not in new_item_ids
-        ]
+        all_items = await rustac.read(self.parquet_path)
+        all_items = all_items["features"]
 
         # Combine with new items
-        all_items = filtered_items + items
+        all_items.extend(items)
 
         # Write back to parquet file
         await rustac.write(self.parquet_path, all_items, format="geoparquet")
@@ -237,14 +229,11 @@ class STACGeoParquetManager:
             self.parquet_path,
             filter={
                 "op": "=",
-                "args": [{"property": "properties.fire_event_name"}, fire_event_name],
+                "args": [{"property": "fire_event_name"}, fire_event_name],
             },
-            use_duckdb=True,
         )
 
-    async def get_item_by_id(
-        self, fire_event_name: str, item_id: str
-    ) -> Optional[Dict[str, Any]]:
+    async def get_item_by_id(self, item_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a specific STAC item by ID from the GeoParquet file
         """
@@ -252,15 +241,7 @@ class STACGeoParquetManager:
             return None
 
         # Use rustac's native search with combined filters
-        items = await rustac.search(
-            self.parquet_path,
-            ids=[item_id],
-            filter={
-                "op": "=",
-                "args": [{"property": "properties.fire_event_name"}, fire_event_name],
-            },
-            use_duckdb=True,
-        )
+        items = await rustac.search(self.parquet_path, ids=[item_id])
 
         return items[0] if items else None
 
@@ -280,11 +261,11 @@ class STACGeoParquetManager:
         # Build filter for fire_event_name
         fire_event_filter = {
             "op": "=",
-            "args": [{"property": "properties.fire_event_name"}, fire_event_name],
+            "args": [{"property": "fire_event_name"}, fire_event_name],
         }
 
         # Build search parameters
-        search_params = {"use_duckdb": True}
+        search_params = {}
 
         # Add bbox filter if provided
         if bbox:
