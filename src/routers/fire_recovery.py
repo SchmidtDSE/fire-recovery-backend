@@ -161,13 +161,11 @@ async def process_fire_severity(
             # Handle error case
             return
 
-        # 2. Upload the COG to GCS
-        cog_path = result["output_files"][
-            "rbr"
-        ]  # We'll use RBR as our primary severity metric
-        blob_name = f"{fire_event_name}/{job_id}/rbr.tif"
-
-        cog_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
+        # 2. Upload the COGs to GCS
+        for key, value in result["output_files"].items():
+            cog_path = value
+            blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
+            cog_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
 
         # 3. Create a STAC item
         # Extract bbox from geometry

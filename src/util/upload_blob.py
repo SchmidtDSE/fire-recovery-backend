@@ -20,7 +20,7 @@ def upload_to_gcs(source_file: str, bucket_name: str, destination_blob_name: str
         )
 
     # Initialize Minio client - for GCS compatibility use their endpoint
-    endpoint = "https://storage.googleapis.com"
+    endpoint = "storage.googleapis.com"
     client = Minio(
         endpoint,
         access_key=access_key,
@@ -47,15 +47,12 @@ def upload_to_gcs(source_file: str, bucket_name: str, destination_blob_name: str
             f"File {source_file} uploaded to gs://{bucket_name}/{destination_blob_name}"
         )
 
-        # Make object publicly readable by setting policy (if needed)
-        # This is simplified - you may need a more elaborate policy
-        client.set_object_acl(bucket_name, destination_blob_name, "public-read")
-
         # Construct public URL
         public_url = f"https://{endpoint}/{bucket_name}/{destination_blob_name}"
         print(f"Public URL: {public_url}")
 
         return public_url
+
     except S3Error as e:
         raise Exception(f"Error uploading to GCS: {e}")
 
