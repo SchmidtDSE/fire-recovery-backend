@@ -74,9 +74,6 @@ def process_remote_sensing_data(
             "output_files": {
                 name: result["path"] for name, result in cog_results.items()
             },
-            "validation": {
-                name: result["validation"] for name, result in cog_results.items()
-            },
         }
 
     except Exception as e:

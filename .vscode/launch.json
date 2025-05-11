@@ -19,7 +19,8 @@
                 "PYTHONPATH": "${workspaceFolder}/.pixi/envs/default/bin/python",
                 "RUN_LOCAL": "True",
                 "PYTHONARGS": "-Xfrozen_modules=off" // For dask debugging 
-            }
+            },
+            "envFile": "${workspaceFolder}/.devcontainer.env"
         }
     ]
 }
