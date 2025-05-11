@@ -1,6 +1,7 @@
 import coiled
 import dask.distributed
 import rioxarray
+import xarray as xr
 from pystac_client import Client as PystacClient
 import stackstac
 import numpy as np
@@ -10,6 +11,8 @@ import os
 from typing import List, Dict, Optional, Any
 from geojson_pydantic import Polygon
 from src.config.constants import STAC_URL, STAC_EPSG_CODE, SWIR_BAND, NIR_BAND
+from shapely.geometry import shape
+import numpy as np
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
@@ -61,11 +64,6 @@ def process_remote_sensing_data(
             cog_path = f"{output_dir}/{name}.tif"
             cog_results[name] = create_cog(data, cog_path)
 
-        # Write validation details to file
-        with open(f"{output_dir}/validation.txt", "w") as f:
-            for name, result in cog_results.items():
-                f.write(f"{name}: {result['validation']}\n")
-
         # Update status
         all_valid = all(result["is_valid"] for result in cog_results.values())
         with open(status_file, "w") as f:
@@ -90,7 +88,7 @@ def process_remote_sensing_data(
 
 def initialize_workspace(job_id: str) -> Dict[str, str]:
     """Initialize the workspace and return paths to working files"""
-    output_dir = f"/tmp/{job_id}"
+    output_dir = f"tmp/{job_id}"
     os.makedirs(output_dir, exist_ok=True)
 
     status_file = f"{output_dir}/status.txt"
@@ -98,6 +96,30 @@ def initialize_workspace(job_id: str) -> Dict[str, str]:
         f.write("started")
 
     return {"output_dir": output_dir, "status_file": status_file}
+
+
+def get_buffered_bounds(geometry: Polygon, buffer: float):
+    # Extract the bounding box from the geometry
+    geom_shape = shape(geometry)
+    minx, miny, maxx, maxy = geom_shape.bounds
+
+    # Calculate width and height in degrees
+    width = maxx - minx
+    height = maxy - miny
+
+    # Calculate buffer size in degrees (20% of width/height or .25 degree, whichever is smaller)
+    buffer_x = min(width * 0.2, 0.25)
+    buffer_y = min(height * 0.2, 0.25)
+
+    # Create buffered bounds
+    buffered_bounds = (
+        minx - buffer_x,  # min_x
+        miny - buffer_y,  # min_y
+        maxx + buffer_x,  # max_x
+        maxy + buffer_y,  # max_y
+    )
+
+    return buffered_bounds
 
 
 def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]):
@@ -110,15 +132,20 @@ def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]
 
     items = catalog.search(**search).get_all_items()
 
-    stacked = stackstac.stack(items, epsg=STAC_EPSG_CODE, assets=[SWIR_BAND, NIR_BAND])
+    buffered_bounds = get_buffered_bounds(geometry, 100)
+
+    stacked = stackstac.stack(
+        items, epsg=STAC_EPSG_CODE, assets=[SWIR_BAND, NIR_BAND], bounds=buffered_bounds
+    )
 
     return stacked
 
 
 def calculate_nbr(data):
     """Calculate Normalized Burn Ratio for a dataset"""
-    nir = data.sel(band="nir").mean(dim="time")
-    swir = data.sel(band="swir22").mean(dim="time")
+    nir = data.sel(band="nir").median(dim="time")
+    swir = data.sel(band="swir22").median(dim="time")
+
     return (nir - swir) / (nir + swir)
 
 
@@ -127,6 +154,7 @@ def calculate_burn_indices(prefire_data, postfire_data):
     # Calculate NBR for both periods
     prefire_nbr = calculate_nbr(prefire_data)
     postfire_nbr = calculate_nbr(postfire_data)
+    prefire_nbr, postfire_nbr = xr.align(prefire_nbr, postfire_nbr, join="outer")
 
     # Calculate dNBR
     dnbr = prefire_nbr - postfire_nbr
@@ -152,12 +180,22 @@ def calculate_burn_indices(prefire_data, postfire_data):
 
 def create_cog(data, output_path: str) -> Dict[str, Any]:
     """Create a Cloud Optimized GeoTIFF from xarray data"""
-    intermediate_tiff = f"{output_path}_raw.tif"
-    data.compute().rio.to_raster(intermediate_tiff)
+
+    naive_tiff = output_path.replace(".tif", "_raw.tif")
+
+    # Dask arrays are lazy - this is where dask-distributed will
+    # actually compute the burn metrics from the various href'd COGs
+    computed = data.compute()
+    computed.rio.to_raster(naive_tiff)
+
+    ## TODO: Rio-cogeo allows us to save COGs to blob directly from
+    ## memory - it is kind of awkward though because it would require
+    ## us to use a context manager for lots of logic (with MemoryFile)
+    ## so for now this is cleaner
 
     cog_profile = cog_profiles.get("deflate")
     cog_translate(
-        intermediate_tiff,
+        naive_tiff,
         output_path,
         cog_profile,
         add_mask=True,
@@ -165,10 +203,9 @@ def create_cog(data, output_path: str) -> Dict[str, Any]:
         overview_resampling="average",
     )
 
-    validation_result = cog_validate(output_path)
-    is_valid = validation_result["valid_cog"]
+    is_valid, __errors, __warnings = cog_validate(output_path)
 
-    # Clean up intermediate file
-    os.remove(intermediate_tiff)
+    # Clean up intermediate naive file
+    os.remove(naive_tiff)
 
-    return {"path": output_path, "is_valid": is_valid, "validation": validation_result}
+    return {"path": output_path, "is_valid": is_valid}
