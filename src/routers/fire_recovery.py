@@ -9,9 +9,9 @@ from typing import Union, Optional, List
 from datetime import datetime
 from geojson_pydantic import FeatureCollection, Feature, Polygon, MultiPolygon
 from shapely.geometry import shape
-from ..process import process_remote_sensing_data
-from ..util.upload_blob import upload_to_gcs
-from ..stac.stac_geoparquet_manager import STACGeoParquetManager
+from src.process.spectral_indices import process_remote_sensing_data
+from src.util.upload_blob import upload_to_gcs
+from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 
 # Dictionary to track when job requests were first received
 job_timestamps = {}

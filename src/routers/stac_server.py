@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 import os
 from datetime import datetime
 import asyncio
-from .stac_geoparquet import STACGeoParquetManager
+from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 
 # Initialize router
 router = APIRouter(
