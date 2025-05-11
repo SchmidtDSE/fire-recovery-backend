@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 import rustac
 import json
-import pyarrow as pa
 import geopandas as gpd
 from shapely.geometry import mapping, shape
 from pathlib import Path
@@ -26,6 +25,7 @@ class STACGeoParquetManager:
         """
         self.base_url = base_url
         self.storage_dir = storage_dir
+        self.parquet_path = os.path.join(storage_dir, "fire_recovery_stac.parquet")
         Path(storage_dir).mkdir(parents=True, exist_ok=True)
         
     def get_parquet_path(self, fire_event_name: str) -> str:
@@ -185,86 +185,78 @@ class STACGeoParquetManager:
     
     async def add_items_to_parquet(self, fire_event_name: str, items: List[Dict[str, Any]]) -> str:
         """
-        Add STAC items to the GeoParquet file for a fire event
+        Add STAC items to the consolidated GeoParquet file
         
         Returns:
             Path to the updated GeoParquet file
         """
-        parquet_path = self.get_parquet_path(fire_event_name)
-        
         # Validate all items before adding
-        validated_items = [self.validate_stac_item(item) for item in items]
+        for item in items:
+            self.validate_stac_item(item)
         
-        # Convert items to arrow table using rustac
-        arrow_table = rustac.to_arrow(items)
+        # If the parquet file doesn't exist yet, just write the items directly
+        if not os.path.exists(self.parquet_path):
+            await rustac.write(self.parquet_path, items, format="geoparquet")
+            return self.parquet_path
         
-        # If the parquet file already exists, append to it
-        if os.path.exists(parquet_path):
-            # Read existing table
-            existing_table = rustac.read_geoparquet(parquet_path)
-            
-            # Get unique item IDs from new items
-            new_ids = set(item["id"] for item in items)
-            
-            # Filter existing table to remove items with the same ID
-            item_id_indices = existing_table.column("id").index_in(pa.array(list(new_ids)))
-            mask = item_id_indices.is_null()  # Keep rows where the ID is NOT in new_ids
-            filtered_table = existing_table.filter(mask)
-            
-            # Combine tables
-            arrow_table = pa.concat_tables([filtered_table, arrow_table])
-
-        # Write to parquet
-        rustac.write_geoparquet(arrow_table, parquet_path)
+        # For existing files, we need to handle deduplication
+        # Read existing items first
+        existing_items = await rustac.search(self.parquet_path, use_duckdb=True)
+        
+        # Get IDs of new items for deduplication
+        new_item_ids = {item["id"] for item in items}
+        
+        # Filter out existing items with the same IDs
+        filtered_items = [item for item in existing_items if item["id"] not in new_item_ids]
+        
+        # Combine with new items
+        all_items = filtered_items + items
+        
+        # Write back to parquet file
+        await rustac.write(self.parquet_path, all_items, format="geoparquet")
         
         # In a production environment, you'd upload this file to blob storage here
-        # Example: upload_to_blob_storage(parquet_path, f"{fire_event_name}.parquet")
+        # Example: upload_to_blob_storage(self.parquet_path, "fire_recovery_stac.parquet")
         
-        return parquet_path
-    
+        return self.parquet_path
+
     async def get_items_by_fire_event(self, fire_event_name: str) -> List[Dict[str, Any]]:
         """
         Retrieve all STAC items for a fire event from the GeoParquet file
         """
-        parquet_path = self.get_parquet_path(fire_event_name)
-        
-        if not os.path.exists(parquet_path):
+        if not os.path.exists(self.parquet_path):
             return []
         
-        # Read the GeoParquet file
-        arrow_table = rustac.read_geoparquet(parquet_path)
-        
-        # Convert back to STAC items
-        items = rustac.from_arrow(arrow_table)
-        return items
-    
+        # Use rustac's native search with fire_event_name filter
+        return await rustac.search(
+            self.parquet_path,
+            filter={
+                "op": "=", 
+                "args": [{"property": "properties.fire_event_name"}, fire_event_name]
+            },
+            use_duckdb=True
+        )
+
     async def get_item_by_id(self, fire_event_name: str, item_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a specific STAC item by ID from the GeoParquet file
         """
-        parquet_path = self.get_parquet_path(fire_event_name)
-        
-        if not os.path.exists(parquet_path):
+        if not os.path.exists(self.parquet_path):
             return None
         
-        # Read the GeoParquet file
-        arrow_table = rustac.read_geoparquet(parquet_path)
+        # Use rustac's native search with combined filters
+        items = await rustac.search(
+            self.parquet_path,
+            ids=[item_id],
+            filter={
+                "op": "=", 
+                "args": [{"property": "properties.fire_event_name"}, fire_event_name]
+            },
+            use_duckdb=True
+        )
         
-        # Convert to GeoPandas DataFrame for easier filtering
-        gdf = gpd.GeoDataFrame.from_arrow(arrow_table)
-        
-        # Filter by item_id
-        filtered = gdf[gdf['id'] == item_id]
-        
-        if len(filtered) == 0:
-            return None
-            
-        # Convert back to STAC item
-        item_row = filtered.iloc[0]
-        stac_item = rustac.from_arrow(pa.Table.from_pandas(filtered))[0]
-        
-        return stac_item
-        
+        return items[0] if items else None
+
     async def search_items(
         self, 
         fire_event_name: str,
@@ -275,35 +267,43 @@ class STACGeoParquetManager:
         """
         Search for STAC items using filters
         """
-        parquet_path = self.get_parquet_path(fire_event_name)
-        
-        if not os.path.exists(parquet_path):
+        if not os.path.exists(self.parquet_path):
             return []
-            
-        # Read the GeoParquet file
-        arrow_table = rustac.read_geoparquet(parquet_path)
         
-        # Convert to GeoPandas DataFrame for filtering
-        gdf = gpd.GeoDataFrame.from_arrow(arrow_table)
+        # Build filter for fire_event_name
+        fire_event_filter = {
+            "op": "=", 
+            "args": [{"property": "properties.fire_event_name"}, fire_event_name]
+        }
         
-        # Apply filters
-        if product_type:
-            gdf = gdf[gdf['properties.product_type'] == product_type]
-            
+        # Build search parameters
+        search_params = {"use_duckdb": True}
+        
+        # Add bbox filter if provided
         if bbox:
-            from shapely.geometry import box
-            search_box = box(bbox[0], bbox[1], bbox[2], bbox[3])
-            gdf = gdf[gdf.geometry.intersects(search_box)]
-            
+            search_params["bbox"] = bbox
+        
+        # Add datetime filter if provided
         if datetime_range and len(datetime_range) == 2:
             start_date, end_date = datetime_range
-            if start_date:
-                gdf = gdf[gdf['properties.datetime'] >= start_date]
-            if end_date:
-                gdf = gdf[gdf['properties.datetime'] <= end_date]
-                
-        # Convert filtered results back to STAC items
-        if len(gdf) > 0:
-            return rustac.from_arrow(pa.Table.from_pandas(gdf))
+            if start_date and end_date:
+                search_params["datetime"] = f"{start_date}/{end_date}"
+            elif start_date:
+                search_params["datetime"] = f"{start_date}/.."
+            elif end_date:
+                search_params["datetime"] = f"../{end_date}"
+        
+        # Combine product_type filter with fire_event_filter if needed
+        if product_type:
+            product_filter = {
+                "op": "=", 
+                "args": [{"property": "properties.product_type"}, product_type]
+            }
+            search_params["filter"] = {
+                "op": "and",
+                "args": [fire_event_filter, product_filter]
+            }
         else:
-            return []
+            search_params["filter"] = fire_event_filter
+        
+        return await rustac.search(self.parquet_path, **search_params)
