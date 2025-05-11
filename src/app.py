@@ -16,7 +16,7 @@ STAC_URL = "https://earth-search.aws.element84.com/v1/"
 app = FastAPI(
     title="Fire Recovery Backend",
     description="API for fire recovery analysis tools including fire severity analysis, boundary refinement, and vegetation impact assessment",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Add CORS middleware
@@ -32,13 +32,11 @@ app.add_middleware(
 app.include_router(fire_recovery.router)
 app.include_router(stac_server.router)
 
+
 @app.get("/")
 async def root():
     return {
         "message": "Welcome to the Fire Recovery Backend API",
         "docs_url": "/docs",
-        "endpoints": {
-            "fire_recovery": "/fire-recovery/",
-            "stac": "/stac/"
-        }
+        "endpoints": {"fire_recovery": "/fire-recovery/", "stac": "/stac/"},
     }
