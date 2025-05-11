@@ -13,4 +13,4 @@ src/__pycache__/
 /tmp
 
 # dotenv
-/.devcontainer/.env
+.devcontainer/.env
