@@ -3,6 +3,8 @@ environments:
   default:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
+    indexes:
+    - https://pypi.org/simple
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -294,6 +296,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/rio-cogeo-5.4.1-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/rioxarray-0.18.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/rpds-py-0.24.0-py312h3b7be25_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/rustac-0.7.2-py312h36fee33_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/s2n-1.5.15-hd830067_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/s3transfer-0.11.4-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/scikit-learn-1.6.1-py312h7a48858_0.conda
@@ -361,6 +364,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zlib-1.3.1-hb9d3cd8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py312h66e93f0_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
+      - pypi: https://files.pythonhosted.org/packages/ba/e1/2926925dfc37287661f755937df99dff399d3aea2163e11cfd08ca6af3b2/geojson_pydantic-2.0.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/f3/d3/90347937f859f8a092c25a060488c318c5e0c6311f62a654a58f8b3dbe91/stac_pydantic-3.2.0-py3-none-any.whl
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
   sha256: fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726
@@ -1575,6 +1580,21 @@ packages:
   - pkg:pypi/fsspec?source=compressed-mapping
   size: 142117
   timestamp: 1743437355974
+- pypi: https://files.pythonhosted.org/packages/ba/e1/2926925dfc37287661f755937df99dff399d3aea2163e11cfd08ca6af3b2/geojson_pydantic-2.0.0-py3-none-any.whl
+  name: geojson-pydantic
+  version: 2.0.0
+  sha256: fd75876768a1dcab30dd04c478773191e0c19d678ef74580a9bad7c4576bfe98
+  requires_dist:
+  - pydantic~=2.0
+  - pre-commit ; extra == 'dev'
+  - bump-my-version ; extra == 'dev'
+  - mkdocs ; extra == 'docs'
+  - mkdocs-material ; extra == 'docs'
+  - pygments ; extra == 'docs'
+  - pytest ; extra == 'test'
+  - pytest-cov ; extra == 'test'
+  - shapely ; extra == 'test'
+  requires_python: '>=3.9'
 - conda: https://conda.anaconda.org/conda-forge/noarch/geopandas-1.0.1-pyhd8ed1ab_3.conda
   sha256: 04f7e616ebbf6352ff852b53c57901e43f14e2b3c92411f99b5547f106bc192e
   md5: 1baca589eb35814a392eaad6d152447e
@@ -4488,6 +4508,20 @@ packages:
   - pkg:pypi/rpds-py?source=hash-mapping
   size: 394023
   timestamp: 1743037659894
+- conda: https://conda.anaconda.org/conda-forge/linux-64/rustac-0.7.2-py312h36fee33_1.conda
+  sha256: ea74fc9b9e58e407e5877c99d0a119b6fd5d330ac3f354b7d87c9c5458296b31
+  md5: 4159221fdaed83321f72e3344966c47a
+  depends:
+  - python
+  - libstdcxx >=13
+  - libgcc >=13
+  - __glibc >=2.17,<3.0.a0
+  - python_abi 3.12.* *_cp312
+  constrains:
+  - __glibc >=2.17
+  license: MIT OR Apache-2.0
+  size: 18649039
+  timestamp: 1746578046131
 - conda: https://conda.anaconda.org/conda-forge/linux-64/s2n-1.5.15-hd830067_0.conda
   sha256: a186abbc72cc09fcb89311304a0e1db79608cb86147e5fe85fa0f0ae3df7cd7b
   md5: 81bde3ad0187adf0dd37fe86e84aff46
@@ -4688,6 +4722,35 @@ packages:
   purls: []
   size: 859553
   timestamp: 1742083683966
+- pypi: https://files.pythonhosted.org/packages/f3/d3/90347937f859f8a092c25a060488c318c5e0c6311f62a654a58f8b3dbe91/stac_pydantic-3.2.0-py3-none-any.whl
+  name: stac-pydantic
+  version: 3.2.0
+  sha256: 747dfe36b271dcb940c0a1d4b4f77f573a9cab35af80d6a141591e19c6c7ddef
+  requires_dist:
+  - click>=8.1.7
+  - pydantic>=2.4.1
+  - geojson-pydantic>=1.0.0
+  - jsonschema>=4.19.1 ; extra == 'validation'
+  - requests>=2.31.0 ; extra == 'validation'
+  - pytest>=7.4.2 ; extra == 'dev'
+  - pytest-cov>=4.1.0 ; extra == 'dev'
+  - pytest-icdiff>=0.8 ; extra == 'dev'
+  - requests>=2.31.0 ; extra == 'dev'
+  - shapely>=2.0.1 ; extra == 'dev'
+  - dictdiffer>=0.9.0 ; extra == 'dev'
+  - jsonschema>=4.19.1 ; extra == 'dev'
+  - pyyaml>=6.0.1 ; extra == 'dev'
+  - types-requests>=2.31.0.5 ; extra == 'lint'
+  - types-jsonschema>=4.19.0.3 ; extra == 'lint'
+  - types-pyyaml>=6.0.12.12 ; extra == 'lint'
+  - black>=23.9.1 ; extra == 'lint'
+  - isort>=5.12.0 ; extra == 'lint'
+  - flake8>=6.1.0 ; extra == 'lint'
+  - flake8-pyproject>=1.2.3 ; extra == 'lint'
+  - mypy>=1.5.1 ; extra == 'lint'
+  - pre-commit>=3.4.0 ; extra == 'lint'
+  - tox>=4.11.3 ; extra == 'lint'
+  requires_python: '>=3.8'
 - conda: https://conda.anaconda.org/conda-forge/noarch/stack_data-0.6.3-pyhd8ed1ab_1.conda
   sha256: 570da295d421661af487f1595045760526964f41471021056e993e73089e9c41
   md5: b1b505328da7a6b246787df4b5a49fbc
