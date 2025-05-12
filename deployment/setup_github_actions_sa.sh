@@ -39,6 +39,10 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+  --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter"
+
 echo "Getting Cloud Build service account details..."
 # Get the Cloud Build service account
 CLOUDBUILD_SA=$(gcloud projects describe ${PROJECT_ID} --format='value(projectNumber)')@cloudbuild.gserviceaccount.com
