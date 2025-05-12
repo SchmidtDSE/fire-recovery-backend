@@ -447,9 +447,26 @@ async def get_refine_result(fire_event_name: str, job_id: str):
     Get the result of the fire boundary refinement.
     """
     # Look up the STAC item
-    stac_item = await stac_manager.get_item_by_id(
-        f"{fire_event_name}-boundary-{job_id}"
+    stac_item = await stac_manager.get_items_by_id_and_coarseness(
+        f"{fire_event_name}-boundary-{job_id}",
+        "refined",
     )
+
+    if not stac_item:
+        # Item not found, still processing
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name, status="pending", job_id=job_id
+        )
+
+    # If multiple items are found, we take the most recent one
+    # TODO: This is kind of a hacky workaround, to allow for mutliple retries
+    # on refining a boundary. Ideally we have 1 coarse 1 refined item, but this
+    # seems less annoying and error prone than having to delete the old item
+    # before creating a new one.
+    if len(stac_item) > 1:
+        stac_item = sorted(
+            stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
+        )[0]
 
     if not stac_item:
         # Item not found, still processing

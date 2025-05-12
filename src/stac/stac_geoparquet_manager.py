@@ -275,6 +275,29 @@ class STACGeoParquetManager:
 
         return items[0] if items else None
 
+    async def get_items_by_id_and_coarseness(
+        self, item_id: str, boundary_type: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a specific STAC item by ID and boundary type from the GeoParquet file
+        """
+        if not os.path.exists(self.parquet_path):
+            return None
+
+        # Use rustac's native search with combined filters
+        items = await rustac.search(
+            self.parquet_path,
+            filter={
+                "op": "and",
+                "args": [
+                    {"op": "=", "args": [{"property": "id"}, item_id]},
+                    {"op": "=", "args": [{"property": "boundary_type"}, boundary_type]},
+                ],
+            },
+        )
+
+        return items[0] if items else None
+
     async def search_items(
         self,
         fire_event_name: str,
