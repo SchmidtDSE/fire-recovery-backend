@@ -23,10 +23,9 @@ RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 #     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
 #     memory="4 GiB",
 #     cpu=4,
-#     # n_workers=5,
-#     n_workers = 1,
+#     n_workers=5,
 #     # local=RUN_LOCAL
-#     local=True
+#     local=True,
 # )
 def process_remote_sensing_data(
     job_id: str,

@@ -21,6 +21,7 @@ from src.process.spectral_indices import process_remote_sensing_data
 from src.util.upload_blob import upload_to_gcs
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
+from src.util.polygon_ops import polygon_to_valid_geojson
 
 # Dictionary to track when job requests were first received
 job_timestamps = {}
@@ -251,13 +252,16 @@ async def process_boundary_refinement(
     Process boundary refinement, upload results, and create STAC assets
     """
     try:
+        # 0. Convert the Polygon to a GeoJSON object
+        valid_geojson = polygon_to_valid_geojson(refine_geojson)
+
         # 1. Save the GeoJSON to a file
         with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
-            tmp.write(json.dumps(refine_geojson).encode("utf-8"))
+            tmp.write(json.dumps(valid_geojson).encode("utf-8"))
             geojson_path = tmp.name
 
         # 2. Upload the GeoJSON to GCS
-        blob_name = f"{fire_event_name}/{job_id}/boundary.geojson"
+        blob_name = f"{fire_event_name}/{job_id}/refined_boundary.geojson"
         geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
 
         # 3. For demonstration purposes, we'll mock the creation of a COG
@@ -312,7 +316,7 @@ async def get_refine_result(fire_event_name: str, job_id: str):
     """
     # Look up the STAC item
     stac_item = await stac_manager.get_item_by_id(
-        fire_event_name, f"{fire_event_name}-boundary-{job_id}"
+        f"{fire_event_name}-boundary-{job_id}"
     )
 
     if not stac_item:
