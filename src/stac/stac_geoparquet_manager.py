@@ -153,17 +153,18 @@ class STACGeoParquetManager:
                     ]
                 ],
             },
+            "bbox": bbox,  # Make sure bbox is included in the root level
             "assets": {
                 "refined_boundary": {
                     "href": geojson_url,
                     "type": "application/geo+json",
-                    "title": "Refined Fire Boundary",
+                    "title": f"{boundary_type.capitalize()} Fire Boundary",
                     "roles": ["data"],
                 },
                 "refined_severity": {
                     "href": cog_url,
                     "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                    "title": "Refined Fire Severity",
+                    "title": f"{boundary_type.capitalize()} Fire Severity",
                     "roles": ["data"],
                 },
             },
@@ -172,17 +173,44 @@ class STACGeoParquetManager:
                     "rel": "self",
                     "href": f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
                     "type": "application/json",
-                }
+                },
+                {
+                    "rel": "collection",
+                    "href": f"{self.base_url}/{fire_event_name}/collection.json",
+                    "type": "application/json",
+                },
+                {
+                    "rel": "root",
+                    "href": f"{self.base_url}/catalog.json",
+                    "type": "application/json",
+                },
             ],
         }
 
-        # Validate the STAC item
-        self.validate_stac_item(stac_item)
+        # Add title to make the item more descriptive
+        stac_item["properties"]["title"] = f"{fire_event_name} {boundary_type} boundary"
 
-        # Add item to the fire event's GeoParquet file
-        await self.add_items_to_parquet(fire_event_name, [stac_item])
+        # Add a related link to the severity item
+        stac_item["links"].append(
+            {
+                "rel": "related",
+                "href": f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-severity-{job_id}.json",
+                "type": "application/json",
+                "title": "Related fire severity product",
+            }
+        )
 
-        return stac_item
+        try:
+            # Validate the STAC item
+            self.validate_stac_item(stac_item)
+
+            # Add item to the fire event's GeoParquet file
+            await self.add_items_to_parquet(fire_event_name, [stac_item])
+
+            return stac_item
+        except Exception as e:
+            print(f"Error creating boundary item: {str(e)}")
+            raise e
 
     async def add_items_to_parquet(
         self, fire_event_name: str, items: List[Dict[str, Any]]

@@ -79,7 +79,7 @@ async def process_and_upload_geojson(
         geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
 
         # Extract bbox from geometry for STAC
-        geom_shape = shape(valid_geojson["geometry"])
+        geom_shape = shape(valid_geojson["features"][0]["geometry"])
         bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
 
     return geojson_url, valid_geojson, list(bbox)
@@ -108,10 +108,10 @@ async def process_cog_with_boundary(
     # Download the original COG to a temporary file
     with temp_file(suffix=".tif") as original_cog_path:
         # Download the original COG
-        await download_cog_to_temp(original_cog_url, output_path=original_cog_path)
+        tmp_cog_path = await download_cog_to_temp(original_cog_url)
 
         # Crop the COG with the refined boundary
-        cropped_data = crop_cog_with_geometry(original_cog_path, valid_geojson)
+        cropped_data = crop_cog_with_geometry(tmp_cog_path, valid_geojson)
 
         # Create a new COG from the cropped data
         with temp_file(suffix=".tif") as refined_cog_path:
@@ -409,11 +409,12 @@ async def process_boundary_refinement(
         )
 
         # 4. Create the STAC item for this cropped COG
+        polygon_json = valid_geojson["features"][0]["geometry"]
         await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
             cog_url=cog_url,
-            geometry=valid_geojson,
+            geometry=polygon_json,
             datetime_str=original_cog_item["properties"]["datetime"],
             boundary_type="refined",
         )
