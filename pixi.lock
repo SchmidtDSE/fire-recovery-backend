@@ -247,6 +247,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/pip-requirements-parser-32.0.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pixi-kernel-0.6.3-pyh80e38bb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pkgutil-resolve-name-1.3.10-pyhd8ed1ab_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/planetary-computer-1.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/platformdirs-4.3.7-pyh29332c3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pluggy-1.5.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/proj-9.6.0-h0054346_1.conda
@@ -3822,6 +3823,25 @@ packages:
   - pkg:pypi/pkgutil-resolve-name?source=hash-mapping
   size: 10693
   timestamp: 1733344619659
+- conda: https://conda.anaconda.org/conda-forge/noarch/planetary-computer-1.0.0-pyhd8ed1ab_1.conda
+  sha256: e5cec11b9fdfafd7955fbfceddff95598d249195ac77994e5f9203ddb67ecf68
+  md5: 9477c2eb3a49f043c828384f277f29a6
+  depends:
+  - click >=7.1
+  - packaging
+  - pydantic >=1.7.3
+  - pystac >=1.0.0
+  - pystac-client >=0.2.0
+  - python >=3.9
+  - python-dotenv
+  - pytz >=2020.5
+  - requests >=2.25.1
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/planetary-computer?source=hash-mapping
+  size: 18411
+  timestamp: 1734711960320
 - conda: https://conda.anaconda.org/conda-forge/noarch/platformdirs-4.3.7-pyh29332c3_0.conda
   sha256: ae7d3e58224d53d6b59e1f5ac5809803bb1972f0ac4fb10cd9b8c87d4122d3e0
   md5: e57da6fe54bb3a5556cf36d199ff07d8

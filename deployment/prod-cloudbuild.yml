@@ -3,7 +3,7 @@ steps:
     args:
       - "build"
       - "--tag=us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest"
-      - "--file=deployment/Dockerfile"
+      - "--file=deployment/fastapi.Dockerfile"
       - "--no-cache"
       - "."
 

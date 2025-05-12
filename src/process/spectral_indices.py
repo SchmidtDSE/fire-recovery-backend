@@ -13,6 +13,7 @@ from geojson_pydantic import Polygon
 from src.config.constants import STAC_URL, STAC_EPSG_CODE, SWIR_BAND, NIR_BAND
 from shapely.geometry import shape
 import numpy as np
+import planetary_computer
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
@@ -39,21 +40,25 @@ def process_remote_sensing_data(
     status_file = workspace["status_file"]
 
     try:
-        # Get the client
-        # client = dask.distributed.get_client()
-
         # Access STAC catalog
-        catalog = PystacClient.open(STAC_URL)
+        catalog = PystacClient.open(STAC_URL, modifier=planetary_computer.sign_inplace)
 
         # Validate input date ranges
-        if not prefire_date_range:
-            raise ValueError("Prefire date range is required")
-        if not postfire_date_range:
-            raise ValueError("Postfire date range is required")
+        if not prefire_date_range or not postfire_date_range:
+            raise ValueError("Both prefire and postfire date ranges are required")
 
-        # Fetch data
-        prefire_data = fetch_stac_data(catalog, geometry, prefire_date_range)
-        postfire_data = fetch_stac_data(catalog, geometry, postfire_date_range)
+        # Calculate the full date range for a single query
+        full_date_range = [prefire_date_range[0], postfire_date_range[1]]
+
+        # Fetch all data in one go
+        stacked_data = fetch_stac_data(catalog, geometry, full_date_range)
+
+        # Split into pre and post fire datasets
+        prefire_data = subset_data_by_date_range(stacked_data, prefire_date_range)
+        postfire_data = subset_data_by_date_range(stacked_data, postfire_date_range)
+
+        print(f"Prefire shape: {prefire_data.shape}, dims: {prefire_data.dims}")
+        print(f"Postfire shape: {postfire_data.shape}, dims: {postfire_data.dims}")
 
         # Calculate burn indices
         indices = calculate_burn_indices(prefire_data, postfire_data)
@@ -81,6 +86,29 @@ def process_remote_sensing_data(
         with open(status_file, "w") as f:
             f.write(f"error: {str(e)}")
         return {"status": f"error: {str(e)}"}
+
+
+def subset_data_by_date_range(
+    stacked_data: xr.DataArray, date_range: List[str]
+) -> xr.DataArray:
+    """
+    Subset stacked data by date range.
+
+    Args:
+        stacked_data: The stacked DataArray with a time dimension
+        date_range: List of [start_date, end_date] as strings in ISO format
+
+    Returns:
+        Subset of the stacked data within the specified date range
+    """
+    start_date, end_date = date_range
+
+    # Convert string dates to numpy datetime64
+    start = np.datetime64(start_date)
+    end = np.datetime64(end_date)
+
+    # Subset data by time
+    return stacked_data.sel(time=slice(start, end))
 
 
 def initialize_workspace(job_id: str) -> Dict[str, str]:
@@ -132,7 +160,17 @@ def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]
     buffered_bounds = get_buffered_bounds(geometry, 100)
 
     stacked = stackstac.stack(
-        items, epsg=STAC_EPSG_CODE, assets=[SWIR_BAND, NIR_BAND], bounds=buffered_bounds
+        items,
+        epsg=STAC_EPSG_CODE,
+        assets=[SWIR_BAND, NIR_BAND],
+        bounds=buffered_bounds,
+        # resolution=20,
+        chunksize=(
+            -1,
+            1,
+            512,
+            512,
+        ),  # Recommended by stackstac docs if we're immediately reducing time (which we are)
     )
 
     return stacked
@@ -140,8 +178,11 @@ def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]
 
 def calculate_nbr(data):
     """Calculate Normalized Burn Ratio for a dataset"""
-    nir = data.sel(band="nir").median(dim="time")
-    swir = data.sel(band="swir22").median(dim="time")
+    nir_band = data.sel(band=NIR_BAND)
+    nir = nir_band.median(dim="time")
+
+    swir_band = data.sel(band=SWIR_BAND)
+    swir = swir_band.median(dim="time")
 
     return (nir - swir) / (nir + swir)
 
@@ -151,7 +192,7 @@ def calculate_burn_indices(prefire_data, postfire_data):
     # Calculate NBR for both periods
     prefire_nbr = calculate_nbr(prefire_data)
     postfire_nbr = calculate_nbr(postfire_data)
-    prefire_nbr, postfire_nbr = xr.align(prefire_nbr, postfire_nbr, join="outer")
+    prefire_nbr, postfire_nbr = xr.align(prefire_nbr, postfire_nbr)
 
     # Calculate dNBR
     dnbr = prefire_nbr - postfire_nbr
@@ -183,14 +224,21 @@ def create_cog(data, output_path: str) -> Dict[str, Any]:
     # Dask arrays are lazy - this is where dask-distributed will
     # actually compute the burn metrics from the various href'd COGs
     computed = data.compute()
-    computed.rio.to_raster(naive_tiff)
 
-    ## TODO: Rio-cogeo allows us to save COGs to blob directly from
-    ## memory - it is kind of awkward though because it would require
-    ## us to use a context manager for lots of logic (with MemoryFile)
-    ## so for now this is cleaner
+    # Ensure data is float32 and has proper nodata value
+    computed = computed.astype("float32")
+
+    # Set nodata value for NaN values
+    nodata = -9999.0
+    computed = computed.rio.write_nodata(nodata)
+
+    # Save with explicit data type and nodata value
+    computed.rio.to_raster(naive_tiff, dtype="float32")
 
     cog_profile = cog_profiles.get("deflate")
+    # Update the profile to include nodata value
+    cog_profile.update(dtype="float32", nodata=nodata)
+
     cog_translate(
         naive_tiff,
         output_path,
