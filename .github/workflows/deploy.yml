@@ -42,7 +42,7 @@ jobs:
           if [ "${{ env.BRANCH_NAME }}" = "main" ]; then
             gcloud builds submit \
               --config deployment/prod-cloudbuild.yml \
-              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
               .
             
             gcloud run deploy fire-recovery-backend-prod \
@@ -55,7 +55,7 @@ jobs:
           if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
             gcloud builds submit \
               --config deployment/dev-cloudbuild.yml \
-              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
               .
             
             gcloud run deploy fire-recovery-backend-dev \
