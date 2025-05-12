@@ -463,7 +463,7 @@ async def get_refine_result(fire_event_name: str, job_id: str):
     # on refining a boundary. Ideally we have 1 coarse 1 refined item, but this
     # seems less annoying and error prone than having to delete the old item
     # before creating a new one.
-    if len(stac_item) > 1:
+    if isinstance(stac_item, list):
         stac_item = sorted(
             stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
         )[0]
