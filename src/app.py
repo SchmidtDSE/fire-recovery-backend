@@ -1,12 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import coiled
-import dask.distributed
-import rioxarray
-import stackstac
-from rio_cogeo.cogeo import cog_validate, cog_translate
-from rio_cogeo.profiles import cog_profiles
-import os
 
 from .routers import stac_server, fire_recovery
 

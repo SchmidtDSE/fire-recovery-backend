@@ -166,7 +166,7 @@ class RefineRequest(BaseModel):
 
 class VegMapResolveRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    veg_cog_url: str = Field(..., description="URL to the vegetation map COG")
+    veg_gpkg_url: str = Field(..., description="URL to the vegetation map GeoPackage")
     fire_cog_url: str = Field(..., description="URL to the fire severity COG")
 
 
