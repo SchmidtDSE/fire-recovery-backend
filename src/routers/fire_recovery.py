@@ -22,6 +22,11 @@ from src.util.upload_blob import upload_to_gcs
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
 from src.util.polygon_ops import polygon_to_valid_geojson
+from src.util.cog_ops import (
+    download_cog_to_temp,
+    crop_cog_with_geometry,
+    create_cog,
+)
 
 # Dictionary to track when job requests were first received
 job_timestamps = {}
@@ -56,6 +61,9 @@ class ProcessingRequest(BaseModel):
 class RefineRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
     refine_geojson: dict = Field(..., description="GeoJSON to be refined")
+    job_id: str = Field(
+        ..., description="Job ID of the original fire severity analysis"
+    )
 
 
 class VegMapResolveRequest(BaseModel):
@@ -227,13 +235,11 @@ async def refine_fire_boundary(
     """
     Refine the fire boundary to the provided GeoJSON.
     """
-    job_id = str(uuid.uuid4())
-    job_timestamps[job_id] = time.time()
 
     # Start the processing task in the background
     background_tasks.add_task(
         process_boundary_refinement,
-        job_id=job_id,
+        job_id=request.job_id,
         fire_event_name=request.fire_event_name,
         refine_geojson=request.refine_geojson,
     )
@@ -241,7 +247,7 @@ async def refine_fire_boundary(
     return {
         "fire_event_name": request.fire_event_name,
         "status": "Processing started",
-        "job_id": job_id,
+        "job_id": request.job_id,
     }
 
 
@@ -251,6 +257,8 @@ async def process_boundary_refinement(
     """
     Process boundary refinement, upload results, and create STAC assets
     """
+    temp_files = []  # Track temp files to ensure cleanup
+
     try:
         # 0. Convert the Polygon to a GeoJSON object
         valid_geojson = polygon_to_valid_geojson(refine_geojson)
@@ -259,34 +267,57 @@ async def process_boundary_refinement(
         with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
             tmp.write(json.dumps(valid_geojson).encode("utf-8"))
             geojson_path = tmp.name
+            temp_files.append(geojson_path)
 
         # 2. Upload the GeoJSON to GCS
         blob_name = f"{fire_event_name}/{job_id}/refined_boundary.geojson"
         geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
 
-        # 3. For demonstration purposes, we'll mock the creation of a COG
-        # In a real implementation, you would process the GeoJSON to create a rasterized COG
-        cog_blob_name = f"{fire_event_name}/{job_id}/refined_rbr.tif"
-        # TODO: Create actual COG from boundary
-        cog_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{cog_blob_name}"
+        # 3. Get the original/coarse fire severity COG URL
+        stac_id = f"{fire_event_name}-severity-{job_id}"
+        original_cog_item = await stac_manager.get_item_by_id(stac_id)
+        if not original_cog_item:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Original COG not found for job ID {job_id}",
+            )
 
-        # 4. Create a STAC item
-        # Extract bbox from geometry
-        if refine_geojson.get("type") == "Feature":
-            geometry = refine_geojson["geometry"]
-        elif refine_geojson.get("type") == "FeatureCollection" and refine_geojson.get(
-            "features"
-        ):
-            # Use the first feature
-            geometry = refine_geojson["features"][0]["geometry"]
-        else:
-            # Assume it's already a geometry object
-            geometry = refine_geojson
+        for key, value in original_cog_item["assets"].items():
+            original_cog_url = value["href"]
+            # 4. Download the original COG to a temporary file
+            original_cog_path = await download_cog_to_temp(original_cog_url)
+            temp_files.append(original_cog_path)
 
-        geom_shape = shape(geometry)
-        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
+            # 5. Crop the COG with the refined boundary
+            cropped_data = crop_cog_with_geometry(original_cog_path, valid_geojson)
 
-        # Create the STAC item
+            # 6. Create a new COG from the cropped data
+            refined_cog_path = tempfile.mktemp(suffix=".tif")
+            temp_files.append(refined_cog_path)
+
+            cog_result = create_cog(cropped_data, refined_cog_path)
+            if not cog_result["is_valid"]:
+                raise Exception("Failed to create a valid COG from cropped data")
+
+            # 7. Upload the refined COG to GCS
+            cog_blob_name = f"{fire_event_name}/{job_id}/refined_rbr.tif"
+            cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
+
+            # 8. Extract bbox from geometry for STAC
+            geom_shape = shape(valid_geojson["geometry"])
+            bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
+
+            # 9. Create the STAC item for this cropped COG
+            await stac_manager.create_fire_severity_item(
+                fire_event_name=fire_event_name,
+                job_id=job_id,
+                cog_url=cog_url,
+                geometry=valid_geojson,
+                datetime_str=original_cog_item["properties"]["datetime"],
+                boundary_type="refined",
+            )
+
+        # 10. Create the STAC item for the refined boundary
         datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
@@ -297,12 +328,18 @@ async def process_boundary_refinement(
             datetime_str=datetime_str,
         )
 
-        # Clean up the temporary file
-        os.unlink(geojson_path)
-
     except Exception as e:
         # Log error
         print(f"Error processing boundary refinement: {str(e)}")
+        raise e
+    finally:
+        # Clean up all temporary files
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                try:
+                    os.unlink(temp_file)
+                except Exception as e:
+                    print(f"Failed to remove temporary file {temp_file}: {str(e)}")
 
 
 @router.get(
