@@ -19,18 +19,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Workload Identity Federation
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v1'
+        with:
+          project_id: 'dse-nps'
+          
+      - name: Authenticate with Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: "projects/113009620257/locations/global/workloadIdentityPools/github-actions-prod/providers/oidc-provider-prod"
-          project_id: "dse-nps"
-          service_account: "github-actions-sa-prod@dse-nps.iam.gserviceaccount.com"
-          token_format: "access_token"
-          create_credentials_file: true
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          project_id: 'dse-nps'
 
       - name: Verify authentication
         run: gcloud auth list
@@ -46,13 +45,8 @@ jobs:
       - name: Build and Deploy to Cloud Run
         run: |
           if [ "${{ env.BRANCH_NAME }}" = "main" ]; then
-            # Production build and deploy
-            echo "Deploying production environment"
-            gcloud builds submit --config deployment/prod-cloudbuild.yml . || {
-              echo "Error submitting build. Checking permissions..."
-              gcloud projects get-iam-policy dse-nps --format=json | grep -A 5 "github-actions-sa-prod"
-              exit 1
-            }
+
+            gcloud builds submit --config deployment/prod-cloudbuild.yml .
             
             gcloud run deploy fire-recovery-backend-prod \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
@@ -61,13 +55,8 @@ jobs:
           fi
 
           if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
-            # Development build and deploy
-            echo "Deploying development environment"
-            gcloud builds submit --config deployment/dev-cloudbuild.yml . || {
-              echo "Error submitting build. Checking permissions..."
-              gcloud projects get-iam-policy dse-nps --format=json | grep -A 5 "github-actions-sa-prod"
-              exit 1
-            }
+
+            gcloud builds submit --config deployment/dev-cloudbuild.yml . 
             
             gcloud run deploy fire-recovery-backend-dev \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
