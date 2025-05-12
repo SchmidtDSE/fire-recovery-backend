@@ -212,6 +212,57 @@ class STACGeoParquetManager:
             print(f"Error creating boundary item: {str(e)}")
             raise e
 
+    async def create_veg_matrix_item(
+        self,
+        fire_event_name: str,
+        job_id: str,
+        matrix_url: str,
+        datetime_str: str,
+    ):
+        """
+        Create a STAC item for a vegetation/fire severity matrix.
+
+        Args:
+            fire_event_name: Name of the fire event
+            job_id: Job ID for the processing task
+            matrix_url: URL to the CSV matrix file
+            datetime_str: Timestamp for the item
+        """
+        item_id = f"{fire_event_name}-veg-matrix-{job_id}"
+
+        # Create metadata for the matrix
+        properties = {
+            "title": f"Vegetation Fire Matrix for {fire_event_name}",
+            "description": "Matrix of vegetation types affected by different fire severity classes",
+            "datetime": datetime_str,
+            "fire_event_name": fire_event_name,
+            "job_id": job_id,
+            "product_type": "vegetation_fire_matrix",
+        }
+
+        # Create assets dictionary
+        assets = {
+            "veg_fire_matrix": {
+                "href": matrix_url,
+                "type": "text/csv",
+                "title": "Vegetation Fire Severity Matrix",
+                "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
+                "roles": ["data"],
+            },
+        }
+
+        # Create a point geometry as placeholder since this is tabular data
+        geometry = {"type": "Point", "coordinates": [0, 0]}
+
+        # Create the STAC item
+        await self.create_item(
+            item_id=item_id,
+            geometry=geometry,
+            properties=properties,
+            assets=assets,
+            collection="fire-recovery-matrices",
+        )
+
     async def add_items_to_parquet(
         self, fire_event_name: str, items: List[Dict[str, Any]]
     ) -> str:

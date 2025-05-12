@@ -18,16 +18,16 @@ import planetary_computer
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
 
-@coiled.function(
-    name="process-remote-sensing",
-    container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
-    memory="4 GiB",
-    cpu=4,
-    n_workers=5,
-    extra_kwargs={
-        "worker_options": {"local_directory": "/tmp"}
-    },  # Use /tmp for local storage
-)
+# @coiled.function(
+#     name="process-remote-sensing",
+#     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
+#     memory="4 GiB",
+#     cpu=4,
+#     n_workers=5,
+#     extra_kwargs={
+#         "worker_options": {"local_directory": "/tmp"}
+#     },  # Use /tmp for local storage
+# )
 def process_remote_sensing_data(
     job_id: str,
     geometry: Polygon,

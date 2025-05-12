@@ -29,6 +29,7 @@ from src.util.cog_ops import (
 )
 from contextlib import contextmanager
 from typing import Dict, Any, List, Tuple, ContextManager, Generator
+from src.process.resolve_veg import process_veg_map
 
 
 @contextmanager
@@ -524,3 +525,109 @@ async def upload_geojson(request: GeoJSONUploadRequest):
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
         )
+
+
+@router.post(
+    "/process/resolve_against_veg_map",
+    response_model=ProcessingStartedResponse,
+    tags=["Vegetation Map Analysis"],
+)
+async def resolve_against_veg_map(
+    request: VegMapResolveRequest, background_tasks: BackgroundTasks
+):
+    """
+    Resolve fire severity against vegetation map to create a matrix of affected areas.
+    """
+    # Generate job ID
+    job_id = str(uuid.uuid4())
+
+    # Start processing in background
+    background_tasks.add_task(
+        process_veg_map_resolution,
+        job_id=job_id,
+        fire_event_name=request.fire_event_name,
+        veg_gpkg_url=request.veg_gpkg_url,
+        fire_cog_url=request.fire_cog_url,
+    )
+
+    return {
+        "fire_event_name": request.fire_event_name,
+        "status": "Processing started",
+        "job_id": job_id,
+    }
+
+
+async def process_veg_map_resolution(
+    job_id: str,
+    fire_event_name: str,
+    veg_gpkg_url: str,
+    fire_cog_url: str,
+):
+    """
+    Process vegetation map against fire severity COG to create area matrix.
+    """
+    try:
+        # Set up output directory
+        output_dir = f"tmp/{job_id}"
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Process the vegetation map against fire severity
+        result = await process_veg_map(
+            veg_gpkg_url=veg_gpkg_url,
+            fire_cog_url=fire_cog_url,
+            output_dir=output_dir,
+            job_id=job_id,
+        )
+
+        if result["status"] != "completed":
+            print(f"Error processing vegetation map: {result.get('error_message')}")
+            return
+
+        # Upload the CSV to GCS
+        blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
+        matrix_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, blob_name)
+
+        # Create STAC record for the matrix
+        datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        await stac_manager.create_veg_matrix_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            matrix_url=matrix_url,
+            datetime_str=datetime_str,
+        )
+
+    except Exception as e:
+        # Log error
+        print(f"Error processing vegetation map against fire severity: {str(e)}")
+
+
+@router.get(
+    "/result/resolve_veg_map/{fire_event_name}/{job_id}",
+    response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
+    tags=["Vegetation Map Analysis"],
+)
+async def get_veg_map_result(fire_event_name: str, job_id: str):
+    """
+    Get the result of the vegetation map resolution against fire severity.
+    """
+    # Look up the STAC item
+    stac_item = await stac_manager.get_item_by_id(
+        f"{fire_event_name}-veg-matrix-{job_id}"
+    )
+
+    if not stac_item:
+        # Item not found, still processing
+        return TaskPendingResponse(
+            fire_event_name=fire_event_name, status="pending", job_id=job_id
+        )
+
+    # Item found, extract the matrix URL
+    matrix_url = stac_item["assets"]["veg_fire_matrix"]["href"]
+
+    # Return the completed response
+    return VegMapMatrixResponse(
+        fire_event_name=fire_event_name,
+        status="complete",
+        job_id=job_id,
+        fire_veg_matrix=matrix_url,
+    )

@@ -29,6 +29,7 @@ msgspec = ">=0.19.0,<0.20"
 rustac = ">=0.7.2,<0.8"
 minio = ">=7.2.15,<8"
 planetary-computer = ">=1.0.0,<2"
+xvec = ">=0.3.1,<0.4"
 
 [pypi-dependencies]
 stac-pydantic = ">=3.2.0, <4"
