@@ -50,6 +50,7 @@ jobs:
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1
+              --allow-unauthenticated
           fi
 
           if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
@@ -63,4 +64,5 @@ jobs:
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1
+              --allow-unauthenticated
           fi
