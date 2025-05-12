@@ -217,8 +217,10 @@ class STACGeoParquetManager:
         fire_event_name: str,
         job_id: str,
         matrix_url: str,
+        geometry: Dict[str, Any],  # Add geometry parameter
+        bbox: List[float],  # Add bbox parameter
         datetime_str: str,
-    ):
+    ) -> Dict[str, Any]:  # Add return type
         """
         Create a STAC item for a vegetation/fire severity matrix.
 
@@ -226,42 +228,71 @@ class STACGeoParquetManager:
             fire_event_name: Name of the fire event
             job_id: Job ID for the processing task
             matrix_url: URL to the CSV matrix file
+            geometry: GeoJSON geometry object
+            bbox: Bounding box [minx, miny, maxx, maxy]
             datetime_str: Timestamp for the item
+
+        Returns:
+            The created STAC item
         """
         item_id = f"{fire_event_name}-veg-matrix-{job_id}"
 
-        # Create metadata for the matrix
-        properties = {
-            "title": f"Vegetation Fire Matrix for {fire_event_name}",
-            "description": "Matrix of vegetation types affected by different fire severity classes",
-            "datetime": datetime_str,
-            "fire_event_name": fire_event_name,
-            "job_id": job_id,
-            "product_type": "vegetation_fire_matrix",
-        }
-
-        # Create assets dictionary
-        assets = {
-            "veg_fire_matrix": {
-                "href": matrix_url,
-                "type": "text/csv",
-                "title": "Vegetation Fire Severity Matrix",
-                "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
-                "roles": ["data"],
-            },
-        }
-
-        # Create a point geometry as placeholder since this is tabular data
-        geometry = {"type": "Point", "coordinates": [0, 0]}
-
         # Create the STAC item
-        await self.create_item(
-            item_id=item_id,
-            geometry=geometry,
-            properties=properties,
-            assets=assets,
-            collection="fire-recovery-matrices",
-        )
+        stac_item = {
+            "type": "Feature",
+            "stac_version": "1.0.0",
+            "id": item_id,
+            "properties": {
+                "title": f"Vegetation Fire Matrix for {fire_event_name}",
+                "description": "Matrix of vegetation types affected by different fire severity classes",
+                "datetime": datetime_str,
+                "fire_event_name": fire_event_name,
+                "job_id": job_id,
+                "product_type": "vegetation_fire_matrix",
+            },
+            "geometry": geometry,
+            "bbox": bbox,
+            "assets": {
+                "veg_fire_matrix": {
+                    "href": matrix_url,
+                    "type": "text/csv",
+                    "title": "Vegetation Fire Severity Matrix",
+                    "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
+                    "roles": ["data"],
+                },
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "href": f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
+                    "type": "application/json",
+                },
+                {
+                    "rel": "collection",
+                    "href": f"{self.base_url}/{fire_event_name}/collection.json",
+                    "type": "application/json",
+                },
+                {
+                    "rel": "root",
+                    "href": f"{self.base_url}/catalog.json",
+                    "type": "application/json",
+                },
+                {
+                    "rel": "related",
+                    "href": f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-severity-{job_id}.json",
+                    "type": "application/json",
+                    "title": "Related fire severity product",
+                },
+            ],
+        }
+
+        # Validate the STAC item
+        self.validate_stac_item(stac_item)
+
+        # Add item to the fire event's GeoParquet file
+        await self.add_items_to_parquet(fire_event_name, [stac_item])
+
+        return stac_item
 
     async def add_items_to_parquet(
         self, fire_event_name: str, items: List[Dict[str, Any]]

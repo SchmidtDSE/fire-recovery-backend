@@ -169,6 +169,9 @@ class VegMapResolveRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
     veg_gpkg_url: str = Field(..., description="URL to the vegetation map GeoPackage")
     fire_cog_url: str = Field(..., description="URL to the fire severity COG")
+    job_id: str = Field(
+        ..., description="Job ID of the original fire severity analysis"
+    )
 
 
 class GeoJSONUploadRequest(BaseModel):
@@ -538,13 +541,11 @@ async def resolve_against_veg_map(
     """
     Resolve fire severity against vegetation map to create a matrix of affected areas.
     """
-    # Generate job ID
-    job_id = str(uuid.uuid4())
 
     # Start processing in background
     background_tasks.add_task(
         process_veg_map_resolution,
-        job_id=job_id,
+        job_id=request.job_id,
         fire_event_name=request.fire_event_name,
         veg_gpkg_url=request.veg_gpkg_url,
         fire_cog_url=request.fire_cog_url,
@@ -553,7 +554,7 @@ async def resolve_against_veg_map(
     return {
         "fire_event_name": request.fire_event_name,
         "status": "Processing started",
-        "job_id": job_id,
+        "job_id": request.job_id,
     }
 
 
@@ -587,12 +588,22 @@ async def process_veg_map_resolution(
         blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
         matrix_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, blob_name)
 
-        # Create STAC record for the matrix
-        datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Get geometry from the fire severity COG
+        stac_item = await stac_manager.get_items_by_id_and_coarseness(
+            f"{fire_event_name}-severity-{job_id}", "refined"
+        )
+        geometry = stac_item["geometry"]
+        bbox = stac_item["bbox"]
+
+        # Get datetime from the fire severity COG
+        datetime_str = stac_item["properties"]["datetime"]
+
         await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
             matrix_url=matrix_url,
+            geometry=geometry,
+            bbox=bbox,
             datetime_str=datetime_str,
         )
 
@@ -602,7 +613,7 @@ async def process_veg_map_resolution(
 
 
 @router.get(
-    "/result/resolve_veg_map/{fire_event_name}/{job_id}",
+    "/result/resolve_against_veg_map/{fire_event_name}/{job_id}",
     response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
     tags=["Vegetation Map Analysis"],
 )
