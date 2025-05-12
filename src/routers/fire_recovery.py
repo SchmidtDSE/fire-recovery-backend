@@ -27,6 +27,104 @@ from src.util.cog_ops import (
     crop_cog_with_geometry,
     create_cog,
 )
+from contextlib import contextmanager
+from typing import Dict, Any, List, Tuple, ContextManager, Generator
+
+
+@contextmanager
+def temp_file(suffix: str = "", content: bytes = None) -> Generator[str, None, None]:
+    """Context manager for temporary files with automatic cleanup"""
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            if content:
+                tmp.write(content)
+            temp_path = tmp.name
+        yield temp_path
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except Exception as e:
+                print(f"Failed to remove temporary file {temp_path}: {str(e)}")
+
+
+async def process_and_upload_geojson(
+    geometry: dict, fire_event_name: str, job_id: str, filename: str
+) -> Tuple[str, Dict[str, Any], List[float]]:
+    """
+    Validate, save and upload a GeoJSON boundary
+
+    Args:
+        geometry: The geometry or GeoJSON to process
+        fire_event_name: Name of the fire event
+        job_id: Job ID for the processing task
+        filename: Base filename for the GeoJSON (without extension)
+
+    Returns:
+        Tuple containing:
+        - URL to the uploaded GeoJSON
+        - Validated GeoJSON object
+        - Bounding box coordinates [minx, miny, maxx, maxy]
+    """
+    # Convert the Polygon/geometry to a valid GeoJSON object
+    valid_geojson = polygon_to_valid_geojson(geometry)
+
+    # Create a temporary file and upload it
+    with temp_file(
+        suffix=".geojson", content=json.dumps(valid_geojson).encode("utf-8")
+    ) as geojson_path:
+        # Upload to GCS
+        blob_name = f"{fire_event_name}/{job_id}/{filename}.geojson"
+        geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
+
+        # Extract bbox from geometry for STAC
+        geom_shape = shape(valid_geojson["geometry"])
+        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
+
+    return geojson_url, valid_geojson, list(bbox)
+
+
+async def process_cog_with_boundary(
+    original_cog_url: str,
+    valid_geojson: Dict[str, Any],
+    fire_event_name: str,
+    job_id: str,
+    output_filename: str,
+) -> str:
+    """
+    Process a COG with a boundary: download, crop, create new COG, and upload
+
+    Args:
+        original_cog_url: URL to the original COG
+        valid_geojson: The validated GeoJSON to crop with
+        fire_event_name: Name of the fire event
+        job_id: Job ID for the processing task
+        output_filename: Filename for the output COG (without extension)
+
+    Returns:
+        URL to the uploaded processed COG
+    """
+    # Download the original COG to a temporary file
+    with temp_file(suffix=".tif") as original_cog_path:
+        # Download the original COG
+        await download_cog_to_temp(original_cog_url, output_path=original_cog_path)
+
+        # Crop the COG with the refined boundary
+        cropped_data = crop_cog_with_geometry(original_cog_path, valid_geojson)
+
+        # Create a new COG from the cropped data
+        with temp_file(suffix=".tif") as refined_cog_path:
+            cog_result = create_cog(cropped_data, refined_cog_path)
+            if not cog_result["is_valid"]:
+                raise Exception("Failed to create a valid COG from cropped data")
+
+            # Upload the refined COG to GCS
+            cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
+            cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
+
+    return cog_url
+
 
 # Dictionary to track when job requests were first received
 job_timestamps = {}
@@ -171,12 +269,17 @@ async def process_fire_severity(
             return
 
         # 2. Upload the COGs to GCS
+        cog_url = None  # Will store the main RBR cog URL
         for key, value in result["output_files"].items():
             cog_path = value
             blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
-            cog_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
+            uploaded_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
 
-        # 3. Create a STAC item
+            # Store the main RBR cog URL for STAC items
+            if key == "rbr":
+                cog_url = uploaded_url
+
+        # 3. Create a STAC item for the fire severity
         datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
@@ -184,6 +287,25 @@ async def process_fire_severity(
             cog_url=cog_url,
             geometry=geometry,
             datetime_str=datetime_str,
+        )
+
+        # 4. Process and upload the boundary GeoJSON
+        boundary_url, valid_geojson, bbox = await process_and_upload_geojson(
+            geometry=geometry,
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            filename="coarse_boundary",
+        )
+
+        # 5. Create a STAC item for the coarse boundary
+        await stac_manager.create_boundary_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            geojson_url=boundary_url,
+            cog_url=cog_url,
+            bbox=bbox,
+            datetime_str=datetime_str,
+            boundary_type="coarse",
         )
 
     except Exception as e:
@@ -257,23 +379,16 @@ async def process_boundary_refinement(
     """
     Process boundary refinement, upload results, and create STAC assets
     """
-    temp_files = []  # Track temp files to ensure cleanup
-
     try:
-        # 0. Convert the Polygon to a GeoJSON object
-        valid_geojson = polygon_to_valid_geojson(refine_geojson)
+        # 1. Process and upload the boundary GeoJSON
+        geojson_url, valid_geojson, bbox = await process_and_upload_geojson(
+            geometry=refine_geojson,
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            filename="refined_boundary",
+        )
 
-        # 1. Save the GeoJSON to a file
-        with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
-            tmp.write(json.dumps(valid_geojson).encode("utf-8"))
-            geojson_path = tmp.name
-            temp_files.append(geojson_path)
-
-        # 2. Upload the GeoJSON to GCS
-        blob_name = f"{fire_event_name}/{job_id}/refined_boundary.geojson"
-        geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
-
-        # 3. Get the original/coarse fire severity COG URL
+        # 2. Get the original/coarse fire severity COG URL
         stac_id = f"{fire_event_name}-severity-{job_id}"
         original_cog_item = await stac_manager.get_item_by_id(stac_id)
         if not original_cog_item:
@@ -282,64 +397,43 @@ async def process_boundary_refinement(
                 detail=f"Original COG not found for job ID {job_id}",
             )
 
-        for key, value in original_cog_item["assets"].items():
-            original_cog_url = value["href"]
-            # 4. Download the original COG to a temporary file
-            original_cog_path = await download_cog_to_temp(original_cog_url)
-            temp_files.append(original_cog_path)
+        original_cog_url = original_cog_item["assets"]["rbr"]["href"]
 
-            # 5. Crop the COG with the refined boundary
-            cropped_data = crop_cog_with_geometry(original_cog_path, valid_geojson)
+        # 3. Process the COG with the refined boundary
+        cog_url = await process_cog_with_boundary(
+            original_cog_url=original_cog_url,
+            valid_geojson=valid_geojson,
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            output_filename="refined_rbr",
+        )
 
-            # 6. Create a new COG from the cropped data
-            refined_cog_path = tempfile.mktemp(suffix=".tif")
-            temp_files.append(refined_cog_path)
+        # 4. Create the STAC item for this cropped COG
+        await stac_manager.create_fire_severity_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            cog_url=cog_url,
+            geometry=valid_geojson,
+            datetime_str=original_cog_item["properties"]["datetime"],
+            boundary_type="refined",
+        )
 
-            cog_result = create_cog(cropped_data, refined_cog_path)
-            if not cog_result["is_valid"]:
-                raise Exception("Failed to create a valid COG from cropped data")
-
-            # 7. Upload the refined COG to GCS
-            cog_blob_name = f"{fire_event_name}/{job_id}/refined_rbr.tif"
-            cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
-
-            # 8. Extract bbox from geometry for STAC
-            geom_shape = shape(valid_geojson["geometry"])
-            bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
-
-            # 9. Create the STAC item for this cropped COG
-            await stac_manager.create_fire_severity_item(
-                fire_event_name=fire_event_name,
-                job_id=job_id,
-                cog_url=cog_url,
-                geometry=valid_geojson,
-                datetime_str=original_cog_item["properties"]["datetime"],
-                boundary_type="refined",
-            )
-
-        # 10. Create the STAC item for the refined boundary
+        # 5. Create the STAC item for the refined boundary
         datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
             geojson_url=geojson_url,
             cog_url=cog_url,
-            bbox=list(bbox),
+            bbox=bbox,
             datetime_str=datetime_str,
+            boundary_type="refined",
         )
 
     except Exception as e:
         # Log error
         print(f"Error processing boundary refinement: {str(e)}")
         raise e
-    finally:
-        # Clean up all temporary files
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                try:
-                    os.unlink(temp_file)
-                except Exception as e:
-                    print(f"Failed to remove temporary file {temp_file}: {str(e)}")
 
 
 @router.get(
@@ -384,29 +478,22 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     # Generate a unique job ID
     job_id = str(uuid.uuid4())
 
-    # Validate the GeoJSON using geojson_pydantic
     try:
+        # Validate the GeoJSON using geojson_pydantic
         if request.geojson.get("type") == "FeatureCollection":
             validated_geojson = FeatureCollection.model_validate(request.geojson)
         elif request.geojson.get("type") == "Feature":
             validated_geojson = Feature.model_validate(request.geojson)
         else:
             raise ValueError(f"Unsupported GeoJSON type: {request.geojson.get('type')}")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid GeoJSON: {str(e)}")
 
-    # Save the validated GeoJSON to a temporary file
-    with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as tmp:
-        tmp.write(json.dumps(request.geojson).encode("utf-8"))
-        geojson_path = tmp.name
-
-    try:
-        # Upload to GCS
-        blob_name = f"{request.fire_event_name}/{job_id}/uploaded.geojson"
-        geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
-
-        # Clean up
-        os.unlink(geojson_path)
+        # Process and upload the GeoJSON file
+        geojson_url, _, _ = await process_and_upload_geojson(
+            geometry=request.geojson,
+            fire_event_name=request.fire_event_name,
+            job_id=job_id,
+            filename="uploaded",
+        )
 
         # Return response
         return {
@@ -416,8 +503,6 @@ async def upload_geojson(request: GeoJSONUploadRequest):
             "uploaded_geojson": geojson_url,
         }
     except Exception as e:
-        # Clean up
-        os.unlink(geojson_path)
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
         )

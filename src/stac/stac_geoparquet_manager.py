@@ -122,6 +122,7 @@ class STACGeoParquetManager:
         cog_url: str,
         bbox: List[float],
         datetime_str: str,
+        boundary_type: str = "coarse",
     ) -> Dict[str, Any]:
         """
         Create a STAC item for boundary refinement and add it to the GeoParquet file
@@ -137,7 +138,8 @@ class STACGeoParquetManager:
                 "datetime": datetime_str,
                 "fire_event_name": fire_event_name,
                 "job_id": job_id,
-                "product_type": "refined_boundary",
+                "product_type": "fire_boundary",
+                "boundary_type": boundary_type,
             },
             "geometry": {
                 "type": "Polygon",

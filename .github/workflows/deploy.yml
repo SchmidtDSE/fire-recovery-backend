@@ -41,20 +41,28 @@ jobs:
         run: |
           if [ "${{ env.BRANCH_NAME }}" = "main" ]; then
 
-            gcloud builds submit --config deployment/prod-cloudbuild.yml .
+            gcloud builds submit 
+              --config deployment/prod-cloudbuild.yml \
+              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              .
             
             gcloud run deploy fire-recovery-backend-prod \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
               --platform managed \
+              --service-acount=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1
           fi
 
           if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
 
-            gcloud builds submit --config deployment/dev-cloudbuild.yml . 
+            gcloud builds submit 
+              --config deployment/dev-cloudbuild.yml \
+              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              .
             
             gcloud run deploy fire-recovery-backend-dev \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
               --platform managed \
+              --service-acount=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1
           fi
