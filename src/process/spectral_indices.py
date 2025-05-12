@@ -5,7 +5,7 @@ import xarray as xr
 from pystac_client import Client as PystacClient
 import stackstac
 import numpy as np
-from rio_cogeo.cogeo import cog_validate, cog_translate
+from rio_cogeo.cogeo import cog_validate, cog_translate, cog_info
 from rio_cogeo.profiles import cog_profiles
 import os
 from typing import List, Dict, Optional, Any
@@ -231,9 +231,10 @@ def create_cog(data, output_path: str) -> Dict[str, Any]:
     # Set nodata value for NaN values
     nodata = -9999.0
     computed = computed.rio.write_nodata(nodata)
+    computed.rio.set_crs("EPSG:4326", inplace=True)
 
-    # Save with explicit data type and nodata value
-    computed.rio.to_raster(naive_tiff, dtype="float32")
+    # Write the naive GeoTIFF
+    computed.rio.to_raster(naive_tiff, driver="GTiff", dtype="float32")
 
     cog_profile = cog_profiles.get("deflate")
     # Update the profile to include nodata value
@@ -244,9 +245,12 @@ def create_cog(data, output_path: str) -> Dict[str, Any]:
         output_path,
         cog_profile,
         add_mask=True,
-        overview_level=5,
         overview_resampling="average",
+        forward_band_tags=True,
+        use_cog_driver=True,
     )
+
+    info = cog_info(output_path)
 
     is_valid, __errors, __warnings = cog_validate(output_path)
 
