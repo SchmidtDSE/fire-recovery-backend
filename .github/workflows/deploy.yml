@@ -1,0 +1,53 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy FastAPI Backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/113009620257/locations/global/workloadIdentityPools/github-actions-prod/providers/oidc-provider-prod"
+          project_id: "dse-nps"
+          service_account: "github-actions-sa-prod@dse-nps.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Set environment variable for branch name
+        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+
+      - name: Build and Deploy to Cloud Run
+        run: |
+          if [ "${{ env.BRANCH_NAME }}" = "main" ]; then
+            # Production build and deploy
+            gcloud builds submit --config deployment/prod-cloudbuild.yaml .
+            gcloud run deploy fire-recovery-backend-prod \
+              --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
+              --platform managed \
+              --region us-central1
+          fi
+
+          if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
+            # Development build and deploy
+            gcloud builds submit --config deployment/dev-cloudbuild.yaml .
+            gcloud run deploy fire-recovery-backend-dev \
+              --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
+              --platform managed \
+              --region us-central1
+          fi

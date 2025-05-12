@@ -1,0 +1,16 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--tag=us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest"
+      - "--file=deployment/Dockerfile"
+      - "--no-cache"
+      - "."
+
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
