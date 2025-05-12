@@ -37,11 +37,6 @@ jobs:
       - name: Set environment variable for branch name
         run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
 
-      - name: Update cloudbuild files
-        run: |
-          sed -i 's/fastapi.Dockerfile/coiled.Dockerfile/g' deployment/prod-cloudbuild.yml
-          sed -i 's/fastapi.Dockerfile/coiled.Dockerfile/g' deployment/dev-cloudbuild.yml
-
       - name: Build and Deploy to Cloud Run
         run: |
           if [ "${{ env.BRANCH_NAME }}" = "main" ]; then
