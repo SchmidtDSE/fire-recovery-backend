@@ -49,7 +49,7 @@ jobs:
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
-              --region us-central1
+              --region us-central1 \
               --allow-unauthenticated
           fi
 
@@ -63,6 +63,6 @@ jobs:
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
-              --region us-central1
+              --region us-central1 \
               --allow-unauthenticated
           fi
