@@ -68,3 +68,13 @@ Outputs:
 - a JSON of the `refined_cog_url`
 
 NOTE: the original burn severity tool uses a 'seed' point (or optionally many seed points) to use image segmentation to seperate out 'real' boundary. Additionally, they could specify a 'restriction boundary' (another geojson) to restrict the derived boundary (as a maximum extent). This was a little bit inconsistent in performance, but may be preferable to forcing the user to refine the boundary themselves (though refining the boundary themselves leaves us less open to potential errors forced by segmentation).
+
+### Minio
+
+- endpoint getting data from STAC and saving it in a location to GCP to display the COG_URL on the map requires a secret and key for fire-recovery-backend in a .env file.
+
+```
+GCP_ACCESS_KEY_ID=[YourAccessKey]
+GCP_SECRET_ACCESS_KEY=[YourSecret]
+RUN_LOCAL=True
+```
