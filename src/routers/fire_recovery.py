@@ -197,20 +197,24 @@ class ProcessingStartedResponse(BaseResponse):
 
 
 class RefinedBoundaryResponse(BaseResponse):
-    refined_geojson_url: str
-    cog_url: str
+    refined_boundary_geojson_url: str
+    refined_severity_cog_urls: Dict[str, str] = Field(
+        ..., description="URLs to the refined COGs for each metric"
+    )
 
 
 class FireSeverityResponse(BaseResponse):
-    cog_url: Optional[str] = None
+    coarse_severity_cog_urls: Dict[str, str] = Field(
+        ..., description="URLs to the COGs for each metric"
+    )
 
 
 class VegMapMatrixResponse(BaseResponse):
-    fire_veg_matrix: Optional[str] = None
+    fire_veg_matrix_url: Optional[str] = None
 
 
 class UploadedGeoJSONResponse(BaseResponse):
-    uploaded_geojson: str
+    refined_boundary_geojson_url: str
 
 
 @router.get("/", tags=["Root"])
@@ -304,7 +308,7 @@ async def process_fire_severity(
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            geojson_url=boundary_url,
+            coarse_boundary_geojson_url=boundary_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="coarse",
@@ -336,15 +340,17 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
             fire_event_name=fire_event_name, status="pending", job_id=job_id
         )
 
-    # Item found, extract the COG URL
-    cog_url = stac_item["assets"]["rbr"]["href"]
+    # Extract all metric URLs from the assets
+    response_cog_urls = {}
+    for metric, asset in stac_item["assets"].items():
+        response_cog_urls[metric] = asset["href"]
 
-    # Return the completed response
+    # Return the completed response with all available metric URLs
     return FireSeverityResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        cog_url=cog_url,
+        coarse_severity_cog_urls=response_cog_urls,
     )
 
 
@@ -410,7 +416,7 @@ async def process_boundary_refinement(
                 job_id=job_id,
                 output_filename=f"refined_{metric}",
             )
-            refined_cog_urls["metric"] = cog_url
+            refined_cog_urls[metric] = cog_url
 
         # 4. Create the STAC item for this cropped COG
         polygon_json = valid_geojson["features"][0]["geometry"]
@@ -428,7 +434,7 @@ async def process_boundary_refinement(
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            geojson_url=geojson_url,
+            refined_boundary_geojson_url=geojson_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="refined",
@@ -450,12 +456,12 @@ async def get_refine_result(fire_event_name: str, job_id: str):
     Get the result of the fire boundary refinement.
     """
     # Look up the STAC item
-    stac_item = await stac_manager.get_items_by_id_and_coarseness(
+    boundary_stac_item = await stac_manager.get_items_by_id_and_coarseness(
         f"{fire_event_name}-boundary-{job_id}",
         "refined",
     )
 
-    if not stac_item:
+    if not boundary_stac_item:
         # Item not found, still processing
         return TaskPendingResponse(
             fire_event_name=fire_event_name, status="pending", job_id=job_id
@@ -466,28 +472,43 @@ async def get_refine_result(fire_event_name: str, job_id: str):
     # on refining a boundary. Ideally we have 1 coarse 1 refined item, but this
     # seems less annoying and error prone than having to delete the old item
     # before creating a new one.
-    if isinstance(stac_item, list):
-        stac_item = sorted(
-            stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
+    if isinstance(boundary_stac_item, list):
+        boundary_stac_item = sorted(
+            boundary_stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
         )[0]
 
-    if not stac_item:
+    # Item found, extract the URLs
+    geojson_url = boundary_stac_item["assets"]["refined_boundary"]["href"]
+
+    severity_stac_item = await stac_manager.get_items_by_id_and_coarseness(
+        f"{fire_event_name}-severity-{job_id}",
+        "refined",
+    )
+
+    if not severity_stac_item:
         # Item not found, still processing
         return TaskPendingResponse(
             fire_event_name=fire_event_name, status="pending", job_id=job_id
         )
 
-    # Item found, extract the URLs
-    geojson_url = stac_item["assets"]["refined_boundary"]["href"]
-    cog_url = stac_item["assets"]["refined_severity"]["href"]
+    # If multiple items are found, we take the most recent one
+    if isinstance(severity_stac_item, list):
+        severity_stac_item = sorted(
+            severity_stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
+        )[0]
+
+    cog_url = severity_stac_item["assets"]
+    response_cog_urls = {}
+    for metric, cog in cog_url.items():
+        response_cog_urls[metric] = cog["href"]
 
     # Return the completed response
     return RefinedBoundaryResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        refined_geojson_url=geojson_url,
-        cog_url=cog_url,
+        refined_boundary_geojson_url=geojson_url,
+        refined_severity_cog_urls=response_cog_urls,
     )
 
 
@@ -521,7 +542,7 @@ async def upload_geojson(request: GeoJSONUploadRequest):
             "fire_event_name": request.fire_event_name,
             "status": "complete",
             "job_id": job_id,
-            "uploaded_geojson": geojson_url,
+            "refined_boundary_geojson_url": geojson_url,
         }
     except Exception as e:
         raise HTTPException(
@@ -600,7 +621,7 @@ async def process_veg_map_resolution(
         await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            matrix_url=matrix_url,
+            fire_veg_matrix_url=matrix_url,
             geometry=geometry,
             bbox=bbox,
             datetime_str=datetime_str,
@@ -639,5 +660,5 @@ async def get_veg_map_result(fire_event_name: str, job_id: str):
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        fire_veg_matrix=matrix_url,
+        fire_veg_matrix_url=matrix_url,
     )

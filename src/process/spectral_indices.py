@@ -184,7 +184,7 @@ def calculate_nbr(data):
     cpu=4,
     n_workers=[0, 20],  # Autoscale between 1 and 20 workers
     keepalive="6 hours",
-    # local=True,
+    local=True,
 )
 def calculate_burn_indices(prefire_data, postfire_data):
     """Calculate various burn indices from pre and post fire data"""
