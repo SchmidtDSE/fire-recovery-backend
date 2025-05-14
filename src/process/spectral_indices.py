@@ -18,16 +18,6 @@ import planetary_computer
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
 
-# @coiled.function(
-#     name="process-remote-sensing",
-#     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
-#     memory="4 GiB",
-#     cpu=4,
-#     n_workers=5,
-#     extra_kwargs={
-#         "worker_options": {"local_directory": "/tmp"}
-#     },  # Use /tmp for local storage
-# )
 def process_remote_sensing_data(
     job_id: str,
     geometry: Polygon,
@@ -187,6 +177,15 @@ def calculate_nbr(data):
     return (nir - swir) / (nir + swir)
 
 
+@coiled.function(
+    name="calculate-burn-indices",
+    container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
+    memory="4 GiB",
+    cpu=4,
+    n_workers=[0, 20],  # Autoscale between 1 and 20 workers
+    keepalive="6 hours",
+    # local=True,
+)
 def calculate_burn_indices(prefire_data, postfire_data):
     """Calculate various burn indices from pre and post fire data"""
     # Calculate NBR for both periods
@@ -206,6 +205,13 @@ def calculate_burn_indices(prefire_data, postfire_data):
     # Calculate RBR
     denominator = prefire_nbr + 1.001
     rbr = dnbr / denominator
+
+    # Compute so that Coiled can distribute
+    rbr.compute()
+    rdnbr.compute()
+    dnbr.compute()
+    prefire_nbr.compute()
+    postfire_nbr.compute()
 
     return {
         "prefire_nbr": prefire_nbr,

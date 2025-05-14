@@ -273,22 +273,21 @@ async def process_fire_severity(
             return
 
         # 2. Upload the COGs to GCS
-        cog_url = None  # Will store the main RBR cog URL
+        cog_urls = {}  # Store all COG URLs in a dictionary
         for key, value in result["output_files"].items():
             cog_path = value
             blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
             uploaded_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
 
-            # Store the main RBR cog URL for STAC items
-            if key == "rbr":
-                cog_url = uploaded_url
+            # Store the URL in the dictionary
+            cog_urls[key] = uploaded_url
 
         # 3. Create a STAC item for the fire severity
         datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            cog_url=cog_url,
+            cog_urls=cog_urls,  # Pass the dictionary of COG URLs
             geometry=geometry,
             datetime_str=datetime_str,
         )
@@ -306,7 +305,6 @@ async def process_fire_severity(
             fire_event_name=fire_event_name,
             job_id=job_id,
             geojson_url=boundary_url,
-            cog_url=cog_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="coarse",
@@ -401,23 +399,25 @@ async def process_boundary_refinement(
                 detail=f"Original COG not found for job ID {job_id}",
             )
 
-        original_cog_url = original_cog_item["assets"]["rbr"]["href"]
-
-        # 3. Process the COG with the refined boundary
-        cog_url = await process_cog_with_boundary(
-            original_cog_url=original_cog_url,
-            valid_geojson=valid_geojson,
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            output_filename="refined_rbr",
-        )
+        refined_cog_urls = {}
+        for metric, cog_url in original_cog_item["assets"].items():
+            coarse_cog_url = cog_url["href"]
+            # 3. Process the COG with the refined boundary
+            cog_url = await process_cog_with_boundary(
+                original_cog_url=coarse_cog_url,
+                valid_geojson=valid_geojson,
+                fire_event_name=fire_event_name,
+                job_id=job_id,
+                output_filename=f"refined_{metric}",
+            )
+            refined_cog_urls["metric"] = cog_url
 
         # 4. Create the STAC item for this cropped COG
         polygon_json = valid_geojson["features"][0]["geometry"]
         await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            cog_url=cog_url,
+            cog_urls=refined_cog_urls,
             geometry=polygon_json,
             datetime_str=original_cog_item["properties"]["datetime"],
             boundary_type="refined",
@@ -429,7 +429,6 @@ async def process_boundary_refinement(
             fire_event_name=fire_event_name,
             job_id=job_id,
             geojson_url=geojson_url,
-            cog_url=cog_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="refined",

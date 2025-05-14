@@ -61,19 +61,60 @@ class STACGeoParquetManager:
         self,
         fire_event_name: str,
         job_id: str,
-        cog_url: str,
+        cog_urls: Dict[str, str],  # Changed to accept dictionary of URLs
         geometry: Polygon,
         datetime_str: str,
         boundary_type: str = "coarse",
     ) -> Dict[str, Any]:
         """
         Create a STAC item for fire severity analysis and add it to the GeoParquet file
+
+        Args:
+            fire_event_name: Name of the fire event
+            job_id: Job ID for the processing task
+            cog_urls: Dictionary of COG URLs for each metric {'rbr': url, 'dnbr': url, 'rdnbr': url}
+            geometry: GeoJSON geometry object
+            datetime_str: Timestamp for the item
+            boundary_type: Type of boundary ('coarse' or 'refined')
+
+        Returns:
+            The created STAC item
         """
         item_id = f"{fire_event_name}-severity-{job_id}"
 
         # Get stac compliant bbox from the geometry
         geom_shape = shape(geometry)
         bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
+
+        # Create assets dictionary with all three metrics
+        assets = {}
+
+        # Add RBR asset if available
+        if "rbr" in cog_urls:
+            assets["rbr"] = {
+                "href": cog_urls["rbr"],
+                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                "title": "Relativized Burn Ratio (RBR)",
+                "roles": ["data"],
+            }
+
+        # Add dNBR asset if available
+        if "dnbr" in cog_urls:
+            assets["dnbr"] = {
+                "href": cog_urls["dnbr"],
+                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                "title": "Differenced Normalized Burn Ratio (dNBR)",
+                "roles": ["data"],
+            }
+
+        # Add RdNBR asset if available
+        if "rdnbr" in cog_urls:
+            assets["rdnbr"] = {
+                "href": cog_urls["rdnbr"],
+                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                "title": "Relativized Differenced Normalized Burn Ratio (RdNBR)",
+                "roles": ["data"],
+            }
 
         # Create the STAC item
         stac_item = {
@@ -89,20 +130,19 @@ class STACGeoParquetManager:
             },
             "geometry": geometry,
             "bbox": bbox,
-            "assets": {
-                "rbr": {
-                    "href": cog_url,
-                    "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                    "title": "Relativized Burn Ratio (RBR)",
-                    "roles": ["data"],
-                }
-            },
+            "assets": assets,
             "links": [
                 {
                     "rel": "self",
                     "href": f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
                     "type": "application/json",
-                }
+                },
+                {
+                    "rel": "related",
+                    "href": f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-boundary-{job_id}.json",
+                    "type": "application/json",
+                    "title": "Related fire boundary product",
+                },
             ],
         }
 
@@ -119,7 +159,6 @@ class STACGeoParquetManager:
         fire_event_name: str,
         job_id: str,
         geojson_url: str,
-        cog_url: str,
         bbox: List[float],
         datetime_str: str,
         boundary_type: str = "coarse",
@@ -159,12 +198,6 @@ class STACGeoParquetManager:
                     "href": geojson_url,
                     "type": "application/geo+json",
                     "title": f"{boundary_type.capitalize()} Fire Boundary",
-                    "roles": ["data"],
-                },
-                "refined_severity": {
-                    "href": cog_url,
-                    "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                    "title": f"{boundary_type.capitalize()} Fire Severity",
                     "roles": ["data"],
                 },
             },
