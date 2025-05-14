@@ -145,7 +145,7 @@ def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]
         "collections": ["sentinel-2-l2a"],
     }
 
-    items = catalog.search(**search).get_all_items()
+    items = catalog.search(**search).item_collection()
 
     buffered_bounds = get_buffered_bounds(geometry, 100)
 
@@ -177,6 +177,10 @@ def calculate_nbr(data):
     return (nir - swir) / (nir + swir)
 
 
+## LOCAL flag not really working - easier to simply comment out the decorator
+# for local testing
+
+
 @coiled.function(
     name="calculate-burn-indices",
     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
@@ -184,7 +188,7 @@ def calculate_nbr(data):
     cpu=4,
     n_workers=[0, 20],  # Autoscale between 1 and 20 workers
     keepalive="6 hours",
-    local=True,
+    local=False,
 )
 def calculate_burn_indices(prefire_data, postfire_data):
     """Calculate various burn indices from pre and post fire data"""
