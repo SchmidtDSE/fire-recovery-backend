@@ -181,15 +181,15 @@ def calculate_nbr(data):
 # for local testing
 
 
-@coiled.function(
-    name="calculate-burn-indices",
-    container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
-    memory="4 GiB",
-    cpu=4,
-    n_workers=[0, 20],  # Autoscale between 1 and 20 workers
-    keepalive="6 hours",
-    local=False,
-)
+# @coiled.function(
+#     name="calculate-burn-indices",
+#     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
+#     memory="4 GiB",
+#     cpu=4,
+#     n_workers=[0, 20],  # Autoscale between 1 and 20 workers
+#     keepalive="6 hours",
+#     local=False,
+# )
 def calculate_burn_indices(prefire_data, postfire_data):
     """Calculate various burn indices from pre and post fire data"""
     # Calculate NBR for both periods
