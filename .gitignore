@@ -18,5 +18,5 @@ src/__pycache__/
 # Github actions key
 github-actions-key.json
 
-# Pycache pyc files
-*/__pycache__
+# Pycache pyc files__pycache__
+__pycache__/
