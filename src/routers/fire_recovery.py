@@ -364,11 +364,11 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
     response_model=ProcessingStartedResponse,
     tags=["Boundary Refinement"],
 )
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60,  # Cache for 1 hour
-)
+# @cache(
+#     key_builder=request_key_builder,
+#     namespace="root",
+#     expire=60 * 60,  # Cache for 1 hour
+# )
 async def refine_fire_boundary(
     request: RefineRequest, background_tasks: BackgroundTasks
 ):
@@ -461,11 +461,11 @@ async def process_boundary_refinement(
     response_model=Union[TaskPendingResponse, RefinedBoundaryResponse],
     tags=["Boundary Refinement"],
 )
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
-)
+# @cache(
+#     key_builder=request_key_builder,
+#     namespace="root",
+#     expire=60 * 60 * 6,  # Cache for 6 hour
+# )
 async def get_refine_result(fire_event_name: str, job_id: str):
     """
     Get the result of the fire boundary refinement.
@@ -570,11 +570,11 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     response_model=ProcessingStartedResponse,
     tags=["Vegetation Map Analysis"],
 )
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
-)
+# @cache(
+#     key_builder=request_key_builder,
+#     namespace="root",
+#     expire=60 * 60 * 6,  # Cache for 6 hour
+# )
 async def resolve_against_veg_map(
     request: VegMapResolveRequest, background_tasks: BackgroundTasks
 ):
@@ -657,11 +657,11 @@ async def process_veg_map_resolution(
     response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
     tags=["Vegetation Map Analysis"],
 )
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
-)
+# @cache(
+#     key_builder=request_key_builder,
+#     namespace="root",
+#     expire=60 * 60 * 6,  # Cache for 6 hour
+# )
 async def get_veg_map_result(fire_event_name: str, job_id: str):
     """
     Get the result of the vegetation map resolution against fire severity.
