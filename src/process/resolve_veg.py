@@ -69,7 +69,6 @@ def load_vegetation_data(
         GeoDataFrame with vegetation data
     """
     # TODO: Hardcoded for JOTR geopackage for now
-    gdf = gpd.read_file(veg_gpkg_path, layer="JOTR_VegPolys")
 
     # Use the original URL for comparisons if provided, otherwise use path
     url_to_check = original_url if original_url else veg_gpkg_path
@@ -79,6 +78,7 @@ def load_vegetation_data(
         url_to_check
         == "https://storage.googleapis.com/national_park_service/joshua_tree/jotr_gpkg/jotrgeodata.gpkg"
     ):
+        gdf = gpd.read_file(veg_gpkg_path, layer="JOTR_VegPolys")
         gdf["veg_type"] = gdf["MapUnit_Name"]
 
     # MOJN
