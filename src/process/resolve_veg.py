@@ -54,12 +54,15 @@ async def download_file_to_temp(url: str, suffix: str = "") -> str:
         return temp_path
 
 
-def load_vegetation_data(veg_gpkg_path: str, crs=None) -> gpd.GeoDataFrame:
+def load_vegetation_data(
+    veg_gpkg_path: str, original_url: str = None, crs=None
+) -> gpd.GeoDataFrame:
     """
     Load vegetation data from geopackage and ensure correct CRS
 
     Args:
         veg_gpkg_path: Path to the vegetation geopackage file
+        original_url: Original URL of the geopackage for identifying data source
         crs: Optional CRS to reproject vegetation data to
 
     Returns:
@@ -68,16 +71,19 @@ def load_vegetation_data(veg_gpkg_path: str, crs=None) -> gpd.GeoDataFrame:
     # TODO: Hardcoded for JOTR geopackage for now
     gdf = gpd.read_file(veg_gpkg_path, layer="JOTR_VegPolys")
 
+    # Use the original URL for comparisons if provided, otherwise use path
+    url_to_check = original_url if original_url else veg_gpkg_path
+
     # JOTR
     if (
-        veg_gpkg_path
+        url_to_check
         == "https://storage.googleapis.com/national_park_service/joshua_tree/jotr_gpkg/jotrgeodata.gpkg"
     ):
         gdf["veg_type"] = gdf["MapUnit_Name"]
 
     # MOJN
     if (
-        veg_gpkg_path
+        url_to_check
         == "https://storage.googleapis.com/national_park_service/mock_assets_frontend/MN_Geo/MOJN.gpkg"
     ):
         gdf["veg_type"] = gdf["MAP_DESC"]
@@ -315,6 +321,7 @@ def write_to_cache(cache_key: str, result):
 
 
 async def create_veg_fire_matrix(
+    original_veg_gpkg_url: str,
     veg_gpkg_path: str,
     fire_cog_path: str,
     severity_breaks: List[float] = None,
@@ -341,7 +348,7 @@ async def create_veg_fire_matrix(
     fire_ds, metadata = load_fire_data(fire_cog_path)
 
     # Generate cache key
-    cache_key = generate_cache_key(veg_gpkg_path, fire_ds)
+    cache_key = generate_cache_key(original_veg_gpkg_url, fire_ds)
 
     # Try to load from cache first
     cached_result = attempt_read_from_cache(cache_key)
@@ -357,7 +364,9 @@ async def create_veg_fire_matrix(
         fire_data = fire_data.rio.reproject(PROJECTED_CRS)
 
     # Load vegetation data
-    gdf = load_vegetation_data(veg_gpkg_path, metadata["crs"])
+    gdf = load_vegetation_data(
+        veg_gpkg_path, original_url=original_veg_gpkg_url, crs=metadata["crs"]
+    )
     gdf = gdf.to_crs(PROJECTED_CRS)
 
     # Create severity masks
@@ -467,6 +476,7 @@ async def process_veg_map(
 
         # Process the vegetation map against fire severity
         result_df = await create_veg_fire_matrix(
+            original_veg_gpkg_url=veg_gpkg_url,
             veg_gpkg_path=veg_gpkg_path,
             fire_cog_path=fire_cog_path,
             severity_breaks=severity_breaks,
