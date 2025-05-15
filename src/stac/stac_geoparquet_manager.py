@@ -195,7 +195,7 @@ class STACGeoParquetManager:
             "bbox": bbox,  # Make sure bbox is included in the root level
             "assets": {
                 "refined_boundary": {
-                    "href": geojson_url,
+                    "href": boundary_geojson_url,
                     "type": "application/geo+json",
                     "title": f"{boundary_type.capitalize()} Fire Boundary",
                     "roles": ["data"],
