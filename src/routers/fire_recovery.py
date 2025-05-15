@@ -297,7 +297,7 @@ async def process_fire_severity(
         )
 
         # 4. Process and upload the boundary GeoJSON
-        boundary_url, valid_geojson, bbox = await process_and_upload_geojson(
+        boundary_geojson_url, valid_geojson, bbox = await process_and_upload_geojson(
             geometry=geometry,
             fire_event_name=fire_event_name,
             job_id=job_id,
@@ -308,7 +308,7 @@ async def process_fire_severity(
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            boundary_geojson_url=boundary_url,
+            boundary_geojson_url=boundary_geojson_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="coarse",
@@ -653,7 +653,7 @@ async def get_veg_map_result(fire_event_name: str, job_id: str):
         )
 
     # Item found, extract the matrix URL
-    matrix_url = stac_item["assets"]["veg_fire_matrix"]["href"]
+    matrix_url = stac_item["assets"]["fire_veg_matrix"]["href"]
 
     # Return the completed response
     return VegMapMatrixResponse(

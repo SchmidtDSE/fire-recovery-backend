@@ -249,7 +249,7 @@ class STACGeoParquetManager:
         self,
         fire_event_name: str,
         job_id: str,
-        matrix_url: str,
+        fire_veg_matrix_url: str,
         geometry: Dict[str, Any],  # Add geometry parameter
         bbox: List[float],  # Add bbox parameter
         datetime_str: str,
@@ -286,8 +286,8 @@ class STACGeoParquetManager:
             "geometry": geometry,
             "bbox": bbox,
             "assets": {
-                "veg_fire_matrix": {
-                    "href": matrix_url,
+                "fire_veg_matrix": {
+                    "href": fire_veg_matrix_url,
                     "type": "text/csv",
                     "title": "Vegetation Fire Severity Matrix",
                     "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
