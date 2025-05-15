@@ -30,6 +30,8 @@ from src.util.cog_ops import (
 from contextlib import contextmanager
 from typing import Dict, Any, List, Tuple, ContextManager, Generator
 from src.process.resolve_veg import process_veg_map
+from fastapi_cache.decorator import cache
+from src.util.api_cache import request_key_builder
 
 
 @contextmanager
@@ -227,6 +229,11 @@ async def root():
     response_model=ProcessingStartedResponse,
     tags=["Fire Severity"],
 )
+@cache(
+    key_builder=request_key_builder,
+    namespace="root",
+    expire=60 * 60 * 6,  # Cache for 6 hour
+)
 async def analyze_fire_severity(
     request: ProcessingRequest, background_tasks: BackgroundTasks
 ):
@@ -325,6 +332,11 @@ async def process_fire_severity(
     response_model=Union[TaskPendingResponse, FireSeverityResponse],
     tags=["Fire Severity"],
 )
+@cache(
+    key_builder=request_key_builder,
+    namespace="root",
+    expire=60 * 60 * 6,  # Cache for 6 hour
+)
 async def get_fire_severity_result(fire_event_name: str, job_id: str):
     """
     Get the result of the fire severity analysis.
@@ -358,6 +370,11 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
     "/process/refine",
     response_model=ProcessingStartedResponse,
     tags=["Boundary Refinement"],
+)
+@cache(
+    key_builder=request_key_builder,
+    namespace="root",
+    expire=60 * 60,  # Cache for 1 hour
 )
 async def refine_fire_boundary(
     request: RefineRequest, background_tasks: BackgroundTasks
@@ -450,6 +467,11 @@ async def process_boundary_refinement(
     "/result/refine/{fire_event_name}/{job_id}",
     response_model=Union[TaskPendingResponse, RefinedBoundaryResponse],
     tags=["Boundary Refinement"],
+)
+@cache(
+    key_builder=request_key_builder,
+    namespace="root",
+    expire=60 * 60 * 6,  # Cache for 6 hour
 )
 async def get_refine_result(fire_event_name: str, job_id: str):
     """
@@ -555,6 +577,11 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     response_model=ProcessingStartedResponse,
     tags=["Vegetation Map Analysis"],
 )
+@cache(
+    key_builder=request_key_builder,
+    namespace="root",
+    expire=60 * 60 * 6,  # Cache for 6 hour
+)
 async def resolve_against_veg_map(
     request: VegMapResolveRequest, background_tasks: BackgroundTasks
 ):
@@ -636,6 +663,11 @@ async def process_veg_map_resolution(
     "/result/resolve_against_veg_map/{fire_event_name}/{job_id}",
     response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
     tags=["Vegetation Map Analysis"],
+)
+@cache(
+    key_builder=request_key_builder,
+    namespace="root",
+    expire=60 * 60 * 6,  # Cache for 6 hour
 )
 async def get_veg_map_result(fire_event_name: str, job_id: str):
     """
