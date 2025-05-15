@@ -50,6 +50,8 @@ jobs:
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
+              --min-instances 1 \
+              --max-instances 1 \
               --allow-unauthenticated
           fi
 
@@ -64,5 +66,7 @@ jobs:
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
+              --min-instances 1 \
+              --max-instances 1 \
               --allow-unauthenticated
           fi
