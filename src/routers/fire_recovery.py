@@ -308,7 +308,7 @@ async def process_fire_severity(
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            coarse_boundary_geojson_url=boundary_url,
+            boundary_geojson_url=boundary_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="coarse",
@@ -434,7 +434,7 @@ async def process_boundary_refinement(
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            refined_boundary_geojson_url=geojson_url,
+            boundary_geojson_url=geojson_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="refined",

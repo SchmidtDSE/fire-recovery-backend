@@ -158,7 +158,7 @@ class STACGeoParquetManager:
         self,
         fire_event_name: str,
         job_id: str,
-        geojson_url: str,
+        boundary_geojson_url: str,
         bbox: List[float],
         datetime_str: str,
         boundary_type: str = "coarse",
