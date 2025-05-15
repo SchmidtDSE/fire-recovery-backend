@@ -86,6 +86,7 @@ def load_vegetation_data(
         url_to_check
         == "https://storage.googleapis.com/national_park_service/mock_assets_frontend/MN_Geo/MOJN.gpkg"
     ):
+        gdf = gpd.read_file(veg_gpkg_path)
         gdf["veg_type"] = gdf["MAP_DESC"]
 
     # Ensure vegetation data uses the same CRS as the fire data if provided
@@ -236,8 +237,10 @@ def calculate_zonal_stats(
         )
 
         if stats is not None and not np.isnan(stats.values).all():
-            results["mean_severity"] = float(stats.sel(stat="mean").values)
-            results["std_dev"] = float(stats.sel(stat="std").values)
+            results["mean_severity"] = float(
+                stats.isel(zonal_statistics=0).values
+            )  # mean
+            results["std_dev"] = float(stats.isel(zonal_statistics=1).values)  # std
         else:
             results["mean_severity"] = 0.0
             results["std_dev"] = 0.0
