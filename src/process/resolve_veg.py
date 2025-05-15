@@ -62,7 +62,20 @@ def load_vegetation_data(veg_gpkg_path: str, crs=None) -> gpd.GeoDataFrame:
     """
     # TODO: Hardcoded for JOTR geopackage for now
     gdf = gpd.read_file(veg_gpkg_path, layer="JOTR_VegPolys")
-    gdf["veg_type"] = gdf["MapUnit_ID"]
+
+    # JOTR
+    if (
+        veg_gpkg_path
+        == "https://storage.googleapis.com/national_park_service/joshua_tree/jotr_gpkg/jotrgeodata.gpkg"
+    ):
+        gdf["veg_type"] = gdf["MapUnit_Name"]
+
+    # MOJN
+    if (
+        veg_gpkg_path
+        == "https://storage.googleapis.com/national_park_service/mock_assets_frontend/MN_Geo/MOJN.gpkg"
+    ):
+        gdf["veg_type"] = gdf["MAP_DESC"]
 
     # Ensure vegetation data uses the same CRS as the fire data if provided
     if crs and gdf.crs != crs:
@@ -153,16 +166,6 @@ def calculate_zonal_stats(
 ) -> Dict[str, float]:
     """
     Calculate zonal statistics for a vegetation subset
-
-    Args:
-        masks: Dictionary of masks for each severity class
-        veg_subset: GeoDataFrame with vegetation subset
-        x_coord: Name of x coordinate in fire dataset
-        y_coord: Name of y coordinate in fire dataset
-        pixel_area_ha: Area of a single pixel in hectares
-
-    Returns:
-        Dictionary of area in hectares for each severity class
     """
     results = {}
 
@@ -172,13 +175,16 @@ def calculate_zonal_stats(
     )
 
     # Consolidate geometries for this MapUnit_ID into a single geometry
-    # This creates a unified geometry for zonal stats
     print(f"Consolidating {len(veg_subset)} geometries for MapUnit_ID")
     unified_geometry = gpd.GeoDataFrame(
         {"geometry": [veg_subset.unary_union]}, crs=PROJECTED_CRS
     )
 
+    # First calculate area statistics for each severity class
     for severity, mask in masks.items():
+        if severity == "original":
+            continue  # Skip original for area calculations
+
         try:
             # Ensure the mask is in the correct CRS
             assert mask.rio.crs.to_string() == PROJECTED_CRS, (
@@ -191,12 +197,11 @@ def calculate_zonal_stats(
                 x_coords=x_coord,
                 y_coords=y_coord,
                 stats="sum",
-                all_touched=True,  # Changed to include all touched pixels
+                all_touched=True,
             )
 
             # Extract numeric value from DataArray and handle NaNs
             if stats is not None and not np.isnan(stats.values).all():
-                # Extract as a Python float
                 sum_value = float(stats.sum(skipna=True).values)
             else:
                 sum_value = 0.0
@@ -207,6 +212,28 @@ def calculate_zonal_stats(
         except Exception as e:
             print(f"Error calculating {severity} stats: {str(e)}")
             results[f"{severity}_ha"] = 0.0
+
+    # Now calculate mean and std dev from the original fire data
+    try:
+        original_mask = masks["original"]
+        stats = original_mask.xvec.zonal_stats(
+            unified_geometry.geometry,
+            x_coords=x_coord,
+            y_coords=y_coord,
+            stats=["mean", "std"],
+            all_touched=True,
+        )
+
+        if stats is not None and not np.isnan(stats.values).all():
+            results["mean_severity"] = float(stats.sel(stat="mean").values)
+            results["std_dev"] = float(stats.sel(stat="std").values)
+        else:
+            results["mean_severity"] = 0.0
+            results["std_dev"] = 0.0
+    except Exception as e:
+        print(f"Error calculating mean/std stats: {str(e)}")
+        results["mean_severity"] = 0.0
+        results["std_dev"] = 0.0
 
     return results
 
@@ -282,15 +309,13 @@ async def create_veg_fire_matrix(
     # Get total park area for percentage calculations
     total_park_area = gdf.geometry.area.sum() / 10000  # Convert m² to ha
 
-    # Process each vegetation type
+    # Update the result with calculated statistics
     for veg_type in veg_types:
         # Filter to just this vegetation type
         veg_subset = gdf[gdf["veg_type"] == veg_type]
 
         # Calculate total area of this vegetation type in hectares
-        total_area_ha = float(
-            veg_subset.geometry.area.sum() / 10000
-        )  # Convert m² to ha
+        total_area_ha = float(veg_subset.geometry.area.sum() / 10000)
         result.loc[veg_type, "total_ha"] = total_area_ha
 
         # Calculate zonal statistics for each severity class
@@ -302,27 +327,18 @@ async def create_veg_fire_matrix(
             metadata["pixel_area_ha"],
         )
 
-        # Update result with calculated statistics (only for severity classes)
-        for severity in ["unburned_ha", "low_ha", "moderate_ha", "high_ha"]:
-            if severity in stats:
-                result.loc[veg_type, severity] = float(stats[severity])
+        # Update result with calculated statistics
+        for key, value in stats.items():
+            if key in result.columns:
+                result.loc[veg_type, key] = float(value)
+
+        # Add mean and std dev directly from zonal stats
+        result.loc[veg_type, "mean_severity"] = stats.get("mean_severity", 0)
+        result.loc[veg_type, "std_dev"] = stats.get("std_dev", 0)
 
     # Add percentage columns
     result = add_percentage_columns(result)
 
-    # Calculate mean severity based on weighted average of severity classes
-    # Using midpoints: unburned=0.0, low=0.185, moderate=0.465, high=0.83
-    result["mean_severity"] = (
-        (
-            result["unburned_ha"] * 0.0
-            + result["low_ha"] * 0.185
-            + result["moderate_ha"] * 0.465
-            + result["high_ha"] * 0.83
-        )
-        / result["total_ha"]
-    ).fillna(0)
-
-    # Format output for frontend
     frontend_df = pd.DataFrame(
         {
             "Color": [
@@ -341,20 +357,7 @@ async def create_veg_fire_matrix(
                 * 100
             ).round(2),
             "Mean Severity": result["mean_severity"].round(3),
-            "Std Dev": result.apply(
-                lambda row: np.sqrt(
-                    (
-                        row["unburned_ha"] * (0.0 - row["mean_severity"]) ** 2
-                        + row["low_ha"] * (0.185 - row["mean_severity"]) ** 2
-                        + row["moderate_ha"] * (0.465 - row["mean_severity"]) ** 2
-                        + row["high_ha"] * (0.83 - row["mean_severity"]) ** 2
-                    )
-                    / row["total_ha"]
-                )
-                if row["total_ha"] > 0
-                else 0,
-                axis=1,
-            ).round(3),
+            "Std Dev": result["std_dev"].round(3),
         }
     )
 
