@@ -17,7 +17,10 @@ from typing import Union, Optional, List
 from datetime import datetime
 from geojson_pydantic import FeatureCollection, Feature, Polygon, MultiPolygon
 from shapely.geometry import shape
-from src.process.spectral_indices import process_remote_sensing_data
+from src.process.spectral_indices import (
+    process_remote_sensing_data,
+    initialize_workspace,
+)
 from src.util.upload_blob import upload_to_gcs
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
@@ -229,11 +232,6 @@ async def root():
     response_model=ProcessingStartedResponse,
     tags=["Fire Severity"],
 )
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
-)
 async def analyze_fire_severity(
     request: ProcessingRequest, background_tasks: BackgroundTasks
 ):
@@ -272,7 +270,7 @@ async def process_fire_severity(
     """
     try:
         # 1. Process the data
-        result = process_remote_sensing_data(
+        result = await process_remote_sensing_data(
             job_id=job_id,
             geometry=geometry,
             prefire_date_range=prefire_date_range,
@@ -331,11 +329,6 @@ async def process_fire_severity(
     "/result/analyze_fire_severity/{fire_event_name}/{job_id}",
     response_model=Union[TaskPendingResponse, FireSeverityResponse],
     tags=["Fire Severity"],
-)
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
 )
 async def get_fire_severity_result(fire_event_name: str, job_id: str):
     """
