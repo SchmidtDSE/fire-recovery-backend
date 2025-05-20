@@ -355,9 +355,6 @@ class STACGeoParquetManager:
         # Write back to parquet file
         await rustac.write(self.parquet_path, all_items, format="geoparquet")
 
-        # In a production environment, you'd upload this file to blob storage here
-        # Example: upload_to_blob_storage(self.parquet_path, "fire_recovery_stac.parquet")
-
         return self.parquet_path
 
     async def get_items_by_fire_event(
