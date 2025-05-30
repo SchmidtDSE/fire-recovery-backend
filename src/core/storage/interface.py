@@ -117,3 +117,13 @@ class StorageInterface(ABC):
             Storage URL for the downloaded file
         """
         pass
+
+    @abstractmethod
+    async def cleanup(self, max_age_seconds: Optional[int] = None) -> None:
+        """
+        Cleanup old files in storage
+
+        Args:
+            max_age_seconds: Maximum age of files to keep, if None, remove all files
+        """
+        pass
