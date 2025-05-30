@@ -19,7 +19,6 @@ from geojson_pydantic import FeatureCollection, Feature, Polygon, MultiPolygon
 from shapely.geometry import shape
 from src.process.spectral_indices import (
     process_remote_sensing_data,
-    initialize_workspace,
 )
 from src.util.upload_blob import upload_to_gcs
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
@@ -33,8 +32,6 @@ from src.util.cog_ops import (
 from contextlib import contextmanager
 from typing import Dict, Any, List, Tuple, ContextManager, Generator
 from src.process.resolve_veg import process_veg_map
-from fastapi_cache.decorator import cache
-from src.util.api_cache import request_key_builder
 
 
 @contextmanager

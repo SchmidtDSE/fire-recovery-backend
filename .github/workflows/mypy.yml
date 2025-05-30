@@ -1,0 +1,23 @@
+name: MyPy Type Checking
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run mypy
+        uses: jpetrucciani/mypy-check@master
+        with:
+          mypy_flags: '--config-file mypy.ini'
+          path: "src/core" # To be updated when we continue to mypy other modules
