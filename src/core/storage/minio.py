@@ -72,7 +72,7 @@ class MinioCloudStorage(StorageInterface):
         # Create bucket if it doesn't exist
         self._ensure_bucket_exists()
 
-    def _ensure_bucket_exists(self):
+    def _ensure_bucket_exists(self) -> None:
         """Ensure the bucket exists, create it if not"""
         if not self.client.bucket_exists(self.bucket_name):
             self.client.make_bucket(self.bucket_name)
@@ -192,6 +192,26 @@ class MinioCloudStorage(StorageInterface):
 
                 content = await response.read()
                 return await self.save_bytes(content, target_path)
+
+    async def cleanup(self, max_age_seconds: Optional[float] = None) -> int:
+        """Cleanup old files in the bucket"""
+        if max_age_seconds is None:
+            raise ValueError("max_age_seconds must be provided for cleanup")
+
+        # List all objects in the bucket
+        objects = self.client.list_objects(self.bucket_name, recursive=True)
+        removed_count = 0
+
+        for obj in objects:
+            # Check if the object is older than max_age_seconds
+            if (obj.last_modified - obj.created).total_seconds() > max_age_seconds:
+                try:
+                    self.client.remove_object(self.bucket_name, obj.object_name)
+                    removed_count += 1
+                except S3Error as e:
+                    print(f"Failed to delete {obj.object_name}: {e}")
+
+        return removed_count
 
     def _guess_content_type(self, path: str) -> str:
         """Guess content type from file extension"""

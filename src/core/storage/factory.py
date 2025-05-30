@@ -1,11 +1,10 @@
 from typing import Optional, Dict, Any
 from src.core.storage.interface import StorageInterface
-from src.core.storage.cloud import GCSStorage
 from src.core.storage.minio import MinioCloudStorage
 from src.core.storage.memory import MemoryStorage
 
 
-def get_storage(storage_type: str = "minio", **kwargs) -> StorageInterface:
+def get_storage(storage_type: str = "minio", **kwargs: Any) -> StorageInterface:
     """
     Factory function to get the appropriate storage implementation
 

@@ -3,7 +3,8 @@ import base64
 import tempfile
 import os
 import io
-from typing import BinaryIO, Callable, Dict, Any, List, Union, Optional
+import time
+from typing import BinaryIO, Callable, Dict, Any, List, Optional
 from src.core.storage.interface import StorageInterface
 import aiohttp
 
@@ -14,7 +15,7 @@ class MemoryStorage(StorageInterface):
     (or envionments where file system access is not available)
     """
 
-    def __init__(self, base_url: str = "memory://", use_buffers: bool = True):
+    def __init__(self, base_url: str = "memory://"):
         """
         Initialize in-memory storage
 
@@ -22,20 +23,28 @@ class MemoryStorage(StorageInterface):
             base_url: Base URL prefix for virtual URLs
             use_buffers: Use BytesIO buffers instead of raw bytes (more efficient for streaming)
         """
-        self.storage = {}  # In-memory storage dictionary
-        self.base_url = base_url
-        self.use_buffers = use_buffers
+        self.storage: Dict[str, Dict[str, Any]] = {}
+        self.base_url: str = base_url
 
-    async def save_bytes(self, data: bytes, path: str) -> str:
-        """Save binary data to in-memory storage"""
-        if self.use_buffers:
-            # Store as BytesIO buffer for more efficient streaming operations
-            buffer = io.BytesIO(data)
-            buffer.seek(0)  # Reset position to beginning
-            self.storage[path] = buffer
-        else:
-            # Store raw bytes
-            self.storage[path] = data
+    async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
+        """
+        Save binary data to in-memory storage
+
+        Args:
+            data: Binary data to store
+            path: Storage path
+            temporary: If True, file will be deleted during cleanup
+        """
+        buffer = io.BytesIO(data)
+        buffer.seek(0)
+        file_data = buffer
+
+        # Store with metadata
+        self.storage[path] = {
+            "data": file_data,
+            "timestamp": time.time(),
+            "temporary": temporary,
+        }
 
         return self.get_url(path)
 
@@ -44,19 +53,18 @@ class MemoryStorage(StorageInterface):
         if path not in self.storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
-        stored_data = self.storage[path]
-        if isinstance(stored_data, io.BytesIO):
-            # Get data from BytesIO buffer
-            stored_data.seek(0)  # Reset position to beginning
-            return stored_data.getvalue()
-        else:
-            # Return raw bytes
-            return stored_data
+        stored_item = self.storage[path]
+        stored_data = stored_item["data"]
 
-    async def save_json(self, data: Dict[str, Any], path: str) -> str:
+        stored_data.seek(0)
+        return stored_data.getvalue()
+
+    async def save_json(
+        self, data: Dict[str, Any], path: str, temporary: bool = False
+    ) -> str:
         """Save JSON data to in-memory storage"""
         json_str = json.dumps(data)
-        return await self.save_bytes(json_str.encode("utf-8"), path)
+        return await self.save_bytes(json_str.encode("utf-8"), path, temporary)
 
     async def get_json(self, path: str) -> Dict[str, Any]:
         """Get JSON data from in-memory storage"""
@@ -98,16 +106,11 @@ class MemoryStorage(StorageInterface):
         if path not in self.storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
-        stored_data = self.storage[path]
-        if isinstance(stored_data, io.BytesIO):
-            # Return existing BytesIO buffer (reset position first)
-            stored_data.seek(0)
-            return stored_data
-        else:
-            # Create new BytesIO from raw bytes
-            buffer = io.BytesIO(stored_data)
-            buffer.seek(0)
-            return buffer
+        stored_data = self.storage[path]["data"]
+
+        # Return existing BytesIO buffer (reset position first)
+        stored_data.seek(0)
+        return stored_data
 
     def get_data_url(self, path: str) -> str:
         """
@@ -137,15 +140,17 @@ class MemoryStorage(StorageInterface):
         if path not in self.storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
-        stored_data = self.storage[path]
-        if isinstance(stored_data, io.BytesIO):
-            stored_data.seek(0)
-            return stored_data.getvalue()
-        else:
-            return stored_data
+        stored_data = self.storage[path]["data"]
+
+        stored_data.seek(0)
+        return stored_data.getvalue()
 
     async def process_stream(
-        self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str
+        self,
+        source_path: str,
+        processor: Callable[[BinaryIO], bytes],
+        target_path: str,
+        temporary: bool = False,
     ) -> str:
         """Process data in memory without temporary files"""
         # Get source as file-like object
@@ -155,9 +160,11 @@ class MemoryStorage(StorageInterface):
         result_bytes = processor(source_file_obj)
 
         # Save result
-        return await self.save_bytes(result_bytes, target_path)
+        return await self.save_bytes(result_bytes, target_path, temporary)
 
-    async def copy_from_url(self, url: str, target_path: str) -> str:
+    async def copy_from_url(
+        self, url: str, target_path: str, temporary: bool = False
+    ) -> str:
         """Download from URL directly to memory storage"""
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
@@ -165,7 +172,39 @@ class MemoryStorage(StorageInterface):
                     raise Exception(f"Failed to download {url}: {response.status}")
 
                 content = await response.read()
-                return await self.save_bytes(content, target_path)
+                return await self.save_bytes(content, target_path, temporary)
+
+    async def cleanup(self, max_age_seconds: Optional[float] = None) -> int:
+        """
+        Remove temporary files and optionally files older than max_age_seconds
+
+        Args:
+            max_age_seconds: If provided, removes files older than this many seconds
+
+        Returns:
+            Number of files removed
+        """
+        current_time = time.time()
+        removed_count = 0
+
+        for path in list(self.storage.keys()):
+            item = self.storage[path]
+
+            # Check if file is temporary
+            is_temporary = item["temporary"]
+
+            # Check if file is older than max_age_seconds
+            is_old = False
+            if max_age_seconds is not None:
+                age = current_time - item["timestamp"]
+                is_old = age > max_age_seconds
+
+            # Remove if temporary or too old
+            if is_temporary or is_old:
+                del self.storage[path]
+                removed_count += 1
+
+        return removed_count
 
     def _guess_mime_type(self, path: str) -> str:
         """Guess MIME type from file extension"""

@@ -119,11 +119,14 @@ class StorageInterface(ABC):
         pass
 
     @abstractmethod
-    async def cleanup(self, max_age_seconds: Optional[int] = None) -> None:
+    async def cleanup(self, max_age_seconds: Optional[float] = None) -> int:
         """
         Cleanup old files in storage
 
         Args:
             max_age_seconds: Maximum age of files to keep, if None, remove all files
+
+        Returns:
+            Number of files deleted
         """
         pass
