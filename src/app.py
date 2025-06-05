@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     yield
 
+
 app = FastAPI(
     lifespan=lifespan,
     title="Fire Recovery Backend",
@@ -29,7 +30,8 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "https://storage.googleapis.com"],
+    # allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "https://storage.googleapis.com"],
+    allow_origins=["*"],  # Allow all origins for development; restrict in production
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers\
