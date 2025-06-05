@@ -32,7 +32,8 @@ app.add_middleware(
     allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "https://storage.googleapis.com"],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+    allow_headers=["*"],  # Allow all headers\
+    expose_headers=["*"],  # Expose all headers to client
 )
 
 # Include routers
