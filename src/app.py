@@ -19,10 +19,6 @@ async def lifespan(app: FastAPI):
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     yield
 
-
-# Define STAC URL
-STAC_URL = "https://earth-search.aws.element84.com/v1/"
-
 app = FastAPI(
     lifespan=lifespan,
     title="Fire Recovery Backend",
