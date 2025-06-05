@@ -624,9 +624,13 @@ async def process_veg_map_resolution(
             print(f"Error processing vegetation map: {result.get('error_message')}")
             return
 
+        print("Vegetation map processing completed successfully.")
+
         # Upload the CSV to GCS
         blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
         matrix_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, blob_name)
+
+        print(f"Vegetation fire matrix uploaded to {matrix_url}")
 
         # Get geometry from the fire severity COG
         stac_item = await stac_manager.get_items_by_id_and_coarseness(
@@ -637,6 +641,8 @@ async def process_veg_map_resolution(
 
         # Get datetime from the fire severity COG
         datetime_str = stac_item["properties"]["datetime"]
+
+        print(f"Resolved vegetation map against fire severity for {fire_event_name}...")
 
         await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
