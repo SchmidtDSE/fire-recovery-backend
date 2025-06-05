@@ -29,7 +29,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "https://storage.googleapis.com/fire-recovery-web/*"],  # Frontend origin
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "https://storage.googleapis.com"],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
