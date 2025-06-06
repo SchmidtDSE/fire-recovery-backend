@@ -10,7 +10,6 @@ from rio_cogeo.profiles import cog_profiles
 import os
 from typing import List, Dict, Optional, Any
 from geojson_pydantic import Polygon
-from src.config.constants import STAC_URL, STAC_EPSG_CODE, SWIR_BAND, NIR_BAND
 from shapely.geometry import shape
 import numpy as np
 import planetary_computer
@@ -18,6 +17,8 @@ import hashlib
 import json
 from fastapi_cache.decorator import cache
 import pickle
+from src.stac.stac_endpoint_handler import StacEndpointHandler
+
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
@@ -25,6 +26,7 @@ RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 async def process_remote_sensing_data(
     job_id: str,
     geometry: Polygon,
+    stac_endpoint_handler: StacEndpointHandler,
     prefire_date_range: Optional[List[str]],
     postfire_date_range: Optional[List[str]],
 ) -> Dict[str, Any]:
@@ -34,9 +36,6 @@ async def process_remote_sensing_data(
     status_file = workspace["status_file"]
 
     try:
-        # Access STAC catalog
-        catalog = PystacClient.open(STAC_URL, modifier=planetary_computer.sign_inplace)
-
         # Validate input date ranges
         if not prefire_date_range or not postfire_date_range:
             raise ValueError("Both prefire and postfire date ranges are required")
@@ -44,8 +43,25 @@ async def process_remote_sensing_data(
         # Calculate the full date range for a single query
         full_date_range = [prefire_date_range[0], postfire_date_range[1]]
 
-        # Fetch all data in one go
-        stacked_data = fetch_stac_data(catalog, geometry, full_date_range)
+        # Fetch all data using the endpoint handler
+        items, endpoint_config = await stac_endpoint_handler.search_items(
+            geometry=geometry,
+            date_range=full_date_range,
+            collections=["sentinel-2-l2a"],
+        )
+
+        # Get the band names and EPSG code for this endpoint
+        nir_band, swir_band = stac_endpoint_handler.get_band_names(endpoint_config)
+        epsg_code = stac_endpoint_handler.get_epsg_code(endpoint_config)
+
+        # Fetch data using these parameters
+        stacked_data = stackstac.stack(
+            items,
+            epsg=epsg_code,
+            assets=[swir_band, nir_band],
+            bounds=get_buffered_bounds(geometry, 100),
+            chunksize=(-1, 1, 512, 512),
+        )
 
         # Split into pre and post fire datasets
         prefire_data = subset_data_by_date_range(stacked_data, prefire_date_range)
@@ -55,7 +71,9 @@ async def process_remote_sensing_data(
         print(f"Postfire shape: {postfire_data.shape}, dims: {postfire_data.dims}")
 
         # Calculate burn indices
-        indices = calculate_burn_indices(prefire_data, postfire_data)
+        indices = calculate_burn_indices(
+            prefire_data, postfire_data, nir_band, swir_band
+        )
 
         # Create COGs for each metric
         cog_results = {}
@@ -141,41 +159,43 @@ def get_buffered_bounds(geometry: Polygon, buffer: float):
     return buffered_bounds
 
 
-def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]):
-    """Fetch and stack STAC items for the given bbox and date range"""
-    search = {
-        "intersects": geometry,
-        "datetime": "/".join(date_range),
-        "collections": ["sentinel-2-l2a"],
-    }
+# def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]):
+#     """Fetch and stack STAC items for the given bbox and date range"""
+#     search = {
+#         "intersects": geometry,
+#         "datetime": "/".join(date_range),
+#         "collections": ["sentinel-2-l2a"],
+#     }
 
-    items = catalog.search(**search).item_collection()
+#     items = catalog.search(**search).item_collection()
 
-    buffered_bounds = get_buffered_bounds(geometry, 100)
+#     buffered_bounds = get_buffered_bounds(geometry, 100)
 
-    stacked = stackstac.stack(
-        items,
-        epsg=STAC_EPSG_CODE,
-        assets=[SWIR_BAND, NIR_BAND],
-        bounds=buffered_bounds,
-        # resolution=20,
-        chunksize=(
-            -1,
-            1,
-            512,
-            512,
-        ),  # Recommended by stackstac docs if we're immediately reducing time (which we are)
-    )
+#     stacked = stackstac.stack(
+#         items,
+#         epsg=STAC_EPSG_CODE,
+#         assets=[SWIR_BAND, NIR_BAND],
+#         bounds=buffered_bounds,
+#         # resolution=20,
+#         chunksize=(
+#             -1,
+#             1,
+#             512,
+#             512,
+#         ),  # Recommended by stackstac docs if we're immediately reducing time (which we are)
+#     )
 
-    return stacked
+#     return stacked
 
 
-def calculate_nbr(data):
+def calculate_nbr(
+    data: xr.DataArray, nir_band_name: str, swir_band_name: str
+) -> xr.DataArray:
     """Calculate Normalized Burn Ratio for a dataset"""
-    nir_band = data.sel(band=NIR_BAND)
+    nir_band = data.sel(band=nir_band_name)
     nir = nir_band.median(dim="time")
 
-    swir_band = data.sel(band=SWIR_BAND)
+    swir_band = data.sel(band=swir_band_name)
     swir = swir_band.median(dim="time")
 
     return (nir - swir) / (nir + swir)
@@ -229,7 +249,7 @@ def write_to_cache(cache_key, result):
 #     namespace="burn_indices",
 #     expire=60 * 60 * 24 * 7,  # Cache for 7 days
 # )
-def calculate_burn_indices(prefire_data, postfire_data):
+def calculate_burn_indices(prefire_data, postfire_data, nir_band_name, swir_band_name):
     """Calculate various burn indices from pre and post fire data"""
 
     # First, check local cache to see if we have this pickled
@@ -242,8 +262,8 @@ def calculate_burn_indices(prefire_data, postfire_data):
         return cached_data
 
     # Calculate NBR for both periods
-    prefire_nbr = calculate_nbr(prefire_data)
-    postfire_nbr = calculate_nbr(postfire_data)
+    prefire_nbr = calculate_nbr(prefire_data, nir_band_name, swir_band_name)
+    postfire_nbr = calculate_nbr(postfire_data, nir_band_name, swir_band_name)
     prefire_nbr, postfire_nbr = xr.align(prefire_nbr, postfire_nbr)
 
     # Calculate dNBR

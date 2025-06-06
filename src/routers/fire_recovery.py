@@ -35,6 +35,7 @@ from typing import Dict, Any, List, Tuple, ContextManager, Generator
 from src.process.resolve_veg import process_veg_map
 from fastapi_cache.decorator import cache
 from src.util.api_cache import request_key_builder
+from src.stac.stac_endpoint_handler import StacEndpointHandler
 
 
 @contextmanager
@@ -265,14 +266,15 @@ async def process_fire_severity(
     prefire_date_range: list[str],
     postfire_date_range: list[str],
 ):
-    """
-    Process fire severity, upload results, and create STAC assets
-    """
     try:
-        # 1. Process the data
+        # Create STAC endpoint handler
+        stac_handler = StacEndpointHandler()
+
+        # Process the data
         result = await process_remote_sensing_data(
             job_id=job_id,
             geometry=geometry,
+            stac_endpoint_handler=stac_handler,
             prefire_date_range=prefire_date_range,
             postfire_date_range=postfire_date_range,
         )
