@@ -11,7 +11,7 @@
     {
       "id": "ELEMENT_84",
       "name": "Element 84",
-      "url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a",
+      "url": "https://earth-search.aws.element84.com/v1/",
       "swir_band": "swir22",
       "nir_band": "nir08",
       "epsg_code": 4326
