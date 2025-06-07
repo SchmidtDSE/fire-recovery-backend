@@ -159,35 +159,6 @@ def get_buffered_bounds(geometry: Polygon, buffer: float):
     return buffered_bounds
 
 
-# def fetch_stac_data(catalog: PystacClient, geometry: dict, date_range: List[str]):
-#     """Fetch and stack STAC items for the given bbox and date range"""
-#     search = {
-#         "intersects": geometry,
-#         "datetime": "/".join(date_range),
-#         "collections": ["sentinel-2-l2a"],
-#     }
-
-#     items = catalog.search(**search).item_collection()
-
-#     buffered_bounds = get_buffered_bounds(geometry, 100)
-
-#     stacked = stackstac.stack(
-#         items,
-#         epsg=STAC_EPSG_CODE,
-#         assets=[SWIR_BAND, NIR_BAND],
-#         bounds=buffered_bounds,
-#         # resolution=20,
-#         chunksize=(
-#             -1,
-#             1,
-#             512,
-#             512,
-#         ),  # Recommended by stackstac docs if we're immediately reducing time (which we are)
-#     )
-
-#     return stacked
-
-
 def calculate_nbr(
     data: xr.DataArray, nir_band_name: str, swir_band_name: str
 ) -> xr.DataArray:
