@@ -2,6 +2,7 @@ import os
 import tempfile
 from typing import Dict, List, Any, Optional, Tuple
 
+from geojson_pydantic import Polygon
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -16,6 +17,7 @@ import tempfile
 from typing import Dict, List, Any, Optional, Tuple
 import hashlib
 import pickle
+from geopandas import GeoDataFrame
 
 PROJECTED_CRS = "EPSG:32611"  # UTM 11N
 
@@ -135,7 +137,10 @@ def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
 
 
 def create_severity_masks(
-    fire_ds: xr.Dataset, data_var: str, severity_breaks: List[float]
+    fire_ds: xr.Dataset,
+    data_var: str,
+    severity_breaks: List[float],
+    boundary: GeoDataFrame,
 ) -> Dict[str, xr.DataArray]:
     """
     Create masks for different fire severity classes
@@ -149,6 +154,13 @@ def create_severity_masks(
         Dictionary of masks for each severity class
     """
     fire_data = fire_ds[data_var]
+
+    # filter fire data to the specified boundary
+    fire_data = fire_data.rio.clip(
+        boundary.geometry.apply(lambda geom: geom.__geo_interface__),
+        boundary.crs,
+        drop=True,
+    )
 
     masks = {
         "unburned": fire_data.where((fire_data >= -0.1) & (fire_data < 0.1), 0),
@@ -285,49 +297,12 @@ def generate_cache_key(veg_gpkg_path: str, fire_ds: xr.Dataset) -> str:
     return f"veg_fire_matrix:{veg_key}:{fire_hash}"
 
 
-# def attempt_read_from_cache(cache_key: str):
-#     """Try to read cached result from disk"""
-#     # Create cache directory if it doesn't exist
-#     cache_dir = "tmp/cache"
-#     os.makedirs(cache_dir, exist_ok=True)
-
-#     cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-#     # Check if cached result exists
-#     if os.path.exists(cache_file):
-#         try:
-#             print(f"Loading cached result from {cache_file}")
-#             with open(cache_file, "rb") as f:
-#                 return pickle.loads(f.read())
-#         except Exception as e:
-#             print(f"Error loading cached result: {e}")
-
-#     return None
-
-
-# def write_to_cache(cache_key: str, result):
-#     """Write result to cache"""
-#     # Create cache directory if it doesn't exist
-#     cache_dir = "tmp/cache"
-#     os.makedirs(cache_dir, exist_ok=True)
-
-#     cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-#     try:
-#         print(f"Saving result to cache: {cache_file}")
-#         with open(cache_file, "wb") as f:
-#             f.write(
-#                 pickle.dumps(result, protocol=-1)
-#             )  # Use highest protocol for efficiency
-#     except Exception as e:
-#         print(f"Error caching result: {e}")
-
-
 async def create_veg_fire_matrix(
     original_veg_gpkg_url: str,
     veg_gpkg_path: str,
     fire_cog_path: str,
-    severity_breaks: List[float] = None,
+    severity_breaks: List[float],
+    geojson_path: str,
 ) -> pd.DataFrame:
     """
     Create a matrix showing hectares of each vegetation type affected by different fire severity levels.
@@ -340,26 +315,8 @@ async def create_veg_fire_matrix(
     Returns:
         DataFrame with vegetation types as rows and severity classes as columns
     """
-    # Default severity breaks if none provided
-    if severity_breaks is None:
-        severity_breaks = [
-            0.27,
-            0.66,
-        ]  # Default RBR breaks for low/moderate and moderate/high
-
     # Load fire data and get metadata
     fire_ds, metadata = load_fire_data(fire_cog_path)
-
-    # Generate cache key
-    # cache_key = generate_cache_key(original_veg_gpkg_url, fire_ds)
-
-    # # Try to load from cache first
-    # cached_result = attempt_read_from_cache(cache_key)
-    # if cached_result is not None:
-    #     print(f"Using cached vegetation fire matrix result")
-    #     return cached_result
-
-    # print(f"No cache found. Computing vegetation fire matrix...")
 
     # Extract original fire data for mean severity calculations
     fire_data = fire_ds[metadata["data_var"]]
@@ -372,8 +329,15 @@ async def create_veg_fire_matrix(
     )
     gdf = gdf.to_crs(PROJECTED_CRS)
 
+    # Load GeoJSON boundary as Polygon
+    with open(geojson_path, "r") as f:
+        geojson_data = f.read()
+    boundary_projected = gpd.read_file(geojson_data).to_crs(PROJECTED_CRS)
+
     # Create severity masks
-    masks = create_severity_masks(fire_ds, metadata["data_var"], severity_breaks)
+    masks = create_severity_masks(
+        fire_ds, metadata["data_var"], severity_breaks, boundary_projected
+    )
 
     # Add original fire data to masks for mean calculation
     masks["original"] = fire_data
@@ -453,7 +417,8 @@ async def process_veg_map(
     fire_cog_url: str,
     output_dir: str,
     job_id: str,
-    severity_breaks: List[float] = None,
+    severity_breaks: List[float],
+    geojson_url: str,
 ) -> Dict[str, Any]:
     """
     Process vegetation map against fire severity COG
@@ -476,6 +441,7 @@ async def process_veg_map(
         # Download input files
         veg_gpkg_path = await download_file_to_temp(veg_gpkg_url, suffix=".gpkg")
         fire_cog_path = await download_file_to_temp(fire_cog_url, suffix=".tif")
+        geojson_path = await download_file_to_temp(geojson_url, suffix=".geojson")
 
         # Process the vegetation map against fire severity
         result_df = await create_veg_fire_matrix(
@@ -483,6 +449,7 @@ async def process_veg_map(
             veg_gpkg_path=veg_gpkg_path,
             fire_cog_path=fire_cog_path,
             severity_breaks=severity_breaks,
+            geojson_path=geojson_path,
         )
 
         # Save the result to CSV (already formatted for frontend)

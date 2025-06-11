@@ -178,6 +178,11 @@ class VegMapResolveRequest(BaseModel):
     job_id: str = Field(
         ..., description="Job ID of the original fire severity analysis"
     )
+    severity_breaks: List[float] = Field(
+        ...,
+        description="List of classifation breaks for discrete fire severity classification (e.g. [0, .2, .4, .8])",
+    )
+    geojson_url: str = Field(..., description="URL to the GeoJSON of the fire boundary")
 
 
 class GeoJSONUploadRequest(BaseModel):
@@ -587,6 +592,8 @@ async def resolve_against_veg_map(
         fire_event_name=request.fire_event_name,
         veg_gpkg_url=request.veg_gpkg_url,
         fire_cog_url=request.fire_cog_url,
+        severity_breaks=request.severity_breaks,
+        geojson_url=request.geojson_url,
     )
 
     return {
@@ -601,6 +608,8 @@ async def process_veg_map_resolution(
     fire_event_name: str,
     veg_gpkg_url: str,
     fire_cog_url: str,
+    severity_breaks: List[float],
+    geojson_url: str,
 ):
     """
     Process vegetation map against fire severity COG to create area matrix.
@@ -616,6 +625,8 @@ async def process_veg_map_resolution(
             fire_cog_url=fire_cog_url,
             output_dir=output_dir,
             job_id=job_id,
+            severity_breaks=severity_breaks,
+            geojson_url=geojson_url,
         )
 
         if result["status"] != "completed":
