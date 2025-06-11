@@ -285,42 +285,42 @@ def generate_cache_key(veg_gpkg_path: str, fire_ds: xr.Dataset) -> str:
     return f"veg_fire_matrix:{veg_key}:{fire_hash}"
 
 
-def attempt_read_from_cache(cache_key: str):
-    """Try to read cached result from disk"""
-    # Create cache directory if it doesn't exist
-    cache_dir = "tmp/cache"
-    os.makedirs(cache_dir, exist_ok=True)
+# def attempt_read_from_cache(cache_key: str):
+#     """Try to read cached result from disk"""
+#     # Create cache directory if it doesn't exist
+#     cache_dir = "tmp/cache"
+#     os.makedirs(cache_dir, exist_ok=True)
 
-    cache_file = f"{cache_dir}/{cache_key}.pkl"
+#     cache_file = f"{cache_dir}/{cache_key}.pkl"
 
-    # Check if cached result exists
-    if os.path.exists(cache_file):
-        try:
-            print(f"Loading cached result from {cache_file}")
-            with open(cache_file, "rb") as f:
-                return pickle.loads(f.read())
-        except Exception as e:
-            print(f"Error loading cached result: {e}")
+#     # Check if cached result exists
+#     if os.path.exists(cache_file):
+#         try:
+#             print(f"Loading cached result from {cache_file}")
+#             with open(cache_file, "rb") as f:
+#                 return pickle.loads(f.read())
+#         except Exception as e:
+#             print(f"Error loading cached result: {e}")
 
-    return None
+#     return None
 
 
-def write_to_cache(cache_key: str, result):
-    """Write result to cache"""
-    # Create cache directory if it doesn't exist
-    cache_dir = "tmp/cache"
-    os.makedirs(cache_dir, exist_ok=True)
+# def write_to_cache(cache_key: str, result):
+#     """Write result to cache"""
+#     # Create cache directory if it doesn't exist
+#     cache_dir = "tmp/cache"
+#     os.makedirs(cache_dir, exist_ok=True)
 
-    cache_file = f"{cache_dir}/{cache_key}.pkl"
+#     cache_file = f"{cache_dir}/{cache_key}.pkl"
 
-    try:
-        print(f"Saving result to cache: {cache_file}")
-        with open(cache_file, "wb") as f:
-            f.write(
-                pickle.dumps(result, protocol=-1)
-            )  # Use highest protocol for efficiency
-    except Exception as e:
-        print(f"Error caching result: {e}")
+#     try:
+#         print(f"Saving result to cache: {cache_file}")
+#         with open(cache_file, "wb") as f:
+#             f.write(
+#                 pickle.dumps(result, protocol=-1)
+#             )  # Use highest protocol for efficiency
+#     except Exception as e:
+#         print(f"Error caching result: {e}")
 
 
 async def create_veg_fire_matrix(
@@ -351,15 +351,15 @@ async def create_veg_fire_matrix(
     fire_ds, metadata = load_fire_data(fire_cog_path)
 
     # Generate cache key
-    cache_key = generate_cache_key(original_veg_gpkg_url, fire_ds)
+    # cache_key = generate_cache_key(original_veg_gpkg_url, fire_ds)
 
-    # Try to load from cache first
-    cached_result = attempt_read_from_cache(cache_key)
-    if cached_result is not None:
-        print(f"Using cached vegetation fire matrix result")
-        return cached_result
+    # # Try to load from cache first
+    # cached_result = attempt_read_from_cache(cache_key)
+    # if cached_result is not None:
+    #     print(f"Using cached vegetation fire matrix result")
+    #     return cached_result
 
-    print(f"No cache found. Computing vegetation fire matrix...")
+    # print(f"No cache found. Computing vegetation fire matrix...")
 
     # Extract original fire data for mean severity calculations
     fire_data = fire_ds[metadata["data_var"]]
@@ -443,7 +443,7 @@ async def create_veg_fire_matrix(
     )
 
     # Cache the result before returning
-    write_to_cache(cache_key, frontend_df)
+    # write_to_cache(cache_key, frontend_df)
 
     return frontend_df
 

@@ -270,7 +270,7 @@ async def process_fire_severity(
         # Create STAC endpoint handler
         stac_handler = StacEndpointHandler()
 
-        # Process the data
+        # 1. Process the data
         result = await process_remote_sensing_data(
             job_id=job_id,
             geometry=geometry,
@@ -278,10 +278,6 @@ async def process_fire_severity(
             prefire_date_range=prefire_date_range,
             postfire_date_range=postfire_date_range,
         )
-
-        if result["status"] != "completed":
-            # Handle error case
-            return
 
         # 2. Upload the COGs to GCS
         cog_urls = {}  # Store all COG URLs in a dictionary
