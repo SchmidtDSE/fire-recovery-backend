@@ -249,11 +249,12 @@ class STACGeoParquetManager:
         self,
         fire_event_name: str,
         job_id: str,
-        fire_veg_matrix_url: str,
-        geometry: Dict[str, Any],  # Add geometry parameter
-        bbox: List[float],  # Add bbox parameter
+        fire_veg_matrix_csv_url: str,
+        fire_veg_matrix_json_url: str,
+        geometry: Dict[str, Any],
+        bbox: List[float],
         datetime_str: str,
-    ) -> Dict[str, Any]:  # Add return type
+    ) -> Dict[str, Any]:
         """
         Create a STAC item for a vegetation/fire severity matrix.
 
@@ -286,11 +287,18 @@ class STACGeoParquetManager:
             "geometry": geometry,
             "bbox": bbox,
             "assets": {
-                "fire_veg_matrix": {
-                    "href": fire_veg_matrix_url,
+                "fire_veg_matrix_csv": {
+                    "href": fire_veg_matrix_csv_url,
                     "type": "text/csv",
                     "title": "Vegetation Fire Severity Matrix",
                     "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
+                    "roles": ["data"],
+                },
+                "fire_veg_matrix_json": {
+                    "href": fire_veg_matrix_json_url,
+                    "type": "application/json",
+                    "title": "Vegetation Fire Severity Matrix (JSON)",
+                    "description": "JSON representation of the vegetation fire severity matrix (for easier integration with frontend)",
                     "roles": ["data"],
                 },
             },

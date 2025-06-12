@@ -221,7 +221,7 @@ class FireSeverityResponse(BaseResponse):
 
 
 class VegMapMatrixResponse(BaseResponse):
-    fire_veg_matrix_url: Optional[str] = None
+    fire_veg_matrix_csv_url: Optional[str] = None
     fire_veg_matrix_json_url: Optional[str] = None
 
 
@@ -661,7 +661,8 @@ async def process_veg_map_resolution(
         await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            fire_veg_matrix_url=csv_url,
+            fire_veg_matrix_csv_url=csv_url,
+            fire_veg_matrix_json_url=json_url,
             geometry=geometry,
             bbox=bbox,
             datetime_str=datetime_str,
@@ -698,12 +699,14 @@ async def get_veg_map_result(fire_event_name: str, job_id: str):
         )
 
     # Item found, extract the matrix URL
-    matrix_url = stac_item["assets"]["fire_veg_matrix"]["href"]
+    matrix_csv_url = stac_item["assets"]["fire_veg_matrix_csv"]["href"]
+    matrix_json_url = stac_item["assets"]["fire_veg_matrix_json"]["href"]
 
     # Return the completed response
     return VegMapMatrixResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        fire_veg_matrix_url=matrix_url,
+        fire_veg_matrix_csv_url=matrix_csv_url,
+        fire_veg_matrix_json_url=matrix_json_url,
     )
