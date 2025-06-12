@@ -108,15 +108,6 @@ def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
     Returns:
         Tuple of (xarray dataset, dict with metadata)
     """
-    # Get basic metadata with rasterio
-    with rasterio.open(fire_cog_path) as src:
-        crs = src.crs
-        transform = src.transform
-
-        # Calculate pixel area in hectares (assuming projection units are meters)
-        pixel_width = abs(src.transform.a)
-        pixel_height = abs(src.transform.e)
-        pixel_area_ha = (pixel_width * pixel_height) / 10000  # Convert m² to ha
 
     # Load as xarray dataset for analysis
     fire_ds = xr.open_dataset(fire_cog_path, engine="rasterio")
@@ -124,9 +115,31 @@ def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
     # Extract the main data variable
     data_var = list(fire_ds.data_vars)[0]
 
+    # Project to UTM coordinates if needed
+    if fire_ds.rio.crs != PROJECTED_CRS:
+        fire_ds = fire_ds.rio.reproject(PROJECTED_CRS)
+
+    # Now calculate pixel area in projected coordinates
+    with rasterio.open(fire_cog_path) as src:
+        if src.crs != PROJECTED_CRS:
+            # Get the projected transform after reprojection
+            projected_transform = fire_ds.rio.transform()
+            pixel_width = abs(projected_transform[0])
+            pixel_height = abs(projected_transform[4])
+        else:
+            # Original data is already projected
+            pixel_width = abs(src.transform.a)
+            pixel_height = abs(src.transform.e)
+
+    # Now we can safely calculate area in hectares
+    pixel_area_ha = (pixel_width * pixel_height) / 10000  # Convert m² to ha
+
+    # Add assertion to verify CRS
+    assert fire_ds.rio.crs == PROJECTED_CRS, "Fire data must be in UTM projection"
+
     metadata = {
-        "crs": crs,
-        "transform": transform,
+        "crs": PROJECTED_CRS,  # Always use projected CRS in metadata
+        "transform": fire_ds.rio.transform(),
         "pixel_area_ha": pixel_area_ha,
         "data_var": data_var,
         "x_coord": "x" if "x" in fire_ds.coords else "longitude",
@@ -137,23 +150,15 @@ def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
 
 
 def create_severity_masks(
-    fire_ds: xr.Dataset,
-    data_var: str,
+    fire_data: xr.Dataset,
     severity_breaks: List[float],
     boundary: GeoDataFrame,
-) -> Dict[str, xr.DataArray]:
+) -> Dict[str, xr.Dataset]:
     """
     Create masks for different fire severity classes
-
-    Args:
-        fire_ds: Fire severity dataset
-        data_var: Name of the data variable in the dataset
-        severity_breaks: List of breaks [low/moderate, moderate/high]
-
-    Returns:
-        Dictionary of masks for each severity class
     """
-    fire_data = fire_ds[data_var]
+    assert fire_data.rio.crs is not None, "Fire data must have a CRS defined"
+    assert fire_data.rio.crs.to_string() == PROJECTED_CRS
 
     # filter fire data to the specified boundary
     fire_data = fire_data.rio.clip(
@@ -162,21 +167,31 @@ def create_severity_masks(
         drop=True,
     )
 
+    UNBURNED_CLASSIFICATION_UPPER_BOUND = severity_breaks[0]
+    LOW_CLASSIFICATION_UPPER_BOUND = severity_breaks[1]
+    MED_CLASSIFICATION_UPPER_BOUND = severity_breaks[2]
+
+    # Create masks with actual values where condition is met, np.nan elsewhere
     masks = {
-        "unburned": fire_data.where((fire_data >= -0.1) & (fire_data < 0.1), 0),
+        "unburned": fire_data.where(
+            (fire_data >= -1) & (fire_data < UNBURNED_CLASSIFICATION_UPPER_BOUND),
+            np.nan,
+        ),
         "low": fire_data.where(
-            (fire_data >= 0.1) & (fire_data < severity_breaks[0]), 0
+            (fire_data >= UNBURNED_CLASSIFICATION_UPPER_BOUND)
+            & (fire_data < LOW_CLASSIFICATION_UPPER_BOUND),
+            np.nan,
         ),
         "moderate": fire_data.where(
-            (fire_data >= severity_breaks[0]) & (fire_data < severity_breaks[1]), 0
+            (fire_data >= LOW_CLASSIFICATION_UPPER_BOUND)
+            & (fire_data < MED_CLASSIFICATION_UPPER_BOUND),
+            np.nan,
         ),
-        "high": fire_data.where(fire_data >= severity_breaks[1], 0),
+        "high": fire_data.where(fire_data >= MED_CLASSIFICATION_UPPER_BOUND, np.nan),
     }
 
-    # Convert to projected
-    for severity, mask in masks.items():
-        if mask.rio.crs != PROJECTED_CRS:
-            masks[severity] = mask.rio.reproject(PROJECTED_CRS)
+    # Keep original fire data for overall statistics
+    masks["original"] = fire_data
 
     return masks
 
@@ -204,62 +219,70 @@ def calculate_zonal_stats(
         {"geometry": [veg_subset.unary_union]}, crs=PROJECTED_CRS
     )
 
-    # First calculate area statistics for each severity class
+    # Calculate statistics for each severity class
     for severity, mask in masks.items():
         if severity == "original":
-            continue  # Skip original for area calculations
+            continue  # Process original separately
 
         try:
-            # Ensure the mask is in the correct CRS
-            assert mask.rio.crs.to_string() == PROJECTED_CRS, (
-                f"Mask for {severity} does not match projected CRS"
-            )
-
-            # Perform zonal statistics on the unified geometry
+            # Get count, mean, std for this severity class
             stats = mask.xvec.zonal_stats(
                 unified_geometry.geometry,
                 x_coords=x_coord,
                 y_coords=y_coord,
-                stats="sum",
+                stats=["count", "mean", "std"],
                 all_touched=True,
             )
 
-            # Extract numeric value from DataArray and handle NaNs
             if stats is not None and not np.isnan(stats.values).all():
-                sum_value = float(stats.sum(skipna=True).values)
-            else:
-                sum_value = 0.0
+                # Extract count (index 0 for 'count' stat)
+                pixel_count = float(stats.isel(zonal_statistics=0).values)
 
-            # Calculate hectares
-            results[f"{severity}_ha"] = sum_value * pixel_area_ha
+                # Calculate hectares from pixel count
+                results[f"{severity}_ha"] = pixel_count * pixel_area_ha
+
+                # Also store mean and std for each class if needed
+                results[f"{severity}_mean"] = float(
+                    stats.isel(zonal_statistics=1).values
+                )
+                results[f"{severity}_std"] = float(
+                    stats.isel(zonal_statistics=2).values
+                )
+            else:
+                results[f"{severity}_ha"] = 0.0
+                results[f"{severity}_mean"] = 0.0
+                results[f"{severity}_std"] = 0.0
 
         except Exception as e:
             print(f"Error calculating {severity} stats: {str(e)}")
             results[f"{severity}_ha"] = 0.0
+            results[f"{severity}_mean"] = 0.0
+            results[f"{severity}_std"] = 0.0
 
-    # Now calculate mean and std dev from the original fire data
+    # Calculate overall statistics from the original data
     try:
         original_mask = masks["original"]
         stats = original_mask.xvec.zonal_stats(
             unified_geometry.geometry,
             x_coords=x_coord,
             y_coords=y_coord,
-            stats=["mean", "std"],
+            stats=["mean", "std", "count"],
             all_touched=True,
         )
 
         if stats is not None and not np.isnan(stats.values).all():
-            results["mean_severity"] = float(
-                stats.isel(zonal_statistics=0).values
-            )  # mean
-            results["std_dev"] = float(stats.isel(zonal_statistics=1).values)  # std
+            results["mean_severity"] = float(stats.isel(zonal_statistics=0).values)
+            results["std_dev"] = float(stats.isel(zonal_statistics=1).values)
+            results["total_pixel_count"] = float(stats.isel(zonal_statistics=2).values)
         else:
             results["mean_severity"] = 0.0
             results["std_dev"] = 0.0
+            results["total_pixel_count"] = 0.0
     except Exception as e:
-        print(f"Error calculating mean/std stats: {str(e)}")
+        print(f"Error calculating overall stats: {str(e)}")
         results["mean_severity"] = 0.0
         results["std_dev"] = 0.0
+        results["total_pixel_count"] = 0.0
 
     return results
 
@@ -320,30 +343,33 @@ async def create_veg_fire_matrix(
 
     # Extract original fire data for mean severity calculations
     fire_data = fire_ds[metadata["data_var"]]
-    if fire_data.rio.crs != PROJECTED_CRS:
-        fire_data = fire_data.rio.reproject(PROJECTED_CRS)
+    assert fire_data.rio.crs == PROJECTED_CRS, "Fire data should already be projected"
 
     # Load vegetation data
-    gdf = load_vegetation_data(
+    veg_gdf = load_vegetation_data(
         veg_gpkg_path, original_url=original_veg_gpkg_url, crs=metadata["crs"]
     )
-    gdf = gdf.to_crs(PROJECTED_CRS)
+    veg_gdf = veg_gdf.to_crs(PROJECTED_CRS)
 
     # Load GeoJSON boundary as Polygon
     with open(geojson_path, "r") as f:
         geojson_data = f.read()
     boundary_projected = gpd.read_file(geojson_data).to_crs(PROJECTED_CRS)
 
+    # Clip vegetation data to the boundary
+    fire_boundary_geom = boundary_projected.geometry.unary_union
+    buffer_distance = 100  # Buffer in projection units (meters)
+    fire_boundary_buffered = fire_boundary_geom.buffer(buffer_distance)
+    veg_gdf = gpd.clip(veg_gdf, fire_boundary_buffered)
+
     # Create severity masks
-    masks = create_severity_masks(
-        fire_ds, metadata["data_var"], severity_breaks, boundary_projected
-    )
+    masks = create_severity_masks(fire_data, severity_breaks, boundary_projected)
 
     # Add original fire data to masks for mean calculation
     masks["original"] = fire_data
 
     # Initialize result DataFrame with float dtype to avoid warnings
-    veg_types = gdf["veg_type"].unique()
+    veg_types = veg_gdf["veg_type"].unique()
     result = pd.DataFrame(
         0.0,
         index=veg_types,
@@ -352,12 +378,12 @@ async def create_veg_fire_matrix(
     )
 
     # Get total park area for percentage calculations
-    total_park_area = gdf.geometry.area.sum() / 10000  # Convert m² to ha
+    total_park_area = veg_gdf.geometry.area.sum() / 10000  # Convert m² to ha
 
     # Update the result with calculated statistics
     for veg_type in veg_types:
         # Filter to just this vegetation type
-        veg_subset = gdf[gdf["veg_type"] == veg_type]
+        veg_subset = veg_gdf[veg_gdf["veg_type"] == veg_type]
 
         # Calculate total area of this vegetation type in hectares
         total_area_ha = float(veg_subset.geometry.area.sum() / 10000)
