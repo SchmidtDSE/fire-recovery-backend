@@ -18,6 +18,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import hashlib
 import pickle
 from geopandas import GeoDataFrame
+import json
 
 PROJECTED_CRS = "EPSG:32611"  # UTM 11N
 
@@ -212,10 +213,10 @@ def calculate_zonal_stats(
 
     # Calculate statistics for each severity class
     severity_pixel_counts = {}
-    for severity, mask in masks.items():
-        if severity == "original":
-            continue
+    severity_classes = ["unburned", "low", "moderate", "high"]
 
+    for severity in severity_classes:
+        mask = masks[severity]
         try:
             stats = mask.xvec.zonal_stats(
                 unified_geometry.geometry,
@@ -278,6 +279,40 @@ def calculate_zonal_stats(
     return results
 
 
+def create_veg_json_structure(result_df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Convert the result DataFrame to the JSON structure for visualization
+    """
+    total_park_area = result_df["total_ha"].sum()
+
+    vegetation_communities = []
+
+    for veg_type in result_df.index:
+        row = result_df.loc[veg_type]
+        color = "#" + format(hash(str(veg_type)) % 0xFFFFFF, "06x")
+
+        community_data = {
+            "name": str(veg_type),
+            "color": color,
+            "total_hectares": round(row["total_ha"], 2),
+            "percent_of_park": round((row["total_ha"] / total_park_area) * 100, 2),
+            "severity_breakdown": {},
+        }
+
+        # Build severity breakdown using the existing percentage columns
+        for severity in ["unburned", "low", "moderate", "high"]:
+            community_data["severity_breakdown"][severity] = {
+                "hectares": round(row[f"{severity}_ha"], 2),
+                "percent": round(row[f"{severity}_percent"], 2),
+                "mean_severity": round(row.get(f"{severity}_mean", 0), 3),
+                "std_dev": round(row.get(f"{severity}_std", 0), 3),
+            }
+
+        vegetation_communities.append(community_data)
+
+    return {"vegetation_communities": vegetation_communities}
+
+
 def add_percentage_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add percentage columns to the results dataframe
@@ -328,9 +363,14 @@ async def create_veg_fire_matrix(
     fire_cog_path: str,
     severity_breaks: List[float],
     geojson_path: str,
-) -> pd.DataFrame:
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Create a matrix showing hectares of each vegetation type affected by different fire severity levels.
+
+    Returns:
+        Tuple containing:
+        - DataFrame for CSV export (frontend_df with colors and percentages)
+        - Dictionary for JSON export (structured for visualization)
     """
     # Load fire data and get metadata
     fire_ds, metadata = load_fire_data(fire_cog_path)
@@ -361,22 +401,15 @@ async def create_veg_fire_matrix(
 
     # Create severity masks
     masks = create_severity_masks(fire_data, severity_breaks, boundary_projected)
-
-    # Add original fire data to masks for mean calculation
     masks["original"] = fire_data
 
     # Initialize result DataFrame with float dtype to avoid warnings
     veg_types = veg_gdf["veg_type"].unique()
-    result = pd.DataFrame(
-        0.0,
-        index=veg_types,
-        columns=["unburned_ha", "low_ha", "moderate_ha", "high_ha", "total_ha"],
-        dtype=float,
-    )
+    severity_columns = ["unburned_ha", "low_ha", "moderate_ha", "high_ha", "total_ha"]
+    result = pd.DataFrame(0.0, index=veg_types, columns=severity_columns, dtype=float)
 
-    # Update the result with calculated statistics
+    # Process each vegetation type
     for veg_type in veg_types:
-        # Filter to just this vegetation type
         veg_subset = veg_gdf[veg_gdf["veg_type"] == veg_type]
 
         # Calculate zonal statistics for each severity class
@@ -388,49 +421,30 @@ async def create_veg_fire_matrix(
             metadata["pixel_area_ha"],
         )
 
-        # Calculate total area from pixel count (consistent with severity calculations)
+        # Update result with all calculated statistics
         total_pixel_count = stats.get("total_pixel_count", 0)
-        total_area_ha = total_pixel_count * metadata["pixel_area_ha"]
-        result.loc[veg_type, "total_ha"] = total_area_ha
+        result.loc[veg_type, "total_ha"] = total_pixel_count * metadata["pixel_area_ha"]
 
-        # Update result with calculated statistics
+        # Update all columns that exist in both stats and result
         for key, value in stats.items():
             if key in result.columns:
                 result.loc[veg_type, key] = float(value)
 
-        # Add mean and std dev directly from zonal stats
+        # Add additional stats columns for JSON structure
+        for severity in ["unburned", "low", "moderate", "high"]:
+            result.loc[veg_type, f"{severity}_mean"] = stats.get(f"{severity}_mean", 0)
+            result.loc[veg_type, f"{severity}_std"] = stats.get(f"{severity}_std", 0)
+
         result.loc[veg_type, "mean_severity"] = stats.get("mean_severity", 0)
         result.loc[veg_type, "std_dev"] = stats.get("std_dev", 0)
 
     # Add percentage columns
-    result = add_percentage_columns(result)
+    frontend_df = add_percentage_columns(result)
 
-    # Calculate total park area from pixel-based calculations for consistency
-    total_park_area = result["total_ha"].sum()
+    # Create JSON structure for visualization
+    json_structure = create_veg_json_structure(frontend_df)
 
-    frontend_df = pd.DataFrame(
-        {
-            "Color": [
-                "#" + format(hash(str(veg)) % 0xFFFFFF, "06x") for veg in result.index
-            ],
-            "Vegetation Community": result.index,
-            "Hectares": result["total_ha"].round(2),
-            "% of Park": ((result["total_ha"] / total_park_area) * 100).round(2),
-            "% of Burn Area": (
-                (result["low_ha"] + result["moderate_ha"] + result["high_ha"])
-                / (
-                    result["low_ha"].sum()
-                    + result["moderate_ha"].sum()
-                    + result["high_ha"].sum()
-                )
-                * 100
-            ).round(2),
-            "Mean Severity": result["mean_severity"].round(3),
-            "Std Dev": result["std_dev"].round(3),
-        }
-    )
-
-    return frontend_df
+    return frontend_df, json_structure
 
 
 async def process_veg_map(
@@ -447,17 +461,19 @@ async def process_veg_map(
     Args:
         veg_gpkg_url: URL to vegetation geopackage
         fire_cog_url: URL to fire severity COG
-        output_dir: Directory to save output CSV
+        output_dir: Directory to save output CSV and JSON
         job_id: Unique job identifier
-        severity_breaks: Optional custom breaks for severity classification
+        severity_breaks: Custom breaks for severity classification
+        geojson_url: URL to the GeoJSON of the fire boundary
 
     Returns:
-        Dict with status and path to output CSV
+        Dict with status and paths to output files
     """
     try:
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         output_csv = os.path.join(output_dir, f"{job_id}_veg_fire_matrix.csv")
+        output_json = os.path.join(output_dir, f"{job_id}_veg_fire_matrix.json")
 
         # Download input files
         veg_gpkg_path = await download_file_to_temp(veg_gpkg_url, suffix=".gpkg")
@@ -465,7 +481,7 @@ async def process_veg_map(
         geojson_path = await download_file_to_temp(geojson_url, suffix=".geojson")
 
         # Process the vegetation map against fire severity
-        result_df = await create_veg_fire_matrix(
+        frontend_df, json_structure = await create_veg_fire_matrix(
             original_veg_gpkg_url=veg_gpkg_url,
             veg_gpkg_path=veg_gpkg_path,
             fire_cog_path=fire_cog_path,
@@ -473,18 +489,25 @@ async def process_veg_map(
             geojson_path=geojson_path,
         )
 
-        # Save the result to CSV (already formatted for frontend)
-        result_df.to_csv(output_csv, index=False)
+        # Save both formats
+        frontend_df.to_csv(output_csv, index=False)
+
+        with open(output_json, "w") as f:
+            json.dump(json_structure, f, indent=2)
 
         # Clean up temporary files
-        for path in [veg_gpkg_path, fire_cog_path]:
+        for path in [veg_gpkg_path, fire_cog_path, geojson_path]:
             if os.path.exists(path):
                 try:
                     os.remove(path)
                 except Exception as e:
                     print(f"Failed to remove temporary file {path}: {str(e)}")
 
-        return {"status": "completed", "output_csv": output_csv}
+        return {
+            "status": "completed",
+            "output_csv": output_csv,
+            "output_json": output_json,
+        }
 
     except Exception as e:
         print(f"Error processing vegetation map: {str(e)}")

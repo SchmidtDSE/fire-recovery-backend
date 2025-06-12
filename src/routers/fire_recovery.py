@@ -222,6 +222,7 @@ class FireSeverityResponse(BaseResponse):
 
 class VegMapMatrixResponse(BaseResponse):
     fire_veg_matrix_url: Optional[str] = None
+    fire_veg_matrix_json_url: Optional[str] = None
 
 
 class UploadedGeoJSONResponse(BaseResponse):
@@ -541,9 +542,9 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     try:
         # Validate the GeoJSON using geojson_pydantic
         if request.geojson.get("type") == "FeatureCollection":
-            validated_geojson = FeatureCollection.model_validate(request.geojson)
+            FeatureCollection.model_validate(request.geojson)
         elif request.geojson.get("type") == "Feature":
-            validated_geojson = Feature.model_validate(request.geojson)
+            Feature.model_validate(request.geojson)
         else:
             raise ValueError(f"Unsupported GeoJSON type: {request.geojson.get('type')}")
 
@@ -635,11 +636,15 @@ async def process_veg_map_resolution(
 
         print("Vegetation map processing completed successfully.")
 
-        # Upload the CSV to GCS
-        blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
-        matrix_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, blob_name)
+        # Upload both CSV and JSON to GCS
+        csv_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
+        json_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.json"
 
-        print(f"Vegetation fire matrix uploaded to {matrix_url}")
+        csv_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, csv_blob_name)
+        json_url = upload_to_gcs(result["output_json"], BUCKET_NAME, json_blob_name)
+
+        print(f"Vegetation fire matrix CSV uploaded to {csv_url}")
+        print(f"Vegetation fire matrix JSON uploaded to {json_url}")
 
         # Get geometry from the fire severity COG
         stac_item = await stac_manager.get_items_by_id_and_coarseness(
@@ -656,7 +661,7 @@ async def process_veg_map_resolution(
         await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            fire_veg_matrix_url=matrix_url,
+            fire_veg_matrix_url=csv_url,
             geometry=geometry,
             bbox=bbox,
             datetime_str=datetime_str,
