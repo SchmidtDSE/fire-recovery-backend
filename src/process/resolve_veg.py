@@ -301,12 +301,13 @@ def create_veg_json_structure(result_df: pd.DataFrame) -> Dict[str, Any]:
 
         # Build severity breakdown using the existing percentage columns
         for severity in ["unburned", "low", "moderate", "high"]:
-            community_data["severity_breakdown"][severity] = {
-                "hectares": round(row[f"{severity}_ha"], 2),
-                "percent": round(row[f"{severity}_percent"], 2),
-                "mean_severity": round(row.get(f"{severity}_mean", 0), 3),
-                "std_dev": round(row.get(f"{severity}_std", 0), 3),
-            }
+            if row[f"{severity}_ha"] > 0 and not np.isnan(row[f"{severity}_mean"]):
+                community_data["severity_breakdown"][severity] = {
+                    "hectares": round(row[f"{severity}_ha"], 2),
+                    "percent": round(row[f"{severity}_percent"], 2),
+                    "mean_severity": round(row.get(f"{severity}_mean", 0), 3),
+                    "std_dev": round(row.get(f"{severity}_std", 0), 3),
+                }
 
         vegetation_communities.append(community_data)
 

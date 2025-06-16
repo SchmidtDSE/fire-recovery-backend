@@ -665,6 +665,7 @@ async def process_veg_map_resolution(
             fire_veg_matrix_json_url=json_url,
             geometry=geometry,
             bbox=bbox,
+            classification_breaks=severity_breaks,
             datetime_str=datetime_str,
         )
 
@@ -683,13 +684,17 @@ async def process_veg_map_resolution(
 #     namespace="root",
 #     expire=60 * 60 * 6,  # Cache for 6 hour
 # )
-async def get_veg_map_result(fire_event_name: str, job_id: str):
+async def get_veg_map_result(
+    fire_event_name: str, job_id: str, severity_breaks: Optional[List[float]] = None
+):
     """
     Get the result of the vegetation map resolution against fire severity.
+    Use query parameter: ?severity_breaks=0.1&severity_breaks=0.2&severity_breaks=0.3
     """
     # Look up the STAC item
-    stac_item = await stac_manager.get_item_by_id(
-        f"{fire_event_name}-veg-matrix-{job_id}"
+    stac_item = await stac_manager.get_items_by_id_and_classification_breaks(
+        f"{fire_event_name}-veg-matrix-{job_id}",
+        classification_breaks=severity_breaks,
     )
 
     if not stac_item:
