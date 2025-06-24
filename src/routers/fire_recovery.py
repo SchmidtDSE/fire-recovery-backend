@@ -7,6 +7,8 @@ from fastapi import (
     HTTPException,
     Depends,
 )
+import zipfile
+import shutil
 from pydantic import BaseModel, Field
 import uuid
 import time
@@ -21,6 +23,8 @@ from src.process.spectral_indices import (
     process_remote_sensing_data,
     initialize_workspace,
 )
+import geopandas as gpd
+
 from src.util.upload_blob import upload_to_gcs
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
@@ -227,6 +231,10 @@ class VegMapMatrixResponse(BaseResponse):
 
 class UploadedGeoJSONResponse(BaseResponse):
     refined_boundary_geojson_url: str
+
+
+class UploadedShapefileZipResponse(BaseResponse):
+    shapefile_url: str = Field(..., description="URL to the uploaded shapefile zip")
 
 
 @router.get("/", tags=["Root"])
@@ -566,6 +574,48 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
+        )
+
+
+@router.post(
+    "/upload/shapefile", response_model=UploadedShapefileZipResponse, tags=["Upload"]
+)
+async def upload_shapefile(
+    fire_event_name: str = Form(...), shapefile: UploadFile = File(...)
+):
+    """
+    Upload a zipped shapefile for a fire event.
+    Stores the zip file as-is without processing it.
+    The frontend will handle parsing the shapefile.
+    """
+    # Generate a unique job ID
+    job_id = str(uuid.uuid4())
+
+    try:
+        # Verify that this is a zip file
+        if not shapefile.filename.lower().endswith(".zip"):
+            raise ValueError("Only zipped shapefiles (.zip) are supported")
+
+        # Save the uploaded file to a temporary location
+        with temp_file(suffix=".zip") as tmp_path:
+            content = await shapefile.read()
+            with open(tmp_path, "wb") as f:
+                f.write(content)
+
+            # Upload the zip file directly to GCS
+            zip_blob_name = f"{fire_event_name}/{job_id}/original_shapefile.zip"
+            shapefile_url = upload_to_gcs(tmp_path, BUCKET_NAME, zip_blob_name)
+
+            return {
+                "fire_event_name": fire_event_name,
+                "status": "complete",
+                "job_id": job_id,
+                "shapefile_url": shapefile_url,
+            }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error uploading shapefile: {str(e)}"
         )
 
 
