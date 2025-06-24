@@ -324,10 +324,15 @@ def add_percentage_columns(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with added percentage columns
     """
+    # Calculate severity percentages within each vegetation type
     for severity in ["unburned", "low", "moderate", "high"]:
         df[f"{severity}_percent"] = (df[f"{severity}_ha"] / df["total_ha"] * 100).round(
             2
         )
+
+    # Add percentage of total area for each vegetation type (regardless of severity)
+    total_study_area = df["total_ha"].sum()
+    df["total_percent"] = (df["total_ha"] / total_study_area * 100).round(2)
 
     # Validation: check if percentages add up to ~100%
     total_percentages = df[
@@ -491,7 +496,9 @@ async def process_veg_map(
         )
 
         # Save both formats
-        frontend_df.to_csv(output_csv, index=False)
+        frontend_df.to_csv(
+            output_csv, index=True, index_label="vegetation_classification"
+        )
 
         with open(output_json, "w") as f:
             json.dump(json_structure, f, indent=2)
