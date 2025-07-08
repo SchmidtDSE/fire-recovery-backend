@@ -32,6 +32,7 @@ planetary-computer = ">=1.0.0,<2"
 xvec = ">=0.3.1,<0.4"
 exactextract = ">=0.2.2,<0.3"
 fastapi-cache2 = ">=0.2.2,<0.3"
+mypy = ">=1.16.0,<2"
 
 [pypi-dependencies]
 stac-pydantic = ">=3.2.0, <4"

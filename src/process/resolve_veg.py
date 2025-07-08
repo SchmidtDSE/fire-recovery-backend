@@ -1,22 +1,13 @@
 import os
 import tempfile
-from typing import Dict, List, Any, Optional, Tuple
-
-from geojson_pydantic import Polygon
+from typing import Dict, Iterable, List, Any, Tuple
 import geopandas as gpd
 import pandas as pd
 import numpy as np
-import rasterio
 import xarray as xr
-import xvec
 import httpx
-from rasterio.transform import from_origin
 from contextlib import contextmanager
-import os
-import tempfile
-from typing import Dict, List, Any, Optional, Tuple
 import hashlib
-import pickle
 from geopandas import GeoDataFrame
 import json
 
@@ -24,7 +15,7 @@ PROJECTED_CRS = "EPSG:32611"  # UTM 11N
 
 
 @contextmanager
-def temp_file(suffix: str = "", content: bytes = None):
+def temp_file(suffix: str, content: bytes) -> Iterable[str]:
     """Context manager for temporary files with automatic cleanup"""
     temp_path = None
     try:
@@ -58,7 +49,7 @@ async def download_file_to_temp(url: str, suffix: str = "") -> str:
 
 
 def load_vegetation_data(
-    veg_gpkg_path: str, original_url: str = None, crs=None
+    veg_gpkg_path: str, original_url: str, crs: str
 ) -> gpd.GeoDataFrame:
     """
     Load vegetation data from geopackage and ensure correct CRS
@@ -182,7 +173,7 @@ def create_severity_masks(
 
 
 def calculate_zonal_stats(
-    masks: Dict[str, xr.DataArray],
+    masks: Dict[str, xr.Dataset],
     veg_subset: gpd.GeoDataFrame,
     x_coord: str,
     y_coord: str,
