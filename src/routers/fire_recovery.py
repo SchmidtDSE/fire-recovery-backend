@@ -1,44 +1,38 @@
+import json
+import os
+import tempfile
+import time
+import uuid
+from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
     File,
-    UploadFile,
     Form,
     HTTPException,
-    Depends,
+    UploadFile,
 )
-import zipfile
-import shutil
+from geojson_pydantic import Feature, FeatureCollection, Polygon
 from pydantic import BaseModel, Field
-import uuid
-import time
-import json
-import os
-import tempfile
-from typing import Union, Optional, List
-from datetime import datetime
-from geojson_pydantic import FeatureCollection, Feature, Polygon, MultiPolygon
 from shapely.geometry import shape
+
+from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
+from src.process.resolve_veg import process_veg_map
 from src.process.spectral_indices import (
     process_remote_sensing_data,
 )
-import geopandas as gpd
-
-from src.util.upload_blob import upload_to_gcs
-from src.stac.stac_geoparquet_manager import STACGeoParquetManager
-from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
-from src.util.polygon_ops import polygon_to_valid_geojson
-from src.util.cog_ops import (
-    download_cog_to_temp,
-    crop_cog_with_geometry,
-    create_cog,
-)
-from contextlib import contextmanager
-from typing import Dict, Any, List, Tuple, ContextManager, Generator
-from src.process.resolve_veg import process_veg_map
-from fastapi_cache.decorator import cache
-from src.util.api_cache import request_key_builder
 from src.stac.stac_endpoint_handler import StacEndpointHandler
+from src.stac.stac_geoparquet_manager import STACGeoParquetManager
+from src.util.cog_ops import (
+    create_cog,
+    crop_cog_with_geometry,
+    download_cog_to_temp,
+)
+from src.util.polygon_ops import polygon_to_valid_geojson
+from src.util.upload_blob import upload_to_gcs
 
 
 @contextmanager
@@ -157,11 +151,11 @@ class ProcessingRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
     geometry: dict = Field(..., description="GeoJSON of bounding box AOI")
     prefire_date_range: list[str] = Field(
-        None,
+        ...,
         description="Date range for prefire imagery (e.g. ['2023-01-01', '2023-12-31'])",
     )
     postfire_date_range: list[str] = Field(
-        None,
+        ...,
         description="Date range for postfire imagery (e.g. ['2024-01-01', '2024-12-31'])",
     )
 
@@ -237,7 +231,7 @@ class UploadedShapefileZipResponse(BaseResponse):
 
 
 @router.get("/", tags=["Root"])
-async def root():
+async def root() -> Dict[str, str]:
     return {"message": "Welcome to the Fire Recovery Backend API"}
 
 
@@ -248,7 +242,7 @@ async def root():
 )
 async def analyze_fire_severity(
     request: ProcessingRequest, background_tasks: BackgroundTasks
-):
+) -> ProcessingStartedResponse:
     """
     Analyze fire severity using remote sensing data.
     """
@@ -265,11 +259,11 @@ async def analyze_fire_severity(
         postfire_date_range=request.postfire_date_range,
     )
 
-    return {
-        "fire_event_name": request.fire_event_name,
-        "status": "Processing started",
-        "job_id": job_id,
-    }
+    return ProcessingStartedResponse(
+        fire_event_name=request.fire_event_name,
+        status="Processing started",
+        job_id=job_id,
+    )
 
 
 async def process_fire_severity(
@@ -278,7 +272,7 @@ async def process_fire_severity(
     geometry: Polygon,
     prefire_date_range: list[str],
     postfire_date_range: list[str],
-):
+) -> None:
     try:
         # Create STAC endpoint handler
         stac_handler = StacEndpointHandler()
@@ -341,7 +335,9 @@ async def process_fire_severity(
     response_model=Union[TaskPendingResponse, FireSeverityResponse],
     tags=["Fire Severity"],
 )
-async def get_fire_severity_result(fire_event_name: str, job_id: str):
+async def get_fire_severity_result(
+    fire_event_name: str, job_id: str
+) -> Union[TaskPendingResponse, FireSeverityResponse]:
     """
     Get the result of the fire severity analysis.
     """
@@ -382,7 +378,7 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
 # )
 async def refine_fire_boundary(
     request: RefineRequest, background_tasks: BackgroundTasks
-):
+) -> Dict[str, Any]:
     """
     Refine the fire boundary to the provided GeoJSON.
     """
@@ -404,7 +400,7 @@ async def refine_fire_boundary(
 
 async def process_boundary_refinement(
     job_id: str, fire_event_name: str, refine_geojson: dict
-):
+) -> None:
     """
     Process boundary refinement, upload results, and create STAC assets
     """
@@ -472,12 +468,9 @@ async def process_boundary_refinement(
     response_model=Union[TaskPendingResponse, RefinedBoundaryResponse],
     tags=["Boundary Refinement"],
 )
-# @cache(
-#     key_builder=request_key_builder,
-#     namespace="root",
-#     expire=60 * 60 * 6,  # Cache for 6 hour
-# )
-async def get_refine_result(fire_event_name: str, job_id: str):
+async def get_refine_result(
+    fire_event_name: str, job_id: str
+) -> Union[TaskPendingResponse, RefinedBoundaryResponse]:
     """
     Get the result of the fire boundary refinement.
     """
@@ -539,7 +532,7 @@ async def get_refine_result(fire_event_name: str, job_id: str):
 
 
 @router.post("/upload/geojson", response_model=UploadedGeoJSONResponse, tags=["Upload"])
-async def upload_geojson(request: GeoJSONUploadRequest):
+async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONResponse:
     """
     Upload GeoJSON data for a fire event.
     """
@@ -563,13 +556,12 @@ async def upload_geojson(request: GeoJSONUploadRequest):
             filename="uploaded",
         )
 
-        # Return response
-        return {
-            "fire_event_name": request.fire_event_name,
-            "status": "complete",
-            "job_id": job_id,
-            "refined_boundary_geojson_url": geojson_url,
-        }
+        return UploadedGeoJSONResponse(
+            fire_event_name=request.fire_event_name,
+            status="complete",
+            job_id=job_id,
+            refined_boundary_geojson_url=geojson_url,
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
@@ -581,7 +573,7 @@ async def upload_geojson(request: GeoJSONUploadRequest):
 )
 async def upload_shapefile(
     fire_event_name: str = Form(...), shapefile: UploadFile = File(...)
-):
+) -> UploadedShapefileZipResponse:
     """
     Upload a zipped shapefile for a fire event.
     Stores the zip file as-is without processing it.
@@ -592,7 +584,7 @@ async def upload_shapefile(
 
     try:
         # Verify that this is a zip file
-        if not shapefile.filename.lower().endswith(".zip"):
+        if not shapefile.filename or not shapefile.filename.lower().endswith(".zip"):
             raise ValueError("Only zipped shapefiles (.zip) are supported")
 
         # Save the uploaded file to a temporary location
@@ -605,12 +597,12 @@ async def upload_shapefile(
             zip_blob_name = f"{fire_event_name}/{job_id}/original_shapefile.zip"
             shapefile_url = upload_to_gcs(tmp_path, BUCKET_NAME, zip_blob_name)
 
-            return {
-                "fire_event_name": fire_event_name,
-                "status": "complete",
-                "job_id": job_id,
-                "shapefile_url": shapefile_url,
-            }
+            return UploadedShapefileZipResponse(
+                fire_event_name=fire_event_name,
+                status="complete",
+                job_id=job_id,
+                shapefile_url=shapefile_url,
+            )
 
     except Exception as e:
         raise HTTPException(
@@ -623,14 +615,9 @@ async def upload_shapefile(
     response_model=ProcessingStartedResponse,
     tags=["Vegetation Map Analysis"],
 )
-# @cache(
-#     key_builder=request_key_builder,
-#     namespace="root",
-#     expire=60 * 60 * 6,  # Cache for 6 hour
-# )
 async def resolve_against_veg_map(
     request: VegMapResolveRequest, background_tasks: BackgroundTasks
-):
+) -> ProcessingStartedResponse:
     """
     Resolve fire severity against vegetation map to create a matrix of affected areas.
     """
@@ -646,11 +633,11 @@ async def resolve_against_veg_map(
         geojson_url=request.geojson_url,
     )
 
-    return {
-        "fire_event_name": request.fire_event_name,
-        "status": "Processing started",
-        "job_id": request.job_id,
-    }
+    return ProcessingStartedResponse(
+        fire_event_name=request.fire_event_name,
+        status="Processing started",
+        job_id=request.job_id,
+    )
 
 
 async def process_veg_map_resolution(
@@ -660,7 +647,7 @@ async def process_veg_map_resolution(
     fire_cog_url: str,
     severity_breaks: List[float],
     geojson_url: str,
-):
+) -> None:
     """
     Process vegetation map against fire severity COG to create area matrix.
     """
@@ -735,7 +722,7 @@ async def process_veg_map_resolution(
 # )
 async def get_veg_map_result(
     fire_event_name: str, job_id: str, severity_breaks: Optional[List[float]] = None
-):
+) -> Union[TaskPendingResponse, VegMapMatrixResponse]:
     """
     Get the result of the vegetation map resolution against fire severity.
     Use query parameter: ?severity_breaks=0.1&severity_breaks=0.2&severity_breaks=0.3

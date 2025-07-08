@@ -7,7 +7,6 @@ import aiohttp
 from minio import Minio
 from minio.error import S3Error
 from pathlib import Path
-import aiohttp
 
 from src.core.storage.interface import StorageInterface
 
