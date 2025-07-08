@@ -249,11 +249,13 @@ class STACGeoParquetManager:
         self,
         fire_event_name: str,
         job_id: str,
-        fire_veg_matrix_url: str,
-        geometry: Dict[str, Any],  # Add geometry parameter
-        bbox: List[float],  # Add bbox parameter
+        fire_veg_matrix_csv_url: str,
+        fire_veg_matrix_json_url: str,
+        geometry: Dict[str, Any],
+        bbox: List[float],
+        classification_breaks: List[float],
         datetime_str: str,
-    ) -> Dict[str, Any]:  # Add return type
+    ) -> Dict[str, Any]:
         """
         Create a STAC item for a vegetation/fire severity matrix.
 
@@ -282,15 +284,23 @@ class STACGeoParquetManager:
                 "fire_event_name": fire_event_name,
                 "job_id": job_id,
                 "product_type": "vegetation_fire_matrix",
+                "classification_breaks": classification_breaks,
             },
             "geometry": geometry,
             "bbox": bbox,
             "assets": {
-                "fire_veg_matrix": {
-                    "href": fire_veg_matrix_url,
+                "fire_veg_matrix_csv": {
+                    "href": fire_veg_matrix_csv_url,
                     "type": "text/csv",
                     "title": "Vegetation Fire Severity Matrix",
                     "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
+                    "roles": ["data"],
+                },
+                "fire_veg_matrix_json": {
+                    "href": fire_veg_matrix_json_url,
+                    "type": "application/json",
+                    "title": "Vegetation Fire Severity Matrix (JSON)",
+                    "description": "JSON representation of the vegetation fire severity matrix (for easier integration with frontend)",
                     "roles": ["data"],
                 },
             },
@@ -407,6 +417,38 @@ class STACGeoParquetManager:
                 ],
             },
         )
+
+        return items[0] if items else None
+
+    async def get_items_by_id_and_classification_breaks(
+        self, item_id: str, classification_breaks: Optional[List[float]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a specific STAC item by ID and classification breaks from the GeoParquet file
+        """
+        if not os.path.exists(self.parquet_path):
+            return None
+
+        # Build the base filter for item ID
+        id_filter = {"op": "=", "args": [{"property": "id"}, item_id]}
+
+        # If classification_breaks is provided, add it to the filter
+        if classification_breaks is not None:
+            classification_filter = {
+                "op": "=",
+                "args": [{"property": "classification_breaks"}, classification_breaks],
+            }
+
+            # Combine both filters with AND
+            combined_filter = {
+                "op": "and",
+                "args": [id_filter, classification_filter],
+            }
+        else:
+            combined_filter = id_filter
+
+        # Use rustac's native search with the combined filter
+        items = await rustac.search(self.parquet_path, filter=combined_filter)
 
         return items[0] if items else None
 

@@ -2,6 +2,7 @@ import os
 import tempfile
 from typing import Dict, List, Any, Optional, Tuple
 
+from geojson_pydantic import Polygon
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -16,6 +17,8 @@ import tempfile
 from typing import Dict, List, Any, Optional, Tuple
 import hashlib
 import pickle
+from geopandas import GeoDataFrame
+import json
 
 PROJECTED_CRS = "EPSG:32611"  # UTM 11N
 
@@ -99,32 +102,29 @@ def load_vegetation_data(
 def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
     """
     Load fire severity data and extract key information
-
-    Args:
-        fire_cog_path: Path to the fire severity COG file
-
-    Returns:
-        Tuple of (xarray dataset, dict with metadata)
     """
-    # Get basic metadata with rasterio
-    with rasterio.open(fire_cog_path) as src:
-        crs = src.crs
-        transform = src.transform
-
-        # Calculate pixel area in hectares (assuming projection units are meters)
-        pixel_width = abs(src.transform.a)
-        pixel_height = abs(src.transform.e)
-        pixel_area_ha = (pixel_width * pixel_height) / 10000  # Convert m² to ha
-
     # Load as xarray dataset for analysis
     fire_ds = xr.open_dataset(fire_cog_path, engine="rasterio")
 
     # Extract the main data variable
     data_var = list(fire_ds.data_vars)[0]
 
+    # Project to UTM coordinates if needed
+    if fire_ds.rio.crs != PROJECTED_CRS:
+        fire_ds = fire_ds.rio.reproject(PROJECTED_CRS)
+
+    # ALWAYS calculate pixel area from the final projected dataset
+    projected_transform = fire_ds.rio.transform()
+    pixel_width = abs(projected_transform[0])
+    pixel_height = abs(projected_transform[4])
+    pixel_area_ha = (pixel_width * pixel_height) / 10000  # Convert m² to ha
+
+    # Add assertion to verify CRS
+    assert fire_ds.rio.crs == PROJECTED_CRS, "Fire data must be in UTM projection"
+
     metadata = {
-        "crs": crs,
-        "transform": transform,
+        "crs": PROJECTED_CRS,
+        "transform": fire_ds.rio.transform(),
         "pixel_area_ha": pixel_area_ha,
         "data_var": data_var,
         "x_coord": "x" if "x" in fire_ds.coords else "longitude",
@@ -135,36 +135,48 @@ def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
 
 
 def create_severity_masks(
-    fire_ds: xr.Dataset, data_var: str, severity_breaks: List[float]
-) -> Dict[str, xr.DataArray]:
+    fire_data: xr.Dataset,
+    severity_breaks: List[float],
+    boundary: GeoDataFrame,
+) -> Dict[str, xr.Dataset]:
     """
     Create masks for different fire severity classes
-
-    Args:
-        fire_ds: Fire severity dataset
-        data_var: Name of the data variable in the dataset
-        severity_breaks: List of breaks [low/moderate, moderate/high]
-
-    Returns:
-        Dictionary of masks for each severity class
     """
-    fire_data = fire_ds[data_var]
+    assert fire_data.rio.crs is not None, "Fire data must have a CRS defined"
+    assert fire_data.rio.crs.to_string() == PROJECTED_CRS
 
+    # filter fire data to the specified boundary
+    fire_data = fire_data.rio.clip(
+        boundary.geometry.apply(lambda geom: geom.__geo_interface__),
+        boundary.crs,
+        drop=True,
+    )
+
+    UNBURNED_CLASSIFICATION_UPPER_BOUND = severity_breaks[0]
+    LOW_CLASSIFICATION_UPPER_BOUND = severity_breaks[1]
+    MED_CLASSIFICATION_UPPER_BOUND = severity_breaks[2]
+
+    # Create masks with actual values where condition is met, np.nan elsewhere
     masks = {
-        "unburned": fire_data.where((fire_data >= -0.1) & (fire_data < 0.1), 0),
+        "unburned": fire_data.where(
+            (fire_data >= -1) & (fire_data < UNBURNED_CLASSIFICATION_UPPER_BOUND),
+            np.nan,
+        ),
         "low": fire_data.where(
-            (fire_data >= 0.1) & (fire_data < severity_breaks[0]), 0
+            (fire_data >= UNBURNED_CLASSIFICATION_UPPER_BOUND)
+            & (fire_data < LOW_CLASSIFICATION_UPPER_BOUND),
+            np.nan,
         ),
         "moderate": fire_data.where(
-            (fire_data >= severity_breaks[0]) & (fire_data < severity_breaks[1]), 0
+            (fire_data >= LOW_CLASSIFICATION_UPPER_BOUND)
+            & (fire_data < MED_CLASSIFICATION_UPPER_BOUND),
+            np.nan,
         ),
-        "high": fire_data.where(fire_data >= severity_breaks[1], 0),
+        "high": fire_data.where(fire_data >= MED_CLASSIFICATION_UPPER_BOUND, np.nan),
     }
 
-    # Convert to projected
-    for severity, mask in masks.items():
-        if mask.rio.crs != PROJECTED_CRS:
-            masks[severity] = mask.rio.reproject(PROJECTED_CRS)
+    # Keep original fire data for overall statistics
+    masks["original"] = fire_data
 
     return masks
 
@@ -186,70 +198,120 @@ def calculate_zonal_stats(
         "Vegetation subset CRS does not match masks CRS"
     )
 
+    # Ensure all masks have the same CRS
+    for severity, mask in masks.items():
+        if hasattr(mask, "rio") and mask.rio.crs:
+            assert mask.rio.crs.to_string() == PROJECTED_CRS, (
+                f"Mask {severity} has incorrect CRS"
+            )
+
     # Consolidate geometries for this MapUnit_ID into a single geometry
     print(f"Consolidating {len(veg_subset)} geometries for MapUnit_ID")
     unified_geometry = gpd.GeoDataFrame(
         {"geometry": [veg_subset.unary_union]}, crs=PROJECTED_CRS
     )
 
-    # First calculate area statistics for each severity class
-    for severity, mask in masks.items():
-        if severity == "original":
-            continue  # Skip original for area calculations
+    # Calculate statistics for each severity class
+    severity_pixel_counts = {}
+    severity_classes = ["unburned", "low", "moderate", "high"]
 
+    for severity in severity_classes:
+        mask = masks[severity]
         try:
-            # Ensure the mask is in the correct CRS
-            assert mask.rio.crs.to_string() == PROJECTED_CRS, (
-                f"Mask for {severity} does not match projected CRS"
-            )
-
-            # Perform zonal statistics on the unified geometry
             stats = mask.xvec.zonal_stats(
                 unified_geometry.geometry,
                 x_coords=x_coord,
                 y_coords=y_coord,
-                stats="sum",
+                stats=["count", "mean", "stdev"],
                 all_touched=True,
+                method="exactextract",
             )
 
-            # Extract numeric value from DataArray and handle NaNs
             if stats is not None and not np.isnan(stats.values).all():
-                sum_value = float(stats.sum(skipna=True).values)
+                pixel_count = float(stats.isel(zonal_statistics=0).values)
+                severity_pixel_counts[severity] = pixel_count
+                results[f"{severity}_ha"] = pixel_count * pixel_area_ha
+                results[f"{severity}_mean"] = float(
+                    stats.isel(zonal_statistics=1).values
+                )
+                results[f"{severity}_std"] = float(
+                    stats.isel(zonal_statistics=2).values
+                )
             else:
-                sum_value = 0.0
-
-            # Calculate hectares
-            results[f"{severity}_ha"] = sum_value * pixel_area_ha
+                severity_pixel_counts[severity] = 0.0
+                results[f"{severity}_ha"] = 0.0
+                results[f"{severity}_mean"] = 0.0
+                results[f"{severity}_std"] = 0.0
 
         except Exception as e:
             print(f"Error calculating {severity} stats: {str(e)}")
+            severity_pixel_counts[severity] = 0.0
             results[f"{severity}_ha"] = 0.0
+            results[f"{severity}_mean"] = 0.0
+            results[f"{severity}_std"] = 0.0
 
-    # Now calculate mean and std dev from the original fire data
+    # Use sum of severity pixels for total instead of original mask
+    total_severity_pixels = sum(severity_pixel_counts.values())
+    results["total_pixel_count"] = total_severity_pixels
+
+    # Calculate overall statistics from the original data for mean/std only
     try:
         original_mask = masks["original"]
         stats = original_mask.xvec.zonal_stats(
             unified_geometry.geometry,
             x_coords=x_coord,
             y_coords=y_coord,
-            stats=["mean", "std"],
+            stats=["mean", "std"],  # Remove count since we're using severity sum
             all_touched=True,
         )
 
         if stats is not None and not np.isnan(stats.values).all():
-            results["mean_severity"] = float(
-                stats.isel(zonal_statistics=0).values
-            )  # mean
-            results["std_dev"] = float(stats.isel(zonal_statistics=1).values)  # std
+            results["mean_severity"] = float(stats.isel(zonal_statistics=0).values)
+            results["std_dev"] = float(stats.isel(zonal_statistics=1).values)
         else:
             results["mean_severity"] = 0.0
             results["std_dev"] = 0.0
     except Exception as e:
-        print(f"Error calculating mean/std stats: {str(e)}")
+        print(f"Error calculating overall stats: {str(e)}")
         results["mean_severity"] = 0.0
         results["std_dev"] = 0.0
 
     return results
+
+
+def create_veg_json_structure(result_df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Convert the result DataFrame to the JSON structure for visualization
+    """
+    total_park_area = result_df["total_ha"].sum()
+
+    vegetation_communities = []
+
+    for veg_type in result_df.index:
+        row = result_df.loc[veg_type]
+        color = "#" + format(hash(str(veg_type)) % 0xFFFFFF, "06x")
+
+        community_data = {
+            "name": str(veg_type),
+            "color": color,
+            "total_hectares": round(row["total_ha"], 2),
+            "percent_of_park": round((row["total_ha"] / total_park_area) * 100, 2),
+            "severity_breakdown": {},
+        }
+
+        # Build severity breakdown using the existing percentage columns
+        for severity in ["unburned", "low", "moderate", "high"]:
+            if row[f"{severity}_ha"] > 0 and not np.isnan(row[f"{severity}_mean"]):
+                community_data["severity_breakdown"][severity] = {
+                    "hectares": round(row[f"{severity}_ha"], 2),
+                    "percent": round(row[f"{severity}_percent"], 2),
+                    "mean_severity": round(row.get(f"{severity}_mean", 0), 3),
+                    "std_dev": round(row.get(f"{severity}_std", 0), 3),
+                }
+
+        vegetation_communities.append(community_data)
+
+    return {"vegetation_communities": vegetation_communities}
 
 
 def add_percentage_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -262,10 +324,26 @@ def add_percentage_columns(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with added percentage columns
     """
+    # Calculate severity percentages within each vegetation type
     for severity in ["unburned", "low", "moderate", "high"]:
         df[f"{severity}_percent"] = (df[f"{severity}_ha"] / df["total_ha"] * 100).round(
             2
         )
+
+    # Add percentage of total area for each vegetation type (regardless of severity)
+    total_study_area = df["total_ha"].sum()
+    df["total_percent"] = (df["total_ha"] / total_study_area * 100).round(2)
+
+    # Validation: check if percentages add up to ~100%
+    total_percentages = df[
+        ["unburned_percent", "low_percent", "moderate_percent", "high_percent"]
+    ].sum(axis=1)
+    for idx, total_pct in enumerate(total_percentages):
+        if abs(total_pct - 100.0) > 1.0:  # Allow 1% tolerance for rounding
+            veg_type = df.index[idx]
+            print(
+                f"Warning: {veg_type} percentages sum to {total_pct:.1f}% (should be ~100%)"
+            )
 
     return df
 
@@ -285,119 +363,60 @@ def generate_cache_key(veg_gpkg_path: str, fire_ds: xr.Dataset) -> str:
     return f"veg_fire_matrix:{veg_key}:{fire_hash}"
 
 
-def attempt_read_from_cache(cache_key: str):
-    """Try to read cached result from disk"""
-    # Create cache directory if it doesn't exist
-    cache_dir = "tmp/cache"
-    os.makedirs(cache_dir, exist_ok=True)
-
-    cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-    # Check if cached result exists
-    if os.path.exists(cache_file):
-        try:
-            print(f"Loading cached result from {cache_file}")
-            with open(cache_file, "rb") as f:
-                return pickle.loads(f.read())
-        except Exception as e:
-            print(f"Error loading cached result: {e}")
-
-    return None
-
-
-def write_to_cache(cache_key: str, result):
-    """Write result to cache"""
-    # Create cache directory if it doesn't exist
-    cache_dir = "tmp/cache"
-    os.makedirs(cache_dir, exist_ok=True)
-
-    cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-    try:
-        print(f"Saving result to cache: {cache_file}")
-        with open(cache_file, "wb") as f:
-            f.write(
-                pickle.dumps(result, protocol=-1)
-            )  # Use highest protocol for efficiency
-    except Exception as e:
-        print(f"Error caching result: {e}")
-
-
 async def create_veg_fire_matrix(
     original_veg_gpkg_url: str,
     veg_gpkg_path: str,
     fire_cog_path: str,
-    severity_breaks: List[float] = None,
-) -> pd.DataFrame:
+    severity_breaks: List[float],
+    geojson_path: str,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Create a matrix showing hectares of each vegetation type affected by different fire severity levels.
 
-    Args:
-        veg_gpkg_path: Path to the vegetation geopackage file
-        fire_cog_path: Path to the fire severity COG file
-        severity_breaks: List of breaks [low/moderate, moderate/high]
-
     Returns:
-        DataFrame with vegetation types as rows and severity classes as columns
+        Tuple containing:
+        - DataFrame for CSV export (frontend_df with colors and percentages)
+        - Dictionary for JSON export (structured for visualization)
     """
-    # Default severity breaks if none provided
-    if severity_breaks is None:
-        severity_breaks = [
-            0.27,
-            0.66,
-        ]  # Default RBR breaks for low/moderate and moderate/high
-
     # Load fire data and get metadata
     fire_ds, metadata = load_fire_data(fire_cog_path)
 
-    # Generate cache key
-    cache_key = generate_cache_key(original_veg_gpkg_url, fire_ds)
-
-    # Try to load from cache first
-    cached_result = attempt_read_from_cache(cache_key)
-    if cached_result is not None:
-        print(f"Using cached vegetation fire matrix result")
-        return cached_result
-
-    print(f"No cache found. Computing vegetation fire matrix...")
-
     # Extract original fire data for mean severity calculations
     fire_data = fire_ds[metadata["data_var"]]
-    if fire_data.rio.crs != PROJECTED_CRS:
-        fire_data = fire_data.rio.reproject(PROJECTED_CRS)
+    assert fire_data.rio.crs == PROJECTED_CRS, "Fire data should already be projected"
 
     # Load vegetation data
-    gdf = load_vegetation_data(
+    veg_gdf = load_vegetation_data(
         veg_gpkg_path, original_url=original_veg_gpkg_url, crs=metadata["crs"]
     )
-    gdf = gdf.to_crs(PROJECTED_CRS)
+    assert veg_gdf.crs.to_string() == PROJECTED_CRS, (
+        "Vegetation data must be in UTM projection"
+    )
+
+    # Load GeoJSON boundary as Polygon
+    boundary_projected = gpd.read_file(geojson_path).to_crs(PROJECTED_CRS)
+    assert boundary_projected.crs.to_string() == PROJECTED_CRS, (
+        "Boundary must be in UTM projection"
+    )
+
+    # Clip vegetation data to the boundary
+    fire_boundary_geom = boundary_projected.geometry.unary_union
+    buffer_distance = 100  # Buffer in projection units (meters)
+    fire_boundary_buffered = fire_boundary_geom.buffer(buffer_distance)
+    veg_gdf = gpd.clip(veg_gdf, fire_boundary_buffered)
 
     # Create severity masks
-    masks = create_severity_masks(fire_ds, metadata["data_var"], severity_breaks)
-
-    # Add original fire data to masks for mean calculation
+    masks = create_severity_masks(fire_data, severity_breaks, boundary_projected)
     masks["original"] = fire_data
 
     # Initialize result DataFrame with float dtype to avoid warnings
-    veg_types = gdf["veg_type"].unique()
-    result = pd.DataFrame(
-        0.0,
-        index=veg_types,
-        columns=["unburned_ha", "low_ha", "moderate_ha", "high_ha", "total_ha"],
-        dtype=float,
-    )
+    veg_types = veg_gdf["veg_type"].unique()
+    severity_columns = ["unburned_ha", "low_ha", "moderate_ha", "high_ha", "total_ha"]
+    result = pd.DataFrame(0.0, index=veg_types, columns=severity_columns, dtype=float)
 
-    # Get total park area for percentage calculations
-    total_park_area = gdf.geometry.area.sum() / 10000  # Convert m² to ha
-
-    # Update the result with calculated statistics
+    # Process each vegetation type
     for veg_type in veg_types:
-        # Filter to just this vegetation type
-        veg_subset = gdf[gdf["veg_type"] == veg_type]
-
-        # Calculate total area of this vegetation type in hectares
-        total_area_ha = float(veg_subset.geometry.area.sum() / 10000)
-        result.loc[veg_type, "total_ha"] = total_area_ha
+        veg_subset = veg_gdf[veg_gdf["veg_type"] == veg_type]
 
         # Calculate zonal statistics for each severity class
         stats = calculate_zonal_stats(
@@ -408,44 +427,30 @@ async def create_veg_fire_matrix(
             metadata["pixel_area_ha"],
         )
 
-        # Update result with calculated statistics
+        # Update result with all calculated statistics
+        total_pixel_count = stats.get("total_pixel_count", 0)
+        result.loc[veg_type, "total_ha"] = total_pixel_count * metadata["pixel_area_ha"]
+
+        # Update all columns that exist in both stats and result
         for key, value in stats.items():
             if key in result.columns:
                 result.loc[veg_type, key] = float(value)
 
-        # Add mean and std dev directly from zonal stats
+        # Add additional stats columns for JSON structure
+        for severity in ["unburned", "low", "moderate", "high"]:
+            result.loc[veg_type, f"{severity}_mean"] = stats.get(f"{severity}_mean", 0)
+            result.loc[veg_type, f"{severity}_std"] = stats.get(f"{severity}_std", 0)
+
         result.loc[veg_type, "mean_severity"] = stats.get("mean_severity", 0)
         result.loc[veg_type, "std_dev"] = stats.get("std_dev", 0)
 
     # Add percentage columns
-    result = add_percentage_columns(result)
+    frontend_df = add_percentage_columns(result)
 
-    frontend_df = pd.DataFrame(
-        {
-            "Color": [
-                "#" + format(hash(str(veg)) % 0xFFFFFF, "06x") for veg in result.index
-            ],
-            "Vegetation Community": result.index,
-            "Hectares": result["total_ha"].round(2),
-            "% of Park": ((result["total_ha"] / total_park_area) * 100).round(2),
-            "% of Burn Area": (
-                (result["low_ha"] + result["moderate_ha"] + result["high_ha"])
-                / (
-                    result["low_ha"].sum()
-                    + result["moderate_ha"].sum()
-                    + result["high_ha"].sum()
-                )
-                * 100
-            ).round(2),
-            "Mean Severity": result["mean_severity"].round(3),
-            "Std Dev": result["std_dev"].round(3),
-        }
-    )
+    # Create JSON structure for visualization
+    json_structure = create_veg_json_structure(frontend_df)
 
-    # Cache the result before returning
-    write_to_cache(cache_key, frontend_df)
-
-    return frontend_df
+    return frontend_df, json_structure
 
 
 async def process_veg_map(
@@ -453,7 +458,8 @@ async def process_veg_map(
     fire_cog_url: str,
     output_dir: str,
     job_id: str,
-    severity_breaks: List[float] = None,
+    severity_breaks: List[float],
+    geojson_url: str,
 ) -> Dict[str, Any]:
     """
     Process vegetation map against fire severity COG
@@ -461,42 +467,55 @@ async def process_veg_map(
     Args:
         veg_gpkg_url: URL to vegetation geopackage
         fire_cog_url: URL to fire severity COG
-        output_dir: Directory to save output CSV
+        output_dir: Directory to save output CSV and JSON
         job_id: Unique job identifier
-        severity_breaks: Optional custom breaks for severity classification
+        severity_breaks: Custom breaks for severity classification
+        geojson_url: URL to the GeoJSON of the fire boundary
 
     Returns:
-        Dict with status and path to output CSV
+        Dict with status and paths to output files
     """
     try:
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         output_csv = os.path.join(output_dir, f"{job_id}_veg_fire_matrix.csv")
+        output_json = os.path.join(output_dir, f"{job_id}_veg_fire_matrix.json")
 
         # Download input files
         veg_gpkg_path = await download_file_to_temp(veg_gpkg_url, suffix=".gpkg")
         fire_cog_path = await download_file_to_temp(fire_cog_url, suffix=".tif")
+        geojson_path = await download_file_to_temp(geojson_url, suffix=".geojson")
 
         # Process the vegetation map against fire severity
-        result_df = await create_veg_fire_matrix(
+        frontend_df, json_structure = await create_veg_fire_matrix(
             original_veg_gpkg_url=veg_gpkg_url,
             veg_gpkg_path=veg_gpkg_path,
             fire_cog_path=fire_cog_path,
             severity_breaks=severity_breaks,
+            geojson_path=geojson_path,
         )
 
-        # Save the result to CSV (already formatted for frontend)
-        result_df.to_csv(output_csv, index=False)
+        # Save both formats
+        frontend_df.to_csv(
+            output_csv, index=True, index_label="vegetation_classification"
+        )
+
+        with open(output_json, "w") as f:
+            json.dump(json_structure, f, indent=2)
 
         # Clean up temporary files
-        for path in [veg_gpkg_path, fire_cog_path]:
+        for path in [veg_gpkg_path, fire_cog_path, geojson_path]:
             if os.path.exists(path):
                 try:
                     os.remove(path)
                 except Exception as e:
                     print(f"Failed to remove temporary file {path}: {str(e)}")
 
-        return {"status": "completed", "output_csv": output_csv}
+        return {
+            "status": "completed",
+            "output_csv": output_csv,
+            "output_json": output_json,
+        }
 
     except Exception as e:
         print(f"Error processing vegetation map: {str(e)}")

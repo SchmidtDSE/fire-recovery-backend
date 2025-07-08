@@ -7,6 +7,8 @@ from fastapi import (
     HTTPException,
     Depends,
 )
+import zipfile
+import shutil
 from pydantic import BaseModel, Field
 import uuid
 import time
@@ -20,6 +22,8 @@ from shapely.geometry import shape
 from src.process.spectral_indices import (
     process_remote_sensing_data,
 )
+import geopandas as gpd
+
 from src.util.upload_blob import upload_to_gcs
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
@@ -32,6 +36,9 @@ from src.util.cog_ops import (
 from contextlib import contextmanager
 from typing import Dict, Any, List, Tuple, ContextManager, Generator
 from src.process.resolve_veg import process_veg_map
+from fastapi_cache.decorator import cache
+from src.util.api_cache import request_key_builder
+from src.stac.stac_endpoint_handler import StacEndpointHandler
 
 
 @contextmanager
@@ -174,6 +181,11 @@ class VegMapResolveRequest(BaseModel):
     job_id: str = Field(
         ..., description="Job ID of the original fire severity analysis"
     )
+    severity_breaks: List[float] = Field(
+        ...,
+        description="List of classifation breaks for discrete fire severity classification (e.g. [0, .2, .4, .8])",
+    )
+    geojson_url: str = Field(..., description="URL to the GeoJSON of the fire boundary")
 
 
 class GeoJSONUploadRequest(BaseModel):
@@ -212,11 +224,16 @@ class FireSeverityResponse(BaseResponse):
 
 
 class VegMapMatrixResponse(BaseResponse):
-    fire_veg_matrix_url: Optional[str] = None
+    fire_veg_matrix_csv_url: Optional[str] = None
+    fire_veg_matrix_json_url: Optional[str] = None
 
 
 class UploadedGeoJSONResponse(BaseResponse):
     refined_boundary_geojson_url: str
+
+
+class UploadedShapefileZipResponse(BaseResponse):
+    shapefile_url: str = Field(..., description="URL to the uploaded shapefile zip")
 
 
 @router.get("/", tags=["Root"])
@@ -262,21 +279,18 @@ async def process_fire_severity(
     prefire_date_range: list[str],
     postfire_date_range: list[str],
 ):
-    """
-    Process fire severity, upload results, and create STAC assets
-    """
     try:
+        # Create STAC endpoint handler
+        stac_handler = StacEndpointHandler()
+
         # 1. Process the data
         result = await process_remote_sensing_data(
             job_id=job_id,
             geometry=geometry,
+            stac_endpoint_handler=stac_handler,
             prefire_date_range=prefire_date_range,
             postfire_date_range=postfire_date_range,
         )
-
-        if result["status"] != "completed":
-            # Handle error case
-            return
 
         # 2. Upload the COGs to GCS
         cog_urls = {}  # Store all COG URLs in a dictionary
@@ -535,9 +549,9 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     try:
         # Validate the GeoJSON using geojson_pydantic
         if request.geojson.get("type") == "FeatureCollection":
-            validated_geojson = FeatureCollection.model_validate(request.geojson)
+            FeatureCollection.model_validate(request.geojson)
         elif request.geojson.get("type") == "Feature":
-            validated_geojson = Feature.model_validate(request.geojson)
+            Feature.model_validate(request.geojson)
         else:
             raise ValueError(f"Unsupported GeoJSON type: {request.geojson.get('type')}")
 
@@ -559,6 +573,48 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
+        )
+
+
+@router.post(
+    "/upload/shapefile", response_model=UploadedShapefileZipResponse, tags=["Upload"]
+)
+async def upload_shapefile(
+    fire_event_name: str = Form(...), shapefile: UploadFile = File(...)
+):
+    """
+    Upload a zipped shapefile for a fire event.
+    Stores the zip file as-is without processing it.
+    The frontend will handle parsing the shapefile.
+    """
+    # Generate a unique job ID
+    job_id = str(uuid.uuid4())
+
+    try:
+        # Verify that this is a zip file
+        if not shapefile.filename.lower().endswith(".zip"):
+            raise ValueError("Only zipped shapefiles (.zip) are supported")
+
+        # Save the uploaded file to a temporary location
+        with temp_file(suffix=".zip") as tmp_path:
+            content = await shapefile.read()
+            with open(tmp_path, "wb") as f:
+                f.write(content)
+
+            # Upload the zip file directly to GCS
+            zip_blob_name = f"{fire_event_name}/{job_id}/original_shapefile.zip"
+            shapefile_url = upload_to_gcs(tmp_path, BUCKET_NAME, zip_blob_name)
+
+            return {
+                "fire_event_name": fire_event_name,
+                "status": "complete",
+                "job_id": job_id,
+                "shapefile_url": shapefile_url,
+            }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error uploading shapefile: {str(e)}"
         )
 
 
@@ -586,6 +642,8 @@ async def resolve_against_veg_map(
         fire_event_name=request.fire_event_name,
         veg_gpkg_url=request.veg_gpkg_url,
         fire_cog_url=request.fire_cog_url,
+        severity_breaks=request.severity_breaks,
+        geojson_url=request.geojson_url,
     )
 
     return {
@@ -600,6 +658,8 @@ async def process_veg_map_resolution(
     fire_event_name: str,
     veg_gpkg_url: str,
     fire_cog_url: str,
+    severity_breaks: List[float],
+    geojson_url: str,
 ):
     """
     Process vegetation map against fire severity COG to create area matrix.
@@ -615,15 +675,25 @@ async def process_veg_map_resolution(
             fire_cog_url=fire_cog_url,
             output_dir=output_dir,
             job_id=job_id,
+            severity_breaks=severity_breaks,
+            geojson_url=geojson_url,
         )
 
         if result["status"] != "completed":
             print(f"Error processing vegetation map: {result.get('error_message')}")
             return
 
-        # Upload the CSV to GCS
-        blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
-        matrix_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, blob_name)
+        print("Vegetation map processing completed successfully.")
+
+        # Upload both CSV and JSON to GCS
+        csv_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
+        json_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.json"
+
+        csv_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, csv_blob_name)
+        json_url = upload_to_gcs(result["output_json"], BUCKET_NAME, json_blob_name)
+
+        print(f"Vegetation fire matrix CSV uploaded to {csv_url}")
+        print(f"Vegetation fire matrix JSON uploaded to {json_url}")
 
         # Get geometry from the fire severity COG
         stac_item = await stac_manager.get_items_by_id_and_coarseness(
@@ -635,12 +705,16 @@ async def process_veg_map_resolution(
         # Get datetime from the fire severity COG
         datetime_str = stac_item["properties"]["datetime"]
 
+        print(f"Resolved vegetation map against fire severity for {fire_event_name}...")
+
         await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            fire_veg_matrix_url=matrix_url,
+            fire_veg_matrix_csv_url=csv_url,
+            fire_veg_matrix_json_url=json_url,
             geometry=geometry,
             bbox=bbox,
+            classification_breaks=severity_breaks,
             datetime_str=datetime_str,
         )
 
@@ -659,13 +733,17 @@ async def process_veg_map_resolution(
 #     namespace="root",
 #     expire=60 * 60 * 6,  # Cache for 6 hour
 # )
-async def get_veg_map_result(fire_event_name: str, job_id: str):
+async def get_veg_map_result(
+    fire_event_name: str, job_id: str, severity_breaks: Optional[List[float]] = None
+):
     """
     Get the result of the vegetation map resolution against fire severity.
+    Use query parameter: ?severity_breaks=0.1&severity_breaks=0.2&severity_breaks=0.3
     """
     # Look up the STAC item
-    stac_item = await stac_manager.get_item_by_id(
-        f"{fire_event_name}-veg-matrix-{job_id}"
+    stac_item = await stac_manager.get_items_by_id_and_classification_breaks(
+        f"{fire_event_name}-veg-matrix-{job_id}",
+        classification_breaks=severity_breaks,
     )
 
     if not stac_item:
@@ -675,12 +753,14 @@ async def get_veg_map_result(fire_event_name: str, job_id: str):
         )
 
     # Item found, extract the matrix URL
-    matrix_url = stac_item["assets"]["fire_veg_matrix"]["href"]
+    matrix_csv_url = stac_item["assets"]["fire_veg_matrix_csv"]["href"]
+    matrix_json_url = stac_item["assets"]["fire_veg_matrix_json"]["href"]
 
     # Return the completed response
     return VegMapMatrixResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        fire_veg_matrix_url=matrix_url,
+        fire_veg_matrix_csv_url=matrix_csv_url,
+        fire_veg_matrix_json_url=matrix_json_url,
     )
