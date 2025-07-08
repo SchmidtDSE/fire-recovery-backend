@@ -16,7 +16,6 @@ from fastapi import (
     UploadFile,
 )
 from geojson_pydantic import Feature, FeatureCollection, Polygon
-from pydantic import BaseModel, Field
 from shapely.geometry import shape
 
 from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
@@ -33,6 +32,21 @@ from src.util.cog_ops import (
 )
 from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
+from src.models.requests import (
+    ProcessingRequest,
+    RefineRequest,
+    VegMapResolveRequest,
+    GeoJSONUploadRequest,
+)
+from src.models.responses import (
+    TaskPendingResponse,
+    ProcessingStartedResponse,
+    RefinedBoundaryResponse,
+    FireSeverityResponse,
+    VegMapMatrixResponse,
+    UploadedGeoJSONResponse,
+    UploadedShapefileZipResponse,
+)
 
 
 @contextmanager
@@ -110,22 +124,20 @@ async def process_cog_with_boundary(
         URL to the uploaded processed COG
     """
     # Download the original COG to a temporary file
-    with temp_file(suffix=".tif") as original_cog_path:
-        # Download the original COG
-        tmp_cog_path = await download_cog_to_temp(original_cog_url)
+    tmp_cog_path = await download_cog_to_temp(original_cog_url)
 
-        # Crop the COG with the refined boundary
-        cropped_data = crop_cog_with_geometry(tmp_cog_path, valid_geojson)
+    # Crop the COG with the refined boundary
+    cropped_data = crop_cog_with_geometry(tmp_cog_path, valid_geojson)
 
-        # Create a new COG from the cropped data
-        with temp_file(suffix=".tif") as refined_cog_path:
-            cog_result = create_cog(cropped_data, refined_cog_path)
-            if not cog_result["is_valid"]:
-                raise Exception("Failed to create a valid COG from cropped data")
+    # Create a new COG from the cropped data
+    with temp_file(suffix=".tif") as refined_cog_path:
+        cog_result = create_cog(cropped_data, refined_cog_path)
+        if not cog_result["is_valid"]:
+            raise Exception("Failed to create a valid COG from cropped data")
 
-            # Upload the refined COG to GCS
-            cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
-            cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
+        # Upload the refined COG to GCS
+        cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
+        cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
 
     return cog_url
 
@@ -144,90 +156,6 @@ stac_manager = STACGeoParquetManager(
     base_url=f"https://storage.googleapis.com/{BUCKET_NAME}/stac",
     storage_dir=STAC_STORAGE_DIR,
 )
-
-
-# Request models
-class ProcessingRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    geometry: dict = Field(..., description="GeoJSON of bounding box AOI")
-    prefire_date_range: list[str] = Field(
-        ...,
-        description="Date range for prefire imagery (e.g. ['2023-01-01', '2023-12-31'])",
-    )
-    postfire_date_range: list[str] = Field(
-        ...,
-        description="Date range for postfire imagery (e.g. ['2024-01-01', '2024-12-31'])",
-    )
-
-
-class RefineRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    refine_geojson: dict = Field(..., description="GeoJSON to be refined")
-    job_id: str = Field(
-        ..., description="Job ID of the original fire severity analysis"
-    )
-
-
-class VegMapResolveRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    veg_gpkg_url: str = Field(..., description="URL to the vegetation map GeoPackage")
-    fire_cog_url: str = Field(..., description="URL to the fire severity COG")
-    job_id: str = Field(
-        ..., description="Job ID of the original fire severity analysis"
-    )
-    severity_breaks: List[float] = Field(
-        ...,
-        description="List of classifation breaks for discrete fire severity classification (e.g. [0, .2, .4, .8])",
-    )
-    geojson_url: str = Field(..., description="URL to the GeoJSON of the fire boundary")
-
-
-class GeoJSONUploadRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    geojson: dict = Field(..., description="GeoJSON data to upload")
-
-
-# Response models
-class BaseResponse(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    status: str
-    job_id: str
-
-
-class TaskPendingResponse(BaseResponse):
-    """Response for when a task is still being processed"""
-
-    pass
-
-
-class ProcessingStartedResponse(BaseResponse):
-    pass
-
-
-class RefinedBoundaryResponse(BaseResponse):
-    refined_boundary_geojson_url: str
-    refined_severity_cog_urls: Dict[str, str] = Field(
-        ..., description="URLs to the refined COGs for each metric"
-    )
-
-
-class FireSeverityResponse(BaseResponse):
-    coarse_severity_cog_urls: Dict[str, str] = Field(
-        ..., description="URLs to the COGs for each metric"
-    )
-
-
-class VegMapMatrixResponse(BaseResponse):
-    fire_veg_matrix_csv_url: Optional[str] = None
-    fire_veg_matrix_json_url: Optional[str] = None
-
-
-class UploadedGeoJSONResponse(BaseResponse):
-    refined_boundary_geojson_url: str
-
-
-class UploadedShapefileZipResponse(BaseResponse):
-    shapefile_url: str = Field(..., description="URL to the uploaded shapefile zip")
 
 
 @router.get("/", tags=["Root"])
@@ -686,24 +614,32 @@ async def process_veg_map_resolution(
         stac_item = await stac_manager.get_items_by_id_and_coarseness(
             f"{fire_event_name}-severity-{job_id}", "refined"
         )
-        geometry = stac_item["geometry"]
-        bbox = stac_item["bbox"]
+        if not stac_item:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Fire severity COG not found for job ID {job_id}",
+            )
+        else:
+            geometry = stac_item["geometry"]
+            bbox = stac_item["bbox"]
 
-        # Get datetime from the fire severity COG
-        datetime_str = stac_item["properties"]["datetime"]
+            # Get datetime from the fire severity COG
+            datetime_str = stac_item["properties"]["datetime"]
 
-        print(f"Resolved vegetation map against fire severity for {fire_event_name}...")
+            print(
+                f"Resolved vegetation map against fire severity for {fire_event_name}..."
+            )
 
-        await stac_manager.create_veg_matrix_item(
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            fire_veg_matrix_csv_url=csv_url,
-            fire_veg_matrix_json_url=json_url,
-            geometry=geometry,
-            bbox=bbox,
-            classification_breaks=severity_breaks,
-            datetime_str=datetime_str,
-        )
+            await stac_manager.create_veg_matrix_item(
+                fire_event_name=fire_event_name,
+                job_id=job_id,
+                fire_veg_matrix_csv_url=csv_url,
+                fire_veg_matrix_json_url=json_url,
+                geometry=geometry,
+                bbox=bbox,
+                classification_breaks=severity_breaks,
+                datetime_str=datetime_str,
+            )
 
     except Exception as e:
         # Log error
@@ -715,11 +651,6 @@ async def process_veg_map_resolution(
     response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
     tags=["Vegetation Map Analysis"],
 )
-# @cache(
-#     key_builder=request_key_builder,
-#     namespace="root",
-#     expire=60 * 60 * 6,  # Cache for 6 hour
-# )
 async def get_veg_map_result(
     fire_event_name: str, job_id: str, severity_breaks: Optional[List[float]] = None
 ) -> Union[TaskPendingResponse, VegMapMatrixResponse]:

@@ -39,15 +39,12 @@ class STACGeoParquetManager:
         """Get the URL to the GeoParquet file for a fire event"""
         return f"{self.base_url}/{fire_event_name}.parquet"
 
-    def validate_stac_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_stac_item(self, item: Dict[str, Any]) -> None:
         """
         Validate a STAC item against the STAC specification using stac-pydantic.
 
         Args:
             item: The STAC item to validate
-
-        Returns:
-            The validated STAC item
 
         Raises:
             ValidationError: If the STAC item is invalid
