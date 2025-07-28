@@ -171,40 +171,6 @@ def calculate_nbr(
     return (nir - swir) / (nir + swir)
 
 
-# def attempt_read_from_cache(cache_key):
-#     # Create cache directory if it doesn't exist
-#     cache_dir = "tmp/cache"
-#     os.makedirs(cache_dir, exist_ok=True)
-
-#     cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-#     # Check if cached result exists
-#     if os.path.exists(cache_file):
-#         try:
-#             print(f"Loading cached result from {cache_file}")
-#             with open(cache_file, "rb") as f:
-#                 return pickle.loads(f.read())
-#         except Exception as e:
-#             print(f"Error loading cached result: {e}")
-
-
-# def write_to_cache(cache_key, result):
-#     # Create cache directory if it doesn't exist
-#     cache_dir = "tmp/cache"
-#     os.makedirs(cache_dir, exist_ok=True)
-
-#     cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-#     try:
-#         print(f"Saving result to cache: {cache_file}")
-#         with open(cache_file, "wb") as f:
-#             f.write(
-#                 pickle.dumps(result, protocol=-1)
-#             )  # Use highest protocol for efficiency
-#     except Exception as e:
-#         print(f"Error caching result: {e}")
-
-
 # @coiled.function(
 #     name="calculate-burn-indices",
 #     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
@@ -221,15 +187,6 @@ def calculate_nbr(
 # )
 def calculate_burn_indices(prefire_data, postfire_data, nir_band_name, swir_band_name):
     """Calculate various burn indices from pre and post fire data"""
-
-    # First, check local cache to see if we have this pickled
-    # prefire_hash = hashlib.md5(str(prefire_data).encode()).hexdigest()
-    # postfire_hash = hashlib.md5(str(postfire_data).encode()).hexdigest()
-    # cache_key = f"burn_indices:{prefire_hash}:{postfire_hash}"
-
-    # cached_data = attempt_read_from_cache(cache_key=cache_key)
-    # if cached_data:
-    #     return cached_data
 
     # Calculate NBR for both periods
     prefire_nbr = calculate_nbr(prefire_data, nir_band_name, swir_band_name)
@@ -303,8 +260,6 @@ def create_cog(data, output_path: str) -> Dict[str, Any]:
         forward_band_tags=True,
         use_cog_driver=True,
     )
-
-    __info = cog_info(output_path)
 
     is_valid, __errors, __warnings = cog_validate(output_path)
 
