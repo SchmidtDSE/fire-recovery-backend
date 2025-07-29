@@ -76,24 +76,24 @@ class MinioCloudStorage(StorageInterface):
         if not self.client.bucket_exists(self.bucket_name):
             self.client.make_bucket(self.bucket_name)
 
-    async def save_bytes(self, data: bytes, path: str) -> str:
-        """Save binary data to S3 bucket"""
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
+    async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
+        """Save binary data to S3 bucket without using temp files"""
+        # If temporary, directly store in temp/ directory
+        if temporary and not path.startswith("temp/"):
+            path = f"temp/{path}"
 
-        try:
-            # Determine content type based on file extension
-            content_type = self._guess_content_type(path)
+        # Determine content type based on file extension
+        content_type = self._guess_content_type(path)
 
-            # Upload file
-            self.client.fput_object(
-                self.bucket_name, path, tmp_path, content_type=content_type
-            )
-            return self.get_url(path)
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        # Use BytesIO to create a file-like object in memory
+        data_stream = io.BytesIO(data)
+
+        # Upload directly from memory without temp files
+        self.client.put_object(
+            self.bucket_name, path, data_stream, len(data), content_type=content_type
+        )
+
+        return self.get_url(path)
 
     async def get_bytes(self, path: str) -> bytes:
         """Get binary data from S3 bucket"""

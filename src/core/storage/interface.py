@@ -6,13 +6,14 @@ class StorageInterface(ABC):
     """Abstract interface for all storage operations"""
 
     @abstractmethod
-    async def save_bytes(self, data: bytes, path: str) -> str:
+    async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
         """
         Save binary data to storage and return access URL
 
         Args:
             data: Binary data to save
             path: Storage path (e.g., "fire_event/job_id/filename.tif")
+            temporary: If True, data is stored temporarily and may be cleaned up later
 
         Returns:
             URL to access the saved data

@@ -2,59 +2,37 @@
 import argparse
 import os
 import sys
-from minio import Minio
-from minio.error import S3Error
 from pathlib import Path
-from urllib.parse import urlparse
+
+from src.config.storage import get_temp_storage, get_permanent_storage
 
 
-def upload_to_gcs(source_file: str, bucket_name: str, destination_blob_name: str):
-    """Uploads a file to the specified GCS bucket using Minio client."""
-    # Get credentials from environment variables
-    access_key = os.environ.get("GCP_ACCESS_KEY_ID")
-    secret_key = os.environ.get("GCP_SECRET_ACCESS_KEY")
+async def upload_to_gcs(
+    source_path_or_bytes: str | bytes, destination_blob_name: str
+) -> str:
+    """
+    Upload a file or bytes to GCS using the storage provider
 
-    if not access_key or not secret_key:
-        raise ValueError(
-            "GCP_ACCESS_KEY_ID and GCP_SECRET_ACCESS_KEY environment variables must be set"
+    Args:
+        source_path_or_bytes: Either a path in the storage system or bytes content
+        bucket_name: GCS bucket name
+        destination_blob_name: Destination blob name
+
+    Returns:
+        Public URL of the uploaded blob
+    """
+    temp_storage = get_temp_storage()
+    permanent_storage = get_permanent_storage()
+
+    # If source is bytes, save directly to permanent storage
+    if isinstance(source_path_or_bytes, bytes):
+        return await permanent_storage.save_bytes(
+            source_path_or_bytes, destination_blob_name
         )
 
-    # Initialize Minio client - for GCS compatibility use their endpoint
-    endpoint = "storage.googleapis.com"
-    client = Minio(
-        endpoint,
-        access_key=access_key,
-        secret_key=secret_key,
-        secure=True,  # Use HTTPS
-        region="auto",
-    )
-
-    # Check if bucket exists, create if not
-    if not client.bucket_exists(bucket_name):
-        print(f"Bucket {bucket_name} does not exist. Creating...")
-        client.make_bucket(bucket_name)
-
-    # Upload file
-    try:
-        client.fput_object(
-            bucket_name,
-            destination_blob_name,
-            source_file,
-            content_type="application/octet-stream",
-        )
-
-        print(
-            f"File {source_file} uploaded to gs://{bucket_name}/{destination_blob_name}"
-        )
-
-        # Construct public URL
-        public_url = f"https://{endpoint}/{bucket_name}/{destination_blob_name}"
-        print(f"Public URL: {public_url}")
-
-        return public_url
-
-    except S3Error as e:
-        raise Exception(f"Error uploading to GCS: {e}")
+    # If source is a path in our temporary storage, get the bytes and save to permanent
+    content = await temp_storage.get_bytes(source_path_or_bytes)
+    return await permanent_storage.save_bytes(content, destination_blob_name)
 
 
 def main():

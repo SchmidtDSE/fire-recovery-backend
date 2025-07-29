@@ -5,7 +5,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple, Union
 
 from fastapi import (
     APIRouter,
@@ -47,24 +47,7 @@ from src.models.responses import (
     UploadedGeoJSONResponse,
     UploadedShapefileZipResponse,
 )
-
-
-@contextmanager
-def temp_file(suffix: str = "", content: bytes = None) -> Generator[str, None, None]:
-    """Context manager for temporary files with automatic cleanup"""
-    temp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            if content:
-                tmp.write(content)
-            temp_path = tmp.name
-        yield temp_path
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except Exception as e:
-                print(f"Failed to remove temporary file {temp_path}: {str(e)}")
+from src.config.storage import temp_file
 
 
 async def process_and_upload_geojson(
@@ -502,12 +485,7 @@ async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONRespon
 async def upload_shapefile(
     fire_event_name: str = Form(...), shapefile: UploadFile = File(...)
 ) -> UploadedShapefileZipResponse:
-    """
-    Upload a zipped shapefile for a fire event.
-    Stores the zip file as-is without processing it.
-    The frontend will handle parsing the shapefile.
-    """
-    # Generate a unique job ID
+    """Upload a zipped shapefile for a fire event."""
     job_id = str(uuid.uuid4())
 
     try:
@@ -515,22 +493,19 @@ async def upload_shapefile(
         if not shapefile.filename or not shapefile.filename.lower().endswith(".zip"):
             raise ValueError("Only zipped shapefiles (.zip) are supported")
 
-        # Save the uploaded file to a temporary location
-        with temp_file(suffix=".zip") as tmp_path:
-            content = await shapefile.read()
-            with open(tmp_path, "wb") as f:
-                f.write(content)
+        # Read the file content directly
+        content = await shapefile.read()
 
-            # Upload the zip file directly to GCS
-            zip_blob_name = f"{fire_event_name}/{job_id}/original_shapefile.zip"
-            shapefile_url = upload_to_gcs(tmp_path, BUCKET_NAME, zip_blob_name)
+        # Upload the zip file directly to GCS without a temp file
+        zip_blob_name = f"{fire_event_name}/{job_id}/original_shapefile.zip"
+        shapefile_url = await upload_to_gcs(content, BUCKET_NAME, zip_blob_name)
 
-            return UploadedShapefileZipResponse(
-                fire_event_name=fire_event_name,
-                status="complete",
-                job_id=job_id,
-                shapefile_url=shapefile_url,
-            )
+        return UploadedShapefileZipResponse(
+            fire_event_name=fire_event_name,
+            status="complete",
+            job_id=job_id,
+            shapefile_url=shapefile_url,
+        )
 
     except Exception as e:
         raise HTTPException(
