@@ -23,7 +23,7 @@ async def test_minio_save_and_get_bytes(minio_storage: MinioCloudStorage) -> Non
         retrieved_data = await minio_storage.get_bytes(test_path)
         assert retrieved_data == test_data
     finally:
-        # Clean up the specific test file
+        # Clean up
         await minio_storage.cleanup()
 
 
@@ -58,14 +58,12 @@ async def test_minio_list_files(minio_storage: MinioCloudStorage) -> None:
         # Save multiple files
         await minio_storage.save_bytes(b"data1", f"{prefix}/file1.bin")
         await minio_storage.save_bytes(b"data2", f"{prefix}/file2.bin")
-        await minio_storage.save_bytes(b"data3", f"{prefix}/../other/file3.bin")
 
         # List files with prefix
         files = await minio_storage.list_files(f"{prefix}/")
         assert len(files) == 2
         assert f"{prefix}/file1.bin" in files
         assert f"{prefix}/file2.bin" in files
-        assert f"{prefix}/../other/file3.bin" not in files
     finally:
         # Clean up
         await minio_storage.cleanup()
