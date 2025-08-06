@@ -11,7 +11,9 @@ def memory_storage() -> StorageInterface:
 
 
 @pytest.fixture
-async def memory_storage_with_file(memory_storage) -> tuple[StorageInterface, str]:
+async def memory_storage_with_file(
+    memory_storage: StorageInterface,
+) -> tuple[StorageInterface, str]:
     """Fixture for memory storage with a test file"""
     test_content = b"This is test content"
     test_path = "test_file.txt"
@@ -33,7 +35,7 @@ def minio_available() -> bool:
 
 
 @pytest.fixture
-def minio_storage(minio_available) -> StorageInterface:
+def minio_storage(minio_available: bool) -> StorageInterface:
     """Fixture for GCP MinIO storage"""
     if not minio_available:
         pytest.skip("GCP MinIO credentials not available for testing")
@@ -41,9 +43,9 @@ def minio_storage(minio_available) -> StorageInterface:
     from src.core.storage.minio import MinioCloudStorage
 
     return MinioCloudStorage(
-        endpoint=os.environ.get("MINIO_ENDPOINT"),
+        endpoint=os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
         access_key=os.environ.get("MINIO_ACCESS_KEY"),
         secret_key=os.environ.get("MINIO_SECRET_KEY"),
         secure=os.environ.get("MINIO_SECURE", "True").lower() == "true",
-        bucket_name=os.environ.get("MINIO_TEST_BUCKET"),
+        bucket_name=os.environ.get("MINIO_TEST_BUCKET", "test-bucket"),
     )
