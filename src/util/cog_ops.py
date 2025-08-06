@@ -9,6 +9,8 @@ from rio_cogeo.profiles import cog_profiles
 from typing import Dict, Any, List, Union
 import numpy as np
 
+from src.core.storage.safe_tempfile import safe_tempfile
+
 
 async def get_fire_severity_cog_by_event(stac_manager, fire_event_name: str) -> str:
     """
@@ -100,18 +102,16 @@ def crop_cog_with_geometry(cog_path: str, geometry: Dict[str, Any]) -> xr.DataAr
     return cropped
 
 
-def create_cog(data: xr.DataArray, output_path: str) -> Dict[str, Any]:
+async def create_cog_bytes(data: xr.DataArray) -> bytes:
     """
-    Create a Cloud Optimized GeoTIFF from xarray data.
+    Create a Cloud Optimized GeoTIFF from xarray data and return as bytes.
 
     Args:
         data: The xarray DataArray to convert to a COG
-        output_path: Path where to save the COG
 
     Returns:
-        Dictionary with output path and validation status
+        COG data as bytes
     """
-    naive_tiff = output_path.replace(".tif", "_raw.tif")
 
     # Compute the data (if it's a dask array)
     if hasattr(data, "compute"):
@@ -130,27 +130,32 @@ def create_cog(data: xr.DataArray, output_path: str) -> Dict[str, Any]:
     if computed.rio.crs is None:
         computed.rio.set_crs("EPSG:4326", inplace=True)
 
-    # Write the naive GeoTIFF
-    computed.rio.to_raster(naive_tiff, driver="GTiff", dtype="float32")
+    # Use safe tempfile context manager instead of system tempfile
+    async with safe_tempfile(suffix="_raw.tif") as naive_tiff_path:
+        async with safe_tempfile(suffix=".tif") as output_path:
+            # Write the naive GeoTIFF to temp storage
+            computed.rio.to_raster(naive_tiff_path, driver="GTiff", dtype="float32")
 
-    # Configure and create the COG
-    cog_profile = cog_profiles.get("deflate")
-    cog_profile.update(dtype="float32", nodata=nodata)
+            # Configure and create the COG
+            cog_profile = cog_profiles.get("deflate")
+            cog_profile.update(dtype="float32", nodata=nodata)
 
-    cog_translate(
-        naive_tiff,
-        output_path,
-        cog_profile,
-        add_mask=True,
-        overview_resampling="average",
-        forward_band_tags=True,
-        use_cog_driver=True,
-    )
+            cog_translate(
+                naive_tiff_path,
+                output_path,
+                cog_profile,
+                add_mask=True,
+                overview_resampling="average",
+                forward_band_tags=True,
+                use_cog_driver=True,
+            )
 
-    # Validate the COG
-    is_valid, __errors, __warnings = cog_validate(output_path)
+            # Validate the COG
+            is_valid, __errors, __warnings = cog_validate(output_path)
 
-    # Clean up intermediate naive file
-    os.remove(naive_tiff)
+            if not is_valid:
+                raise Exception("Failed to create a valid COG")
 
-    return {"path": output_path, "is_valid": is_valid}
+            # Read the COG as bytes
+            with open(output_path, "rb") as f:
+                return f.read()

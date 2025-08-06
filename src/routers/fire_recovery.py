@@ -1,6 +1,5 @@
 import json
 import os
-import tempfile
 import time
 import uuid
 from contextlib import contextmanager
@@ -26,7 +25,7 @@ from src.process.spectral_indices import (
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 from src.util.cog_ops import (
-    create_cog,
+    create_cog_bytes,
     crop_cog_with_geometry,
     download_cog_to_temp,
 )
@@ -47,7 +46,7 @@ from src.models.responses import (
     UploadedGeoJSONResponse,
     UploadedShapefileZipResponse,
 )
-from src.config.storage import temp_file
+from src.config.storage import get_temp_storage
 
 
 async def process_and_upload_geojson(
@@ -71,17 +70,21 @@ async def process_and_upload_geojson(
     # Convert the Polygon/geometry to a valid GeoJSON object
     valid_geojson = polygon_to_valid_geojson(geometry)
 
-    # Create a temporary file and upload it
-    with temp_file(
-        suffix=".geojson", content=json.dumps(valid_geojson).encode("utf-8")
-    ) as geojson_path:
-        # Upload to GCS
-        blob_name = f"{fire_event_name}/{job_id}/{filename}.geojson"
-        geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
+    # Save directly to temp storage and upload
+    temp_storage = get_temp_storage()
+    geojson_bytes = json.dumps(valid_geojson).encode("utf-8")
 
-        # Extract bbox from geometry for STAC
-        geom_shape = shape(valid_geojson["features"][0]["geometry"])
-        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
+    # Generate temp path for intermediate storage
+    temp_path = f"{job_id}/{filename}.geojson"
+    await temp_storage.save_bytes(geojson_bytes, temp_path, temporary=True)
+
+    # Upload to GCS
+    blob_name = f"{fire_event_name}/{job_id}/{filename}.geojson"
+    geojson_url = await upload_to_gcs(geojson_bytes, blob_name)
+
+    # Extract bbox from geometry for STAC
+    geom_shape = shape(valid_geojson["features"][0]["geometry"])
+    bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
 
     return geojson_url, valid_geojson, list(bbox)
 
@@ -112,15 +115,12 @@ async def process_cog_with_boundary(
     # Crop the COG with the refined boundary
     cropped_data = crop_cog_with_geometry(tmp_cog_path, valid_geojson)
 
-    # Create a new COG from the cropped data
-    with temp_file(suffix=".tif") as refined_cog_path:
-        cog_result = create_cog(cropped_data, refined_cog_path)
-        if not cog_result["is_valid"]:
-            raise Exception("Failed to create a valid COG from cropped data")
+    # Create a new COG from the cropped data as bytes
+    cog_bytes = await create_cog_bytes(cropped_data)
 
-        # Upload the refined COG to GCS
-        cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
-        cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
+    # Upload the refined COG to GCS
+    cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
+    cog_url = await upload_to_gcs(cog_bytes, cog_blob_name)
 
     return cog_url
 
