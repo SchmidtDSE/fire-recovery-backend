@@ -1,5 +1,4 @@
-from contextlib import contextmanager
-import os
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 import uuid
 from src.core.storage.factory import get_storage
@@ -33,7 +32,7 @@ def get_final_storage() -> StorageInterface:
     return final_storage_provider
 
 
-@contextmanager
+@asynccontextmanager
 async def temp_file(
     suffix: str = "", content: Optional[bytes] = None
 ) -> AsyncGenerator[str, None, None]:
