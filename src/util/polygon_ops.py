@@ -1,10 +1,11 @@
-from typing import Dict, Any, Optional, Union, List
 import json
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+
+from geojson_pydantic import Feature, FeatureCollection, Polygon
+from pydantic import ValidationError
 from shapely import Polygon as ShapelyPolygon
 from shapely import from_geojson, to_geojson
-from geojson_pydantic import Polygon, Feature, FeatureCollection
-from pydantic import ValidationError
 
 
 def validate_polygon(polygon_data: Dict[str, Any]) -> ShapelyPolygon:
