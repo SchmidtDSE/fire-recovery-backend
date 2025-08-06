@@ -143,10 +143,10 @@ class MinioCloudStorage(StorageInterface):
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
 
-    async def save_json(self, data: Dict[str, Any], path: str) -> str:
+    async def save_json(self, data: Dict[str, Any], path: str, temporary: bool = False) -> str:
         """Save JSON data to S3 bucket"""
         json_str = json.dumps(data)
-        return await self.save_bytes(json_str.encode("utf-8"), path)
+        return await self.save_bytes(json_str.encode("utf-8"), path, temporary)
 
     async def get_json(self, path: str) -> Dict[str, Any]:
         """Get JSON data from S3 bucket"""
@@ -200,7 +200,7 @@ class MinioCloudStorage(StorageInterface):
         return temp_path
 
     async def process_stream(
-        self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str
+        self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str, temporary: bool = False
     ) -> str:
         """Process data with minimal temporary storage
 
@@ -208,6 +208,7 @@ class MinioCloudStorage(StorageInterface):
             source_path: Path in the bucket to read from
             processor: Function that takes a BinaryIO and returns processed bytes
             target_path: Path in the bucket to save the processed data
+            temporary: If True, processed data is stored temporarily and may be cleaned up later
 
         Returns:
             Path in the bucket where the processed data was saved
@@ -221,14 +222,15 @@ class MinioCloudStorage(StorageInterface):
         result_bytes = processor(source_file_obj)
 
         # Save result directly
-        return await self.save_bytes(result_bytes, target_path)
+        return await self.save_bytes(result_bytes, target_path, temporary)
 
-    async def copy_from_url(self, url: str, target_path: str) -> str:
+    async def copy_from_url(self, url: str, target_path: str, temporary: bool = False) -> str:
         """Download from URL directly to blob storage.
 
         Args:
             url: URL to download
             target_path: Path in the bucket to save the downloaded file
+            temporary: If True, downloaded file is stored temporarily and may be cleaned up later
 
         Returns:
             Path in the bucket where the file was saved
@@ -239,7 +241,7 @@ class MinioCloudStorage(StorageInterface):
                     raise Exception(f"Failed to download {url}: {response.status}")
 
                 content = await response.read()
-                return await self.save_bytes(content, target_path)
+                return await self.save_bytes(content, target_path, temporary)
 
     async def cleanup(self, max_age_seconds: Optional[float] = None) -> int:
         """
@@ -262,9 +264,15 @@ class MinioCloudStorage(StorageInterface):
         removed_count = 0
 
         for obj in objects:
+            # Check if the object is temporary (in temp/ directory)
+            is_temporary = obj.object_name.startswith("temp/")
+            
             # Check if the object is older than max_age_seconds
             age_seconds = (current_time - obj.last_modified).total_seconds()
-            if age_seconds > max_age_seconds:
+            is_old = age_seconds > max_age_seconds
+            
+            # Remove if temporary or too old
+            if is_temporary or is_old:
                 try:
                     self._client.remove_object(self._bucket_name, obj.object_name)
                     removed_count += 1

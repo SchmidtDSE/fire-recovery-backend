@@ -35,13 +35,16 @@ class StorageInterface(ABC):
         pass
 
     @abstractmethod
-    async def save_json(self, data: Dict[str, Any], path: str) -> str:
+    async def save_json(
+        self, data: Dict[str, Any], path: str, temporary: bool = False
+    ) -> str:
         """
         Save JSON data to storage and return access URL
 
         Args:
             data: JSON data to save
             path: Storage path (e.g., "fire_event/job_id/data.json")
+            temporary: If True, data is stored temporarily and may be cleaned up later
 
         Returns:
             URL to access the saved JSON
@@ -89,7 +92,11 @@ class StorageInterface(ABC):
 
     @abstractmethod
     async def process_stream(
-        self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str
+        self,
+        source_path: str,
+        processor: Callable[[BinaryIO], bytes],
+        target_path: str,
+        temporary: bool = False,
     ) -> str:
         """
         Process a stream directly without creating temporary files
@@ -98,6 +105,7 @@ class StorageInterface(ABC):
             source_path: Source path to read
             processor: Function that processes a file-like object and returns bytes
             target_path: Target path to write processed result
+            temporary: If True, processed data is stored temporarily and may be cleaned up later
 
         Returns:
             URL to access the processed data
@@ -105,13 +113,16 @@ class StorageInterface(ABC):
         pass
 
     @abstractmethod
-    async def copy_from_url(self, url: str, target_path: str) -> str:
+    async def copy_from_url(
+        self, url: str, target_path: str, temporary: bool = False
+    ) -> str:
         """
         Download from URL directly to storage without temp files
 
         Args:
             url: URL to download
             target_path: Target path in storage
+            temporary: If True, downloaded file is stored temporarily and may be cleaned up later
 
         Returns:
             Storage URL for the downloaded file
