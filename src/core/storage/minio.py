@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import io
 import json
 import os
@@ -9,6 +10,7 @@ from minio.error import S3Error
 from pathlib import Path
 
 from src.core.storage.interface import StorageInterface
+from src.config.constants import DEFAULT_TEMP_FILE_MAX_AGE_SECONDS
 
 
 class MinioCloudStorage(StorageInterface):
@@ -66,7 +68,7 @@ class MinioCloudStorage(StorageInterface):
         )
 
         # Set base URL for public access
-        self._base_url = base_url or f"https://{endpoint}/{bucket_name}"
+        self._base_url = base_url or f"{endpoint}/{bucket_name}"
 
         # Create bucket if it doesn't exist
         self._ensure_bucket_exists()
@@ -200,7 +202,16 @@ class MinioCloudStorage(StorageInterface):
     async def process_stream(
         self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str
     ) -> str:
-        """Process data with minimal temporary storage"""
+        """Process data with minimal temporary storage
+
+        Args:
+            source_path: Path in the bucket to read from
+            processor: Function that takes a BinaryIO and returns processed bytes
+            target_path: Path in the bucket to save the processed data
+
+        Returns:
+            Path in the bucket where the processed data was saved
+        """
         # For Minio, we need a temporary buffer in memory
         # but we avoid disk I/O
         source_data = await self.get_bytes(source_path)
@@ -213,7 +224,15 @@ class MinioCloudStorage(StorageInterface):
         return await self.save_bytes(result_bytes, target_path)
 
     async def copy_from_url(self, url: str, target_path: str) -> str:
-        """Download from URL directly to blob storage"""
+        """Download from URL directly to blob storage.
+
+        Args:
+            url: URL to download
+            target_path: Path in the bucket to save the downloaded file
+
+        Returns:
+            Path in the bucket where the file was saved
+        """
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status != 200:
@@ -223,9 +242,20 @@ class MinioCloudStorage(StorageInterface):
                 return await self.save_bytes(content, target_path)
 
     async def cleanup(self, max_age_seconds: Optional[float] = None) -> int:
-        """Cleanup old files in the bucket"""
+        """
+        Cleanup old files in the bucket
+
+        Args:
+            max_age_seconds: Maximum age of files to keep. If None, uses default based on bucket type.
+
+        Returns:
+            Number of files removed
+        """
+        # Use default if not provided
         if max_age_seconds is None:
-            raise ValueError("max_age_seconds must be provided for cleanup")
+            max_age_seconds = DEFAULT_TEMP_FILE_MAX_AGE_SECONDS
+
+        current_time = datetime.now(timezone.utc)
 
         # List all objects in the bucket
         objects = self._client.list_objects(self._bucket_name, recursive=True)
@@ -233,7 +263,8 @@ class MinioCloudStorage(StorageInterface):
 
         for obj in objects:
             # Check if the object is older than max_age_seconds
-            if (obj.last_modified - obj.created).total_seconds() > max_age_seconds:
+            age_seconds = (current_time - obj.last_modified).total_seconds()
+            if age_seconds > max_age_seconds:
                 try:
                     self._client.remove_object(self._bucket_name, obj.object_name)
                     removed_count += 1
