@@ -35,7 +35,7 @@ def get_final_storage() -> StorageInterface:
 @asynccontextmanager
 async def temp_file(
     suffix: str = "", content: Optional[bytes] = None
-) -> AsyncGenerator[str, None, None]:
+) -> AsyncGenerator[str, None]:
     """Context manager for temporary files using storage provider"""
     path = None
     try:
