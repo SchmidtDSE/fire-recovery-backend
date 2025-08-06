@@ -1,7 +1,5 @@
 import json
 import base64
-import tempfile
-import os
 import io
 import time
 from typing import BinaryIO, Callable, Dict, Any, List, Optional
@@ -88,19 +86,6 @@ class MemoryStorage(StorageInterface):
         """Get URL for a stored object (virtual URL for in-memory storage)"""
         return f"{self._base_url}/{path}"
 
-    async def download_to_temp(self, path: str) -> str:
-        """Create temporary file with content from in-memory storage"""
-        data = await self.get_bytes(path)
-
-        # Create temporary file
-        fd, temp_path = tempfile.mkstemp(suffix=os.path.splitext(path)[1])
-        os.close(fd)
-
-        # Write data to temporary file
-        with open(temp_path, "wb") as f:
-            f.write(data)
-
-        return temp_path
 
     def get_file_obj(self, path: str) -> io.BytesIO:
         """

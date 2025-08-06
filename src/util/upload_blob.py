@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from src.config.storage import get_temp_storage, get_permanent_storage
+from src.config.storage import get_temp_storage, get_final_storage
 
 
 async def upload_to_gcs(
@@ -22,7 +22,7 @@ async def upload_to_gcs(
         Public URL of the uploaded blob
     """
     temp_storage = get_temp_storage()
-    permanent_storage = get_permanent_storage()
+    permanent_storage = get_final_storage()
 
     # If source is bytes, save directly to permanent storage
     if isinstance(source_path_or_bytes, bytes):

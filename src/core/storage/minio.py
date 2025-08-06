@@ -2,12 +2,10 @@ from datetime import datetime, timezone
 import io
 import json
 import os
-import tempfile
 from typing import BinaryIO, Callable, Dict, Any, List, Optional
 import aiohttp
 from minio import Minio
 from minio.error import S3Error
-from pathlib import Path
 
 from src.core.storage.interface import StorageInterface
 from src.config.constants import DEFAULT_TEMP_FILE_MAX_AGE_SECONDS
@@ -128,20 +126,21 @@ class MinioCloudStorage(StorageInterface):
         return self.get_url(path)
 
     async def get_bytes(self, path: str) -> bytes:
-        """Get binary data from S3 bucket"""
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp_path = tmp.name
-
+        """Get binary data from S3 bucket using direct streaming"""
         try:
-            # Download object to temporary file
-            self._client.fget_object(self._bucket_name, path, tmp_path)
-
-            # Read file content
-            with open(tmp_path, "rb") as f:
-                return f.read()
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            # Get object directly as stream (no temp file)
+            response = self._client.get_object(self._bucket_name, path)
+            
+            # Read all data from the response
+            data = response.read()
+            
+            # Close the response
+            response.close()
+            response.release_conn()
+            
+            return data
+        except S3Error as e:
+            raise Exception(f"Failed to get object {path}: {e}")
 
     async def save_json(self, data: Dict[str, Any], path: str, temporary: bool = False) -> str:
         """Save JSON data to S3 bucket"""
@@ -164,40 +163,7 @@ class MinioCloudStorage(StorageInterface):
         """Get public URL for an S3 object"""
         return f"{self._base_url}/{path}"
 
-    async def download_to_temp(self, path: str) -> str:
-        """Download file from S3 to temporary file"""
-        # Create temporary file
-        fd, temp_path = tempfile.mkstemp(suffix=Path(path).suffix)
-        os.close(fd)
 
-        # Download to temporary file
-        self._client.fget_object(self._bucket_name, path, temp_path)
-        return temp_path
-
-    async def download_url_to_temp(self, url: str) -> str:
-        """
-        Download a file from URL to temporary file
-
-        Args:
-            url: URL to download
-
-        Returns:
-            Path to local temporary file
-        """
-        # Create temporary file
-        fd, temp_path = tempfile.mkstemp()
-        os.close(fd)
-
-        # Download file from URL
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    raise Exception(f"Failed to download {url}: {response.status}")
-
-                with open(temp_path, "wb") as f:
-                    f.write(await response.read())
-
-        return temp_path
 
     async def process_stream(
         self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str, temporary: bool = False
