@@ -12,7 +12,7 @@ import aiohttp
 class MemoryStorage(StorageInterface):
     """
     In-memory implementation of StorageInterface for in-browser / Pyodide environments
-    (or envionments where file system access is not available)
+    (or environments where file system access is not available)
     """
 
     def __init__(self, base_url: str = "memory://"):
@@ -21,10 +21,19 @@ class MemoryStorage(StorageInterface):
 
         Args:
             base_url: Base URL prefix for virtual URLs
-            use_buffers: Use BytesIO buffers instead of raw bytes (more efficient for streaming)
         """
-        self.storage: Dict[str, Dict[str, Any]] = {}
-        self.base_url: str = base_url
+        self._storage: Dict[str, Dict[str, Any]] = {}
+        self._base_url: str = base_url
+
+    @property
+    def storage(self) -> Dict[str, Dict[str, Any]]:
+        """Get the internal storage dictionary"""
+        return self._storage
+
+    @property
+    def base_url(self) -> str:
+        """Get the base URL"""
+        return self._base_url
 
     async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
         """
@@ -40,7 +49,7 @@ class MemoryStorage(StorageInterface):
         file_data = buffer
 
         # Store with metadata
-        self.storage[path] = {
+        self._storage[path] = {
             "data": file_data,
             "timestamp": time.time(),
             "temporary": temporary,
@@ -50,10 +59,10 @@ class MemoryStorage(StorageInterface):
 
     async def get_bytes(self, path: str) -> bytes:
         """Get binary data from in-memory storage"""
-        if path not in self.storage:
+        if path not in self._storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
-        stored_item = self.storage[path]
+        stored_item = self._storage[path]
         stored_data = stored_item["data"]
 
         stored_data.seek(0)
@@ -73,11 +82,11 @@ class MemoryStorage(StorageInterface):
 
     async def list_files(self, prefix: str) -> List[str]:
         """List files in in-memory storage with given prefix"""
-        return [key for key in self.storage.keys() if key.startswith(prefix)]
+        return [key for key in self._storage.keys() if key.startswith(prefix)]
 
     def get_url(self, path: str) -> str:
         """Get URL for a stored object (virtual URL for in-memory storage)"""
-        return f"{self.base_url}/{path}"
+        return f"{self._base_url}/{path}"
 
     async def download_to_temp(self, path: str) -> str:
         """Create temporary file with content from in-memory storage"""
@@ -103,10 +112,10 @@ class MemoryStorage(StorageInterface):
         Returns:
             BytesIO object for the stored data
         """
-        if path not in self.storage:
+        if path not in self._storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
-        stored_data = self.storage[path]["data"]
+        stored_data = self._storage[path]["data"]
 
         # Return existing BytesIO buffer (reset position first)
         stored_data.seek(0)
@@ -119,11 +128,11 @@ class MemoryStorage(StorageInterface):
         Returns:
             Data URL with base64-encoded content
         """
-        if path not in self.storage:
+        if path not in self._storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
         data = self.get_bytes_sync(path)
-        mime_type = self._guess_mime_type(path)
+        mime_type = self._guess_content_type(path)
         b64_data = base64.b64encode(data).decode("ascii")
         return f"data:{mime_type};base64,{b64_data}"
 
@@ -137,10 +146,10 @@ class MemoryStorage(StorageInterface):
         Returns:
             Bytes data
         """
-        if path not in self.storage:
+        if path not in self._storage:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
 
-        stored_data = self.storage[path]["data"]
+        stored_data = self._storage[path]["data"]
 
         stored_data.seek(0)
         return stored_data.getvalue()
@@ -187,8 +196,8 @@ class MemoryStorage(StorageInterface):
         current_time = time.time()
         removed_count = 0
 
-        for path in list(self.storage.keys()):
-            item = self.storage[path]
+        for path in list(self._storage.keys()):
+            item = self._storage[path]
 
             # Check if file is temporary
             is_temporary = item["temporary"]
@@ -201,23 +210,7 @@ class MemoryStorage(StorageInterface):
 
             # Remove if temporary or too old
             if is_temporary or is_old:
-                del self.storage[path]
+                del self._storage[path]
                 removed_count += 1
 
         return removed_count
-
-    def _guess_mime_type(self, path: str) -> str:
-        """Guess MIME type from file extension"""
-        ext = os.path.splitext(path)[1].lower()
-        mime_types = {
-            ".json": "application/json",
-            ".geojson": "application/geo+json",
-            ".tif": "image/tiff",
-            ".tiff": "image/tiff",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".csv": "text/csv",
-            ".parquet": "application/octet-stream",
-        }
-        return mime_types.get(ext, "application/octet-stream")

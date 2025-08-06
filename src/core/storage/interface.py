@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os
 from typing import Callable, Dict, Any, BinaryIO, Optional, List
 
 
@@ -129,3 +130,29 @@ class StorageInterface(ABC):
             Number of files deleted
         """
         pass
+
+    def _guess_content_type(self, path: str) -> str:
+        """
+        Guess content type from file extension
+
+        This is a common utility method shared by all storage implementations.
+
+        Args:
+            path: File path with extension
+
+        Returns:
+            MIME type string
+        """
+        ext = os.path.splitext(path)[1].lower()
+        mime_types = {
+            ".json": "application/json",
+            ".geojson": "application/geo+json",
+            ".tif": "image/tiff",
+            ".tiff": "image/tiff",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".csv": "text/csv",
+            ".parquet": "application/octet-stream",
+        }
+        return mime_types.get(ext, "application/octet-stream")

@@ -241,19 +241,3 @@ class MinioCloudStorage(StorageInterface):
                     print(f"Failed to delete {obj.object_name}: {e}")
 
         return removed_count
-
-    def _guess_content_type(self, path: str) -> str:
-        """Guess content type from file extension"""
-        ext = os.path.splitext(path)[1].lower()
-        mime_types = {
-            ".json": "application/json",
-            ".geojson": "application/geo+json",
-            ".tif": "image/tiff",
-            ".tiff": "image/tiff",
-            ".png": "image/png",
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".csv": "text/csv",
-            ".parquet": "application/octet-stream",
-        }
-        return mime_types.get(ext, "application/octet-stream")
