@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Tuple
 from pystac import ItemCollection
 from pystac_client import Client as PystacClient
 import planetary_computer
