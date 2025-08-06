@@ -36,45 +36,75 @@ class MinioCloudStorage(StorageInterface):
             secure: Use HTTPS if True (default: True)
             base_url: Base URL for public access (default: https://{endpoint}/{bucket_name})
         """
-        self.bucket_name = bucket_name
-        self.endpoint = endpoint
+        self._bucket_name = bucket_name
+        self._endpoint = endpoint
 
         # Get credentials from args or environment variables
-        self.access_key = (
+        self._access_key = (
             access_key
             or os.environ.get("S3_ACCESS_KEY_ID")
             or os.environ.get("GCP_ACCESS_KEY_ID")
         )
-        self.secret_key = (
+        self._secret_key = (
             secret_key
             or os.environ.get("S3_SECRET_ACCESS_KEY")
             or os.environ.get("GCP_SECRET_ACCESS_KEY")
         )
 
-        if not self.access_key or not self.secret_key:
+        if not self._access_key or not self._secret_key:
             raise ValueError(
                 "Access key and secret key must be provided either as arguments or through environment variables"
             )
 
         # Initialize Minio client
-        self.client = Minio(
+        self._client = Minio(
             endpoint,
-            access_key=self.access_key,
-            secret_key=self.secret_key,
+            access_key=self._access_key,
+            secret_key=self._secret_key,
             secure=secure,
             region=region,
         )
 
         # Set base URL for public access
-        self.base_url = base_url or f"https://{endpoint}/{bucket_name}"
+        self._base_url = base_url or f"https://{endpoint}/{bucket_name}"
 
         # Create bucket if it doesn't exist
         self._ensure_bucket_exists()
 
+    @property
+    def bucket_name(self) -> str:
+        """Get the bucket name"""
+        return self._bucket_name
+
+    @property
+    def endpoint(self) -> str:
+        """Get the endpoint"""
+        return self._endpoint
+
+    @property
+    def access_key(self) -> str | None:
+        """Get the access key"""
+        return self._access_key
+
+    @property
+    def secret_key(self) -> str | None:
+        """Get the secret key"""
+        return self._secret_key
+
+    @property
+    def client(self) -> Minio:
+        """Get the Minio client"""
+        return self._client
+
+    @property
+    def base_url(self) -> str:
+        """Get the base URL"""
+        return self._base_url
+
     def _ensure_bucket_exists(self) -> None:
         """Ensure the bucket exists, create it if not"""
-        if not self.client.bucket_exists(self.bucket_name):
-            self.client.make_bucket(self.bucket_name)
+        if not self._client.bucket_exists(self._bucket_name):
+            self._client.make_bucket(self._bucket_name)
 
     async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
         """Save binary data to S3 bucket without using temp files"""
@@ -89,8 +119,8 @@ class MinioCloudStorage(StorageInterface):
         data_stream = io.BytesIO(data)
 
         # Upload directly from memory without temp files
-        self.client.put_object(
-            self.bucket_name, path, data_stream, len(data), content_type=content_type
+        self._client.put_object(
+            self._bucket_name, path, data_stream, len(data), content_type=content_type
         )
 
         return self.get_url(path)
@@ -102,7 +132,7 @@ class MinioCloudStorage(StorageInterface):
 
         try:
             # Download object to temporary file
-            self.client.fget_object(self.bucket_name, path, tmp_path)
+            self._client.fget_object(self._bucket_name, path, tmp_path)
 
             # Read file content
             with open(tmp_path, "rb") as f:
@@ -123,14 +153,14 @@ class MinioCloudStorage(StorageInterface):
 
     async def list_files(self, prefix: str) -> List[str]:
         """List files in S3 bucket with given prefix"""
-        objects = self.client.list_objects(
-            self.bucket_name, prefix=prefix, recursive=True
+        objects = self._client.list_objects(
+            self._bucket_name, prefix=prefix, recursive=True
         )
         return [obj.object_name for obj in objects]
 
     def get_url(self, path: str) -> str:
         """Get public URL for an S3 object"""
-        return f"{self.base_url}/{path}"
+        return f"{self._base_url}/{path}"
 
     async def download_to_temp(self, path: str) -> str:
         """Download file from S3 to temporary file"""
@@ -139,7 +169,7 @@ class MinioCloudStorage(StorageInterface):
         os.close(fd)
 
         # Download to temporary file
-        self.client.fget_object(self.bucket_name, path, temp_path)
+        self._client.fget_object(self._bucket_name, path, temp_path)
         return temp_path
 
     async def download_url_to_temp(self, url: str) -> str:
@@ -198,14 +228,14 @@ class MinioCloudStorage(StorageInterface):
             raise ValueError("max_age_seconds must be provided for cleanup")
 
         # List all objects in the bucket
-        objects = self.client.list_objects(self.bucket_name, recursive=True)
+        objects = self._client.list_objects(self._bucket_name, recursive=True)
         removed_count = 0
 
         for obj in objects:
             # Check if the object is older than max_age_seconds
             if (obj.last_modified - obj.created).total_seconds() > max_age_seconds:
                 try:
-                    self.client.remove_object(self.bucket_name, obj.object_name)
+                    self._client.remove_object(self._bucket_name, obj.object_name)
                     removed_count += 1
                 except S3Error as e:
                     print(f"Failed to delete {obj.object_name}: {e}")
