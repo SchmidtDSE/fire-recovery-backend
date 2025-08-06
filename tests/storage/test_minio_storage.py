@@ -1,5 +1,4 @@
 import pytest
-import json
 import uuid
 
 from src.core.storage.minio import MinioCloudStorage
@@ -29,7 +28,7 @@ async def test_minio_save_and_get_bytes(minio_storage: MinioCloudStorage) -> Non
 
 
 @pytest.mark.asyncio
-async def test_minio_save_and_get_json(minio_storage):
+async def test_minio_save_and_get_json(minio_storage: MinioCloudStorage) -> None:
     """Test saving and retrieving JSON data with GCP MinIO"""
     # Use unique path to avoid conflicts between test runs
     test_id = str(uuid.uuid4())
@@ -38,7 +37,7 @@ async def test_minio_save_and_get_json(minio_storage):
 
     try:
         # Save data
-        url = await minio_storage.save_json(test_data, test_path)
+        __url = await minio_storage.save_json(test_data, test_path)
 
         # Retrieve data
         retrieved_data = await minio_storage.get_json(test_path)
@@ -49,7 +48,7 @@ async def test_minio_save_and_get_json(minio_storage):
 
 
 @pytest.mark.asyncio
-async def test_minio_list_files(minio_storage):
+async def test_minio_list_files(minio_storage: MinioCloudStorage) -> None:
     """Test listing files with prefix in GCP MinIO"""
     # Use unique prefix to avoid conflicts between test runs
     test_id = str(uuid.uuid4())
@@ -73,7 +72,7 @@ async def test_minio_list_files(minio_storage):
 
 
 @pytest.mark.asyncio
-async def test_minio_copy_from_url(minio_storage):
+async def test_minio_copy_from_url(minio_storage: MinioCloudStorage) -> None:
     """Test copying from URL to GCP MinIO storage"""
     # Use unique path to avoid conflicts between test runs
     test_id = str(uuid.uuid4())
@@ -81,7 +80,7 @@ async def test_minio_copy_from_url(minio_storage):
     target_path = f"test_files/{test_id}/downloaded_readme.md"
 
     try:
-        result_url = await minio_storage.copy_from_url(url, target_path)
+        __result_url = await minio_storage.copy_from_url(url, target_path)
 
         # Verify the file was saved
         retrieved_data = await minio_storage.get_bytes(target_path)

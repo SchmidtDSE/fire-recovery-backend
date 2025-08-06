@@ -4,7 +4,7 @@ from src.core.storage.memory import MemoryStorage
 
 class TestMemoryStorage:
     @pytest.mark.asyncio
-    async def test_save_and_get_bytes(self, memory_storage):
+    async def test_save_and_get_bytes(self, memory_storage: MemoryStorage) -> None:
         """Test saving and retrieving binary data"""
         test_data = b"Hello, world!"
         test_path = "test_file.bin"
@@ -20,7 +20,7 @@ class TestMemoryStorage:
         assert retrieved_data == test_data
 
     @pytest.mark.asyncio
-    async def test_save_and_get_json(self, memory_storage):
+    async def test_save_and_get_json(self, memory_storage: MemoryStorage) -> None:
         """Test saving and retrieving JSON data"""
         test_data = {"key": "value", "nested": {"key2": 42}}
         test_path = "test_file.json"
@@ -36,7 +36,7 @@ class TestMemoryStorage:
         assert retrieved_data == test_data
 
     @pytest.mark.asyncio
-    async def test_list_files(self, memory_storage):
+    async def test_list_files(self, memory_storage: MemoryStorage) -> None:
         """Test listing files with prefix"""
         # Save multiple files
         await memory_storage.save_bytes(b"data1", "prefix/file1.bin")
@@ -51,7 +51,7 @@ class TestMemoryStorage:
         assert "other/file3.bin" not in files
 
     @pytest.mark.asyncio
-    async def test_cleanup(self, memory_storage):
+    async def test_cleanup(self, memory_storage: MemoryStorage) -> None:
         """Test cleanup of temporary files"""
         # Save temporary and permanent files
         await memory_storage.save_bytes(b"temp data", "temp_file.bin", temporary=True)
@@ -73,7 +73,7 @@ class TestMemoryStorage:
         assert "perm_file.bin" in files
 
     @pytest.mark.asyncio
-    async def test_copy_from_url(self, memory_storage):
+    async def test_copy_from_url(self, memory_storage: MemoryStorage) -> None:
         """Test copying from URL to storage"""
         # Use a real URL for testing
         url = "https://raw.githubusercontent.com/pytorch/pytorch/main/README.md"
