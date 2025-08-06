@@ -1,18 +1,21 @@
-import xarray as xr
-import rioxarray
-import tempfile
 import os
+import tempfile
+from typing import Any, Dict
+
 import httpx
-from shapely.geometry import shape
-from rio_cogeo.cogeo import cog_validate, cog_translate, cog_info
+import rioxarray
+import xarray as xr
+from rio_cogeo.cogeo import cog_translate, cog_validate
 from rio_cogeo.profiles import cog_profiles
-from typing import Dict, Any, List, Union
-import numpy as np
+from shapely.geometry import shape
 
 from src.core.storage.safe_tempfile import safe_tempfile
+from src.stac.stac_geoparquet_manager import STACGeoParquetManager
 
 
-async def get_fire_severity_cog_by_event(stac_manager, fire_event_name: str) -> str:
+async def get_fire_severity_cog_by_event(
+    stac_manager: STACGeoParquetManager, fire_event_name: str
+) -> str:
     """
     Find the most recent fire severity COG for a given fire event.
 

@@ -1,9 +1,8 @@
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-from geojson_pydantic import Feature, FeatureCollection, Polygon
-from pydantic import ValidationError
+from geojson_pydantic import FeatureCollection
 from shapely import Polygon as ShapelyPolygon
 from shapely import from_geojson, to_geojson
 
