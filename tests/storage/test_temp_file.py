@@ -4,7 +4,7 @@ from src.config.storage import temp_file, get_temp_storage
 
 class TestTempFile:
     @pytest.mark.asyncio
-    async def test_temp_file_without_content(self):
+    async def test_temp_file_without_content(self) -> None:
         """Test temp_file context manager without initial content"""
         temp_storage = get_temp_storage()
 
@@ -30,7 +30,7 @@ class TestTempFile:
         await temp_storage.cleanup()
 
     @pytest.mark.asyncio
-    async def test_temp_file_with_content(self):
+    async def test_temp_file_with_content(self) -> None:
         """Test temp_file context manager with initial content"""
         temp_storage = get_temp_storage()
         initial_content = b"initial content"

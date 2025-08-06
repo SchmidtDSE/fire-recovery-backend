@@ -2,9 +2,11 @@ import pytest
 import json
 import uuid
 
+from src.core.storage.minio import MinioCloudStorage
+
 
 @pytest.mark.asyncio
-async def test_minio_save_and_get_bytes(minio_storage):
+async def test_minio_save_and_get_bytes(minio_storage: MinioCloudStorage) -> None:
     """Test saving and retrieving binary data with GCP MinIO"""
     # Use unique path to avoid conflicts between test runs
     test_id = str(uuid.uuid4())
