@@ -78,7 +78,7 @@ class MemoryStorage(StorageInterface):
     async def list_files(self, prefix: str) -> List[str]:
         """List files in in-memory storage with given prefix"""
         objects = self._store.list(prefix=prefix)
-        return [obj["path"] for obj in objects.collect()]
+        return [obj["path"] for obj in await objects.collect_async()]
 
     def get_url(self, path: str) -> str:
         """Get URL for a stored object (virtual URL for in-memory storage)"""

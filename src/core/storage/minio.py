@@ -6,9 +6,14 @@ from typing import BinaryIO, Callable, Dict, Any, List, Optional
 import aiohttp
 import obstore as obs
 from obstore.store import S3Store
-
 from src.core.storage.interface import StorageInterface
 from src.config.constants import DEFAULT_TEMP_FILE_MAX_AGE_SECONDS
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Need to do this because ClientConfig is not available at runtime
+    from obstore.store import ClientConfig
 
 
 class MinioCloudStorage(StorageInterface):
@@ -56,11 +61,12 @@ class MinioCloudStorage(StorageInterface):
                 "Access key and secret key must be provided either as arguments or through environment variables"
             )
 
-        # Initialize obstore S3Store
-        client_options = {}
+        # Use obstore's TypedDict 'ClientConfig' for client options
+        client_options: "ClientConfig" = {}
         if not secure:
             client_options["allow_http"] = True
 
+        # Use obstore S3Store for S3-compatible storage (works with MinIO)
         self._store = S3Store(
             bucket_name,
             endpoint=f"{'https' if secure else 'http'}://{endpoint}",
@@ -71,7 +77,7 @@ class MinioCloudStorage(StorageInterface):
             client_options=client_options,
         )
 
-        # Set base URL for public access
+        # Set base URL to construct public URLs
         self._base_url = base_url or f"{endpoint}/{bucket_name}"
 
     @property
@@ -136,7 +142,7 @@ class MinioCloudStorage(StorageInterface):
     async def list_files(self, prefix: str) -> List[str]:
         """List files in S3 bucket with given prefix"""
         objects = self._store.list(prefix=prefix)
-        return [obj["path"] for obj in objects.collect()]
+        return [obj["path"] for obj in await objects.collect_async()]
 
     def get_url(self, path: str) -> str:
         """Get public URL for an S3 object"""
@@ -211,7 +217,7 @@ class MinioCloudStorage(StorageInterface):
 
         # List all objects in the bucket
         objects = self._store.list()
-        for obj in objects.collect():
+        for obj in await objects.collect_async():
             # Check if the object is temporary (in temp/ directory)
             is_temporary = obj["path"].startswith("temp/")
 
