@@ -1,8 +1,6 @@
 import pytest
-import io
 import json
 from typing import BinaryIO
-from unittest.mock import patch
 from src.core.storage.memory import MemoryStorage
 
 
@@ -77,33 +75,49 @@ class TestMemoryStorage:
         assert "perm_file.bin" in files
 
     @pytest.mark.asyncio
-    async def test_cleanup_with_mixed_temporary_files(self, memory_storage: MemoryStorage) -> None:
+    async def test_cleanup_with_mixed_temporary_files(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test cleanup behavior with mixed temporary and permanent files from real workflows"""
         # Save files that represent a typical fire recovery processing workflow
-        
+
         # Permanent files (final outputs)
-        await memory_storage.save_bytes(b"Final fire severity COG", "outputs/fire_severity_final.cog.tif", temporary=False)
-        await memory_storage.save_json({"analysis": "final results"}, "outputs/analysis_results.json", temporary=False)
-        
+        await memory_storage.save_bytes(
+            b"Final fire severity COG",
+            "outputs/fire_severity_final.cog.tif",
+            temporary=False,
+        )
+        await memory_storage.save_json(
+            {"analysis": "final results"},
+            "outputs/analysis_results.json",
+            temporary=False,
+        )
+
         # Temporary files (intermediate processing)
-        await memory_storage.save_bytes(b"Downloaded raw COG", "temp/raw_fire_data.tif", temporary=True)
-        await memory_storage.save_bytes(b"Cropped intermediate", "temp/cropped_intermediate.tif", temporary=True)
-        await memory_storage.save_json({"temp": "processing metadata"}, "temp/processing_meta.json", temporary=True)
-        
+        await memory_storage.save_bytes(
+            b"Downloaded raw COG", "temp/raw_fire_data.tif", temporary=True
+        )
+        await memory_storage.save_bytes(
+            b"Cropped intermediate", "temp/cropped_intermediate.tif", temporary=True
+        )
+        await memory_storage.save_json(
+            {"temp": "processing metadata"}, "temp/processing_meta.json", temporary=True
+        )
+
         # Verify all files exist
         all_files = await memory_storage.list_files("")
         assert len(all_files) == 5
-        
+
         # Clean up temporary files
         removed_count = await memory_storage.cleanup()
         assert removed_count == 3  # Should remove all 3 temporary files
-        
+
         # Verify only permanent files remain
         remaining_files = await memory_storage.list_files("")
         assert len(remaining_files) == 2
         assert "outputs/fire_severity_final.cog.tif" in remaining_files
         assert "outputs/analysis_results.json" in remaining_files
-        
+
         # Verify temporary files are gone
         temp_files = await memory_storage.list_files("temp/")
         assert len(temp_files) == 0
@@ -124,7 +138,9 @@ class TestMemoryStorage:
         assert b"PyTorch" in retrieved_data  # Should contain this text
 
     @pytest.mark.asyncio
-    async def test_copy_from_url_temporary_flag(self, memory_storage: MemoryStorage) -> None:
+    async def test_copy_from_url_temporary_flag(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test copying from URL with temporary flag"""
         url = "https://raw.githubusercontent.com/pytorch/pytorch/main/README.md"
         temp_path = "temp_readme.md"
@@ -151,7 +167,9 @@ class TestMemoryStorage:
         assert not memory_storage._metadata[perm_path]["temporary"]
 
     @pytest.mark.asyncio
-    async def test_save_bytes_temporary_flag(self, memory_storage: MemoryStorage) -> None:
+    async def test_save_bytes_temporary_flag(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test saving binary data with temporary flag"""
         test_data = b"Temporary data"
         temp_path = "temp_file.bin"
@@ -162,7 +180,9 @@ class TestMemoryStorage:
         assert temp_url == f"memory://test/{temp_path}"
 
         # Save permanent data
-        perm_url = await memory_storage.save_bytes(test_data, perm_path, temporary=False)
+        perm_url = await memory_storage.save_bytes(
+            test_data, perm_path, temporary=False
+        )
         assert perm_url == f"memory://test/{perm_path}"
 
         # Verify both can be retrieved
@@ -176,7 +196,9 @@ class TestMemoryStorage:
         assert not memory_storage._metadata[perm_path]["temporary"]
 
     @pytest.mark.asyncio
-    async def test_save_json_temporary_flag(self, memory_storage: MemoryStorage) -> None:
+    async def test_save_json_temporary_flag(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test saving JSON data with temporary flag"""
         test_data = {"temp": "data", "test": True}
         temp_path = "temp_data.json"
@@ -201,13 +223,15 @@ class TestMemoryStorage:
         assert not memory_storage._metadata[perm_path]["temporary"]
 
     @pytest.mark.asyncio
-    async def test_process_stream_geospatial_workflow(self, memory_storage: MemoryStorage) -> None:
+    async def test_process_stream_geospatial_workflow(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test process_stream with realistic geospatial data processing workflow"""
         # Simulate a small GeoTIFF-like binary data (mock)
         # In real scenario, this would be actual COG/GeoTIFF data
         mock_tiff_data = b"GeoTIFF mock data representing fire severity raster"
         source_path = "fire_severity.tif"
-        
+
         # Save the source raster data
         await memory_storage.save_bytes(mock_tiff_data, source_path)
 
@@ -224,7 +248,7 @@ class TestMemoryStorage:
             return processed_data
 
         processed_path = "cropped_fire_severity.tif"
-        
+
         # Process using stream (avoiding temp files)
         result_url = await memory_storage.process_stream(
             source_path, spatial_crop_processor, processed_path, temporary=True
@@ -233,18 +257,25 @@ class TestMemoryStorage:
         # Verify processing worked
         assert result_url == f"memory://test/{processed_path}"
         processed_data = await memory_storage.get_bytes(processed_path)
-        assert processed_data == b"CROPPED:GeoTIFF mock data representing fire severity raster"
-        
+        assert (
+            processed_data
+            == b"CROPPED:GeoTIFF mock data representing fire severity raster"
+        )
+
         # Verify it was marked as temporary
         assert memory_storage._metadata[processed_path]["temporary"]
 
     @pytest.mark.asyncio
-    async def test_process_stream_cog_translation_workflow(self, memory_storage: MemoryStorage) -> None:
+    async def test_process_stream_cog_translation_workflow(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test process_stream simulating COG creation workflow (like create_cog function)"""
         # Simulate xarray DataArray data that needs to be converted to COG format
-        mock_xarray_data = b'{"fire_severity_array": "xarray data representing processed raster"}'
+        mock_xarray_data = (
+            b'{"fire_severity_array": "xarray data representing processed raster"}'
+        )
         source_path = "processed_data.json"
-        
+
         # Save the xarray-like data
         await memory_storage.save_bytes(mock_xarray_data, source_path)
 
@@ -262,7 +293,7 @@ class TestMemoryStorage:
             return cog_header + cog_data
 
         cog_path = "fire_severity.cog.tif"
-        
+
         # Create COG using stream processing
         result_url = await memory_storage.process_stream(
             source_path, cog_creation_processor, cog_path, temporary=False
@@ -273,20 +304,24 @@ class TestMemoryStorage:
         cog_data = await memory_storage.get_bytes(cog_path)
         assert cog_data.startswith(b"COG_HEADER:")
         assert b"fire_severity_array" in cog_data
-        
+
         # Verify it was marked as permanent
         assert not memory_storage._metadata[cog_path]["temporary"]
 
     @pytest.mark.asyncio
-    async def test_process_stream_vegetation_analysis_workflow(self, memory_storage: MemoryStorage) -> None:
+    async def test_process_stream_vegetation_analysis_workflow(
+        self, memory_storage: MemoryStorage
+    ) -> None:
         """Test process_stream simulating vegetation geopackage analysis"""
         # Simulate geopackage data for vegetation analysis
-        mock_gpkg_data = b"Geopackage data with vegetation polygons for fire recovery analysis"
+        mock_gpkg_data = (
+            b"Geopackage data with vegetation polygons for fire recovery analysis"
+        )
         veg_source_path = "vegetation.gpkg"
-        
+
         # Save the vegetation geopackage data
         await memory_storage.save_bytes(mock_gpkg_data, veg_source_path)
-        
+
         # Also save fire severity data for zonal statistics
         fire_data = b"Fire severity raster for zonal stats"
         fire_path = "fire_severity.tif"
@@ -301,11 +336,15 @@ class TestMemoryStorage:
             # 3. Perform zonal statistics using rasterstats
             # 4. Return analysis results as CSV/JSON
             veg_data = veg_file_obj.read()
-            analysis_result = b"Vegetation Analysis Results:\\n" + veg_data[:50] + b"\\n[Zonal statistics would go here]"
+            analysis_result = (
+                b"Vegetation Analysis Results:\\n"
+                + veg_data[:50]
+                + b"\\n[Zonal statistics would go here]"
+            )
             return analysis_result
 
         results_path = "vegetation_analysis_results.csv"
-        
+
         # Process vegetation analysis using stream
         result_url = await memory_storage.process_stream(
             veg_source_path, vegetation_analysis_processor, results_path, temporary=True
@@ -316,6 +355,6 @@ class TestMemoryStorage:
         results_data = await memory_storage.get_bytes(results_path)
         assert results_data.startswith(b"Vegetation Analysis Results:")
         assert b"Geopackage data" in results_data
-        
+
         # Verify it was marked as temporary (intermediate analysis result)
         assert memory_storage._metadata[results_path]["temporary"]
