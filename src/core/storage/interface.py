@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import io
 import os
 from typing import Callable, Dict, Any, BinaryIO, Optional, List
 
@@ -142,6 +143,20 @@ class StorageInterface(ABC):
         """
         pass
 
+    def create_output_buffer(self, filename: str = "output_file") -> io.BytesIO:
+        """
+        Create an empty file-like BytesIO buffer for writing
+        
+        Args:
+            filename: Optional filename to set on the buffer
+        
+        Returns:
+            Empty BytesIO buffer that can be written to
+        """
+        buffer = io.BytesIO()
+        buffer.name = filename
+        return buffer
+
     def _guess_content_type(self, path: str) -> str:
         """
         Guess content type from file extension
@@ -167,3 +182,21 @@ class StorageInterface(ABC):
             ".parquet": "application/octet-stream",
         }
         return mime_types.get(ext, "application/octet-stream")
+
+    def create_file_like_buffer(self, data: bytes, filename: str = "temp_file") -> io.BytesIO:
+        """
+        Create a file-like BytesIO buffer from bytes data
+        
+        This utility method creates a BytesIO buffer that behaves like a file object,
+        which is useful for libraries that expect file-like objects but you have bytes data.
+        
+        Args:
+            data: Bytes data to wrap
+            filename: Optional filename to set on the buffer (some libraries use this)
+        
+        Returns:
+            BytesIO buffer that can be used as a file-like object
+        """
+        buffer = io.BytesIO(data)
+        buffer.name = filename  # Some libraries (like rustac) need a name attribute
+        return buffer

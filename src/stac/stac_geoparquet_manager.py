@@ -1,34 +1,72 @@
-import os
 from typing import Dict, List, Any, Optional
 from geojson_pydantic import Polygon
 import rustac
 from shapely.geometry import shape
-from pathlib import Path
 from stac_pydantic import Item as StacItem
 from pydantic import ValidationError
+
+from src.core.storage.interface import StorageInterface
+from src.config.storage import get_temp_storage, get_final_storage
 
 
 class STACGeoParquetManager:
     """
-    Manages STAC items stored in GeoParquet format
+    Manages STAC items stored in GeoParquet format using MinIO storage
     """
 
-    def __init__(self, base_url: str, storage_dir: str):
+    def __init__(self, base_url: str, storage: StorageInterface):
         """
         Initialize the STAC GeoParquet manager
 
         Args:
-            base_url: Base URL for STAC assets
-            storage_dir: Local directory for storing parquet files
+            base_url: Base URL for STAC assets (likely a MinIO endpoint)
+            storage: Storage interface (e.g., MinIO) for storing parquet files
         """
         self.base_url = base_url
-        self.storage_dir = storage_dir
-        self.parquet_path = os.path.join(storage_dir, "fire_recovery_stac.parquet")
-        Path(storage_dir).mkdir(parents=True, exist_ok=True)
+        self.storage = storage
+        self.parquet_path = "stac/fire_recovery_stac.parquet"
+
+
+    async def _get_existing_items(self) -> List[Dict[str, Any]]:
+        """Get existing items from parquet file, return empty list if file doesn't exist"""
+        try:
+            parquet_data = await self.storage.get_bytes(self.parquet_path)
+            temp_buffer = self.storage.create_file_like_buffer(parquet_data, "temp.parquet")
+            
+            result = await rustac.read(temp_buffer)
+            return result["features"]
+        except Exception:
+            # File doesn't exist or other error
+            return []
+
+    async def _write_items_to_storage(self, items: List[Dict[str, Any]]) -> str:
+        """Write items to parquet format and save to storage"""
+        output_buffer = self.storage.create_output_buffer("output.parquet")
+        
+        # Write parquet data to buffer
+        await rustac.write(output_buffer, items, format="geoparquet")
+        
+        # Save buffer contents to storage
+        output_buffer.seek(0)
+        parquet_bytes = output_buffer.read()
+        await self.storage.save_bytes(parquet_bytes, self.parquet_path, temporary=False)
+        
+        return self.parquet_path
+
+    async def _search_parquet(self, **search_params) -> List[Dict[str, Any]]:
+        """Search parquet file with given parameters"""
+        try:
+            parquet_data = await self.storage.get_bytes(self.parquet_path)
+            temp_buffer = self.storage.create_file_like_buffer(parquet_data, "temp.parquet")
+            
+            return await rustac.search(temp_buffer, **search_params)
+        except Exception:
+            # File doesn't exist or other error
+            return []
 
     def get_parquet_path(self, fire_event_name: str) -> str:
         """Get path to the GeoParquet file for a fire event"""
-        return os.path.join(self.storage_dir, f"{fire_event_name}.parquet")
+        return f"stac/{fire_event_name}.parquet"
 
     def get_parquet_url(self, fire_event_name: str) -> str:
         """Get the URL to the GeoParquet file for a fire event"""
@@ -342,22 +380,12 @@ class STACGeoParquetManager:
         for item in items:
             self.validate_stac_item(item)
 
-        # If the parquet file doesn't exist yet, just write the items directly
-        if not os.path.exists(self.parquet_path):
-            await rustac.write(self.parquet_path, items, format="geoparquet")
-            return self.parquet_path
-
-        # Read existing items first
-        all_items = await rustac.read(self.parquet_path)
-        all_items = all_items["features"]
-
-        # Combine with new items
-        all_items.extend(items)
-
-        # Write back to parquet file
-        await rustac.write(self.parquet_path, all_items, format="geoparquet")
-
-        return self.parquet_path
+        # Get existing items and combine with new ones
+        existing_items = await self._get_existing_items()
+        all_items = existing_items + items
+        
+        # Write combined items to storage
+        return await self._write_items_to_storage(all_items)
 
     async def get_items_by_fire_event(
         self, fire_event_name: str
@@ -365,28 +393,18 @@ class STACGeoParquetManager:
         """
         Retrieve all STAC items for a fire event from the GeoParquet file
         """
-        if not os.path.exists(self.parquet_path):
-            return []
-
-        # Use rustac's native search with fire_event_name filter
-        return await rustac.search(
-            self.parquet_path,
+        return await self._search_parquet(
             filter={
                 "op": "=",
                 "args": [{"property": "fire_event_name"}, fire_event_name],
-            },
+            }
         )
 
     async def get_item_by_id(self, item_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a specific STAC item by ID from the GeoParquet file
         """
-        if not os.path.exists(self.parquet_path):
-            return None
-
-        # Use rustac's native search with combined filters
-        items = await rustac.search(self.parquet_path, ids=[item_id])
-
+        items = await self._search_parquet(ids=[item_id])
         return items[0] if items else None
 
     async def get_items_by_id_and_coarseness(
@@ -395,21 +413,15 @@ class STACGeoParquetManager:
         """
         Retrieve a specific STAC item by ID and boundary type from the GeoParquet file
         """
-        if not os.path.exists(self.parquet_path):
-            return None
-
-        # Use rustac's native search with combined filters
-        items = await rustac.search(
-            self.parquet_path,
+        items = await self._search_parquet(
             filter={
                 "op": "and",
                 "args": [
                     {"op": "=", "args": [{"property": "id"}, item_id]},
                     {"op": "=", "args": [{"property": "boundary_type"}, boundary_type]},
                 ],
-            },
+            }
         )
-
         return items[0] if items else None
 
     async def get_items_by_id_and_classification_breaks(
@@ -418,9 +430,6 @@ class STACGeoParquetManager:
         """
         Retrieve a specific STAC item by ID and classification breaks from the GeoParquet file
         """
-        if not os.path.exists(self.parquet_path):
-            return None
-
         # Build the base filter for item ID
         id_filter = {"op": "=", "args": [{"property": "id"}, item_id]}
 
@@ -439,9 +448,7 @@ class STACGeoParquetManager:
         else:
             combined_filter = id_filter
 
-        # Use rustac's native search with the combined filter
-        items = await rustac.search(self.parquet_path, filter=combined_filter)
-
+        items = await self._search_parquet(filter=combined_filter)
         return items[0] if items else None
 
     async def search_items(
@@ -454,9 +461,6 @@ class STACGeoParquetManager:
         """
         Search for STAC items using filters
         """
-        if not os.path.exists(self.parquet_path):
-            return []
-
         # Build filter for fire_event_name
         fire_event_filter = {
             "op": "=",
@@ -493,4 +497,30 @@ class STACGeoParquetManager:
         else:
             search_params["filter"] = fire_event_filter
 
-        return await rustac.search(self.parquet_path, **search_params)
+        return await self._search_parquet(**search_params)
+
+    @classmethod
+    def for_testing(cls, base_url: str) -> "STACGeoParquetManager":
+        """
+        Create a STACGeoParquetManager configured for testing using temporary storage
+        
+        Args:
+            base_url: Base URL for STAC assets
+            
+        Returns:
+            STACGeoParquetManager configured with temporary storage (TEMP_BUCKET_NAME)
+        """
+        return cls(base_url=base_url, storage=get_temp_storage())
+
+    @classmethod
+    def for_production(cls, base_url: str) -> "STACGeoParquetManager":
+        """
+        Create a STACGeoParquetManager configured for production using permanent storage
+        
+        Args:
+            base_url: Base URL for STAC assets
+            
+        Returns:
+            STACGeoParquetManager configured with permanent storage (FINAL_BUCKET_NAME)
+        """
+        return cls(base_url=base_url, storage=get_final_storage())
