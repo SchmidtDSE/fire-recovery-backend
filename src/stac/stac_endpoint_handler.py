@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from pystac import ItemCollection
 from pystac_client import Client as PystacClient
 import planetary_computer
@@ -108,7 +108,7 @@ class StacEndpointHandler:
         self,
         geometry: Dict,
         date_range: List[str],
-        collections: List[str] = None,
+        collections: Optional[List[str]] = None,
         provider_index: Optional[int] = None,
     ) -> Tuple[ItemCollection, StacMapping]:
         """
@@ -126,7 +126,7 @@ class StacEndpointHandler:
         Raises:
             RuntimeError: If no items found at any provider
         """
-        search_params = {
+        search_params: Dict[str, Any] = {
             "intersects": geometry,
             "datetime": "/".join(date_range),
         }
