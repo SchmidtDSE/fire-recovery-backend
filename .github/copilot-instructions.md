@@ -19,4 +19,4 @@ This codebase's parent organization values 'cockroach engineering' principles. W
 
 NEVER do the following:
 - Suggest an import or library in the body of a function or method - instead suggest it at the top of the file.
-- Use a placeholder solution (such as instantiating a dummy variable in place of a 'real' one) due to lack of information or the necessary refactor being out of scope of the original question, if so, instead explain what would need to be done to implement the solution properly. 
+- Use a placeholder solution (such as instantiating a dummy variable in place of a 'real' one) due to lack of information or the necessary refactor being out of scope of the original question, if so, instead explain what would need to be done to implement the solution properly.
