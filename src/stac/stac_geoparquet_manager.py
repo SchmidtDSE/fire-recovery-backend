@@ -26,13 +26,14 @@ class STACGeoParquetManager:
         self.storage = storage
         self.parquet_path = "stac/fire_recovery_stac.parquet"
 
-
     async def _get_existing_items(self) -> List[Dict[str, Any]]:
         """Get existing items from parquet file, return empty list if file doesn't exist"""
         try:
             parquet_data = await self.storage.get_bytes(self.parquet_path)
-            temp_buffer = self.storage.create_file_like_buffer(parquet_data, "temp.parquet")
-            
+            temp_buffer = self.storage.create_file_like_buffer(
+                parquet_data, "temp.parquet"
+            )
+
             result = await rustac.read(temp_buffer)
             return result["features"]
         except Exception:
@@ -42,23 +43,25 @@ class STACGeoParquetManager:
     async def _write_items_to_storage(self, items: List[Dict[str, Any]]) -> str:
         """Write items to parquet format and save to storage"""
         output_buffer = self.storage.create_output_buffer("output.parquet")
-        
+
         # Write parquet data to buffer
         await rustac.write(output_buffer, items, format="geoparquet")
-        
+
         # Save buffer contents to storage
         output_buffer.seek(0)
         parquet_bytes = output_buffer.read()
         await self.storage.save_bytes(parquet_bytes, self.parquet_path, temporary=False)
-        
+
         return self.parquet_path
 
     async def _search_parquet(self, **search_params) -> List[Dict[str, Any]]:
         """Search parquet file with given parameters"""
         try:
             parquet_data = await self.storage.get_bytes(self.parquet_path)
-            temp_buffer = self.storage.create_file_like_buffer(parquet_data, "temp.parquet")
-            
+            temp_buffer = self.storage.create_file_like_buffer(
+                parquet_data, "temp.parquet"
+            )
+
             return await rustac.search(temp_buffer, **search_params)
         except Exception:
             # File doesn't exist or other error
@@ -383,7 +386,7 @@ class STACGeoParquetManager:
         # Get existing items and combine with new ones
         existing_items = await self._get_existing_items()
         all_items = existing_items + items
-        
+
         # Write combined items to storage
         return await self._write_items_to_storage(all_items)
 
@@ -503,10 +506,10 @@ class STACGeoParquetManager:
     def for_testing(cls, base_url: str) -> "STACGeoParquetManager":
         """
         Create a STACGeoParquetManager configured for testing using temporary storage
-        
+
         Args:
             base_url: Base URL for STAC assets
-            
+
         Returns:
             STACGeoParquetManager configured with temporary storage (TEMP_BUCKET_NAME)
         """
@@ -516,10 +519,10 @@ class STACGeoParquetManager:
     def for_production(cls, base_url: str) -> "STACGeoParquetManager":
         """
         Create a STACGeoParquetManager configured for production using permanent storage
-        
+
         Args:
             base_url: Base URL for STAC assets
-            
+
         Returns:
             STACGeoParquetManager configured with permanent storage (FINAL_BUCKET_NAME)
         """
