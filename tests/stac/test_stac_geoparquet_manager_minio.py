@@ -8,11 +8,11 @@ from src.core.storage.minio import MinioCloudStorage
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_create_fire_severity_item(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_create_fire_severity_item(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test creating a fire severity STAC item with MinIO storage"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
-    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
     
     # Test data
     fire_event_name = f"test_fire_{test_id}"
@@ -72,11 +72,11 @@ async def test_stac_manager_create_fire_severity_item(minio_storage: MinioCloudS
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_create_boundary_item(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_create_boundary_item(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test creating a boundary STAC item with MinIO storage"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
-    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
     
     # Test data
     fire_event_name = f"test_fire_{test_id}"
@@ -118,11 +118,11 @@ async def test_stac_manager_create_boundary_item(minio_storage: MinioCloudStorag
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_create_veg_matrix_item(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_create_veg_matrix_item(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test creating a vegetation matrix STAC item with MinIO storage"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
-    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
     
     # Test data
     fire_event_name = f"test_fire_{test_id}"
@@ -183,11 +183,11 @@ async def test_stac_manager_create_veg_matrix_item(minio_storage: MinioCloudStor
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_multiple_items_and_search(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_multiple_items_and_search(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test creating multiple items and searching with MinIO storage"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
-    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
     
     # Test data for multiple fire events
     fire_event_1 = f"fire_one_{test_id}"
@@ -247,7 +247,7 @@ async def test_stac_manager_multiple_items_and_search(minio_storage: MinioCloudS
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_factory_methods(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_factory_methods(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test the class method factory functions"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
@@ -271,11 +271,11 @@ async def test_stac_manager_factory_methods(minio_storage: MinioCloudStorage) ->
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_parquet_persistence(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_parquet_persistence(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test that items persist correctly in parquet format through MinIO"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
-    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
     
     fire_event_name = f"persistence_test_{test_id}"
     job_id = f"job_{test_id}"
@@ -291,7 +291,7 @@ async def test_stac_manager_parquet_persistence(minio_storage: MinioCloudStorage
         )
         
         # Create new manager instance to test persistence
-        manager2 = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+        manager2 = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
         
         # Add second item through different manager instance
         await manager2.create_boundary_item(
@@ -308,7 +308,8 @@ async def test_stac_manager_parquet_persistence(minio_storage: MinioCloudStorage
         
         # Verify the parquet file exists in MinIO storage
         parquet_files = await minio_storage.list_files("stac/")
-        assert any("fire_recovery_stac.parquet" in f for f in parquet_files)
+        parquet_filename = unique_parquet_path.split("/")[-1]
+        assert any(parquet_filename in f for f in parquet_files)
         
     finally:
         # Cleanup
@@ -316,11 +317,11 @@ async def test_stac_manager_parquet_persistence(minio_storage: MinioCloudStorage
 
 
 @pytest.mark.asyncio
-async def test_stac_manager_empty_parquet_handling(minio_storage: MinioCloudStorage) -> None:
+async def test_stac_manager_empty_parquet_handling(minio_storage: MinioCloudStorage, unique_parquet_path: str) -> None:
     """Test handling when no parquet file exists yet"""
     test_id = str(uuid.uuid4())
     base_url = f"https://test.example.com/{test_id}"
-    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage, parquet_path=unique_parquet_path)
     
     fire_event_name = f"empty_test_{test_id}"
     

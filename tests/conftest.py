@@ -1,4 +1,5 @@
 import os
+import uuid
 import pytest
 from src.core.storage.memory import MemoryStorage
 from src.core.storage.interface import StorageInterface
@@ -49,3 +50,15 @@ def minio_storage(minio_available: bool) -> StorageInterface:
         secure=os.environ.get("MINIO_SECURE", "True").lower() == "true",
         bucket_name=os.environ.get("MINIO_TEST_BUCKET", "test-bucket"),
     )
+
+
+@pytest.fixture
+def unique_test_id() -> str:
+    """Generate a unique test identifier for test isolation"""
+    return str(uuid.uuid4())
+
+
+@pytest.fixture
+def unique_parquet_path(unique_test_id: str) -> str:
+    """Generate a unique parquet path for test isolation"""
+    return f"stac/test_{unique_test_id}_fire_recovery_stac.parquet"

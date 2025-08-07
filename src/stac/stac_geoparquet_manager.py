@@ -13,21 +13,22 @@ class STACGeoParquetManager:
     Coordinates between STAC item creation and storage operations.
     """
 
-    def __init__(self, base_url: str, storage: StorageInterface):
+    def __init__(self, base_url: str, storage: StorageInterface, parquet_path: str = "stac/fire_recovery_stac.parquet"):
         """
         Initialize the STAC GeoParquet manager
 
         Args:
             base_url: Base URL for STAC assets (likely a MinIO endpoint)
             storage: Storage interface (e.g., MinIO) for storing parquet files
+            parquet_path: Custom path for the parquet file (defaults to standard path)
         """
         self.base_url = base_url
         self.storage = storage
-        self.parquet_path = "stac/fire_recovery_stac.parquet"
+        self.parquet_path = parquet_path
 
         # Initialize factory and repository
         self._item_factory = STACItemFactory(base_url)
-        self._repository = STACGeoParquetRepository(storage)
+        self._repository = STACGeoParquetRepository(storage, parquet_path)
 
     def get_parquet_path(self, fire_event_name: str) -> str:
         """Get path to the GeoParquet file for a fire event"""

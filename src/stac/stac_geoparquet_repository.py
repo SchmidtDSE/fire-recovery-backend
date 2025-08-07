@@ -6,22 +6,34 @@ from src.core.storage.interface import StorageInterface
 class STACGeoParquetRepository:
     """Repository class for STAC GeoParquet storage operations using rustac and obstore"""
 
-    def __init__(self, storage: StorageInterface):
+    def __init__(
+        self,
+        storage: StorageInterface,
+        parquet_path: str = "stac/fire_recovery_stac.parquet",
+    ):
         """
         Initialize the STAC GeoParquet repository
 
         Args:
             storage: Storage interface (e.g., MinIO) for storing parquet files
+            parquet_path: Custom path for the parquet file (defaults to standard path)
         """
         self.storage = storage
-        self.parquet_path = "stac/fire_recovery_stac.parquet"
+        self.parquet_path = parquet_path
 
     async def _get_existing_items(self) -> List[Dict[str, Any]]:
         """Get existing items from parquet file, return empty list if file doesn't exist"""
         try:
-            result = await rustac.read(
-                self.parquet_path, store=self.storage.get_obstore()
-            )
+            # result = await rustac.read(
+            #     self.parquet_path, store=self.storage.get_obstore()
+            # )
+
+            # TODO: See below - using HTTPS URL approach for consistency with search operations,
+            # as rustac.read works with obstore directly but search does not, leading to
+            # weird and inconsistent behavior
+
+            full_https_path = f"https://{self.storage.get_url(self.parquet_path)}"
+            result = await rustac.read(full_https_path)
             return result["features"]
         except Exception:
             # File doesn't exist or other error
@@ -40,7 +52,10 @@ class STACGeoParquetRepository:
     async def _search_parquet(self, **search_params: Any) -> List[Dict[str, Any]]:
         """Search parquet file with given parameters"""
         try:
-            full_https_path = self.storage.get_url(self.parquet_path)
+            ## TODO: For some reason, rustac.search does not work with the obstore directly
+            # This is a workaround using the fact that our storage is public anyways, but this
+            # seems like a strange design choice - get more info
+            full_https_path = f"https://{self.storage.get_url(self.parquet_path)}"
             return await rustac.search(full_https_path, **search_params)
         except Exception:
             # File doesn't exist or other error
