@@ -1,15 +1,10 @@
-import asyncio
 import os
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from geojson_pydantic import Polygon
 import rustac
-import json
-import geopandas as gpd
-from shapely.geometry import mapping, shape
+from shapely.geometry import shape
 from pathlib import Path
 from stac_pydantic import Item as StacItem
-from stac_pydantic.shared import Asset
 from pydantic import ValidationError
 
 
