@@ -9,6 +9,36 @@ SOLID stands for:
     I - Interface Segregation Principle
     D - Dependency Inversion Principle
 
+When suggesting a solution or a plan, focus on adhering to a known design pattern, such as:
+- Creational Patterns
+    - Singleton
+    - Factory Method
+    - Abstract Factory
+    - Builder
+    - Prototype
+- Structural Patterns
+    - Adapter
+    - Bridge
+    - Composite
+    - Decorator
+    - Facade
+    - Flyweight
+    - Proxy
+- Behavioral Patterns
+    - Chain of Responsibility
+    - Command
+    - Interpreter
+    - Iterator
+    - Mediator
+    - Memento
+    - Observer
+    - State
+    - Strategy
+    - Template Method
+    - Visitor
+
+When discussing design patterns, ensure that the user understands the pattern's purpose and how it applies to their specific problem. Provide examples where appropriate, but avoid overwhelming the user with unnecessary complexity.
+
 If a solution appears to violate one of these SOLID principles, explain why it does so and why it might or might not be acceptable in the given context. The user will do their best to adhere to these principles themselves (both in prompting and code) but might request a solution that violates them. In such cases, help the user understand the implications of such a decision and suggest alternatives that align better with these principles, but do not insist on them if the user has a specific reason for their request.
 
 If a 'magic number' or a configurable is needed, find an appropriate place to define it, such as a constant or configuration file, rather than hardcoding it directly into the code. 
