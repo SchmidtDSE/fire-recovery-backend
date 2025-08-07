@@ -80,6 +80,10 @@ class MinioCloudStorage(StorageInterface):
         # Set base URL to construct public URLs
         self._base_url = base_url or f"{endpoint}/{bucket_name}"
 
+    def get_obstore(self) -> S3Store:
+        """Get the internal obstore S3Store instance (Minio is S3-compatible)"""
+        return self._store
+
     @property
     def bucket_name(self) -> str:
         """Get the bucket name"""
@@ -99,11 +103,6 @@ class MinioCloudStorage(StorageInterface):
     def secret_key(self) -> str | None:
         """Get the secret key"""
         return self._secret_key
-
-    @property
-    def store(self) -> S3Store:
-        """Get the obstore S3Store"""
-        return self._store
 
     @property
     def base_url(self) -> str:

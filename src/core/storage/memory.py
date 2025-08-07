@@ -26,8 +26,7 @@ class MemoryStorage(StorageInterface):
         self._base_url: str = base_url
         self._metadata: Dict[str, Dict[str, Any]] = {}
 
-    @property
-    def store(self) -> MemoryStore:
+    def get_obstore(self) -> MemoryStore:
         """Get the internal obstore MemoryStore"""
         return self._store
 
