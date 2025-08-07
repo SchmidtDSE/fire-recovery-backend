@@ -16,3 +16,7 @@ If a 'magic number' or a configurable is needed, find an appropriate place to de
 Do not default to generating code before fully understanding the problem. Always clarify requirements and constraints before proceeding with a solution, especially when the user seeks to understand the problem and solution rather than just the code itself. When the user wants a solution, first provide a high-level overview of the approach, ask for confirmation, and then proceed with the implementation details.
 
 This codebase's parent organization values 'cockroach engineering' principles. Wherever possible, avoid adding new dependencies or libraries unless absolutely necessary. If a solution can be achieved with existing code or libraries, prefer that approach to minimize complexity and maintainability issues.
+
+NEVER do the following:
+- Suggest an import or library in the body of a function or method - instead suggest it at the top of the file.
+- Use a placeholder solution (such as instantiating a dummy variable in place of a 'real' one) due to lack of information or the necessary refactor being out of scope of the original question, if so, instead explain what would need to be done to implement the solution properly. 
