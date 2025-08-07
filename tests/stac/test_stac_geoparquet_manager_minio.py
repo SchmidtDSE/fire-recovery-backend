@@ -1,0 +1,342 @@
+import pytest
+import uuid
+from unittest.mock import AsyncMock
+from typing import Dict, Any, List
+
+from src.stac.stac_geoparquet_manager import STACGeoParquetManager
+from src.core.storage.minio import MinioCloudStorage
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_create_fire_severity_item(minio_storage: MinioCloudStorage) -> None:
+    """Test creating a fire severity STAC item with MinIO storage"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    
+    # Test data
+    fire_event_name = f"test_fire_{test_id}"
+    job_id = f"job_{test_id}"
+    cog_urls = {
+        "rbr": f"https://storage.example.com/rbr_{test_id}.tif",
+        "dnbr": f"https://storage.example.com/dnbr_{test_id}.tif",
+        "rdnbr": f"https://storage.example.com/rdnbr_{test_id}.tif",
+    }
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [-120.5, 35.5],
+                [-120.0, 35.5],
+                [-120.0, 36.0],
+                [-120.5, 36.0],
+                [-120.5, 35.5],
+            ]
+        ],
+    }
+    datetime_str = "2023-08-15T12:00:00Z"
+    
+    try:
+        # Create fire severity item
+        stac_item = await manager.create_fire_severity_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            cog_urls=cog_urls,
+            geometry=geometry,
+            datetime_str=datetime_str,
+            boundary_type="coarse",
+        )
+        
+        # Validate the created item
+        assert stac_item["id"] == f"{fire_event_name}-severity-{job_id}"
+        assert stac_item["properties"]["fire_event_name"] == fire_event_name
+        assert stac_item["properties"]["job_id"] == job_id
+        assert stac_item["properties"]["product_type"] == "fire_severity"
+        assert stac_item["properties"]["boundary_type"] == "coarse"
+        assert stac_item["geometry"] == geometry
+        
+        # Check assets
+        assert "rbr" in stac_item["assets"]
+        assert "dnbr" in stac_item["assets"]
+        assert "rdnbr" in stac_item["assets"]
+        assert stac_item["assets"]["rbr"]["href"] == cog_urls["rbr"]
+        
+        # Verify item was stored in MinIO parquet file
+        retrieved_items = await manager.get_items_by_fire_event(fire_event_name)
+        assert len(retrieved_items) == 1
+        assert retrieved_items[0]["id"] == stac_item["id"]
+        
+    finally:
+        # Cleanup
+        await minio_storage.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_create_boundary_item(minio_storage: MinioCloudStorage) -> None:
+    """Test creating a boundary STAC item with MinIO storage"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    
+    # Test data
+    fire_event_name = f"test_fire_{test_id}"
+    job_id = f"job_{test_id}"
+    boundary_geojson_url = f"https://storage.example.com/boundary_{test_id}.geojson"
+    bbox = [-120.5, 35.5, -120.0, 36.0]
+    datetime_str = "2023-08-15T12:00:00Z"
+    
+    try:
+        # Create boundary item
+        stac_item = await manager.create_boundary_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            boundary_geojson_url=boundary_geojson_url,
+            bbox=bbox,
+            datetime_str=datetime_str,
+            boundary_type="refined",
+        )
+        
+        # Validate the created item
+        assert stac_item["id"] == f"{fire_event_name}-boundary-{job_id}"
+        assert stac_item["properties"]["fire_event_name"] == fire_event_name
+        assert stac_item["properties"]["product_type"] == "fire_boundary"
+        assert stac_item["properties"]["boundary_type"] == "refined"
+        assert stac_item["bbox"] == bbox
+        
+        # Check assets
+        assert "refined_boundary" in stac_item["assets"]
+        assert stac_item["assets"]["refined_boundary"]["href"] == boundary_geojson_url
+        
+        # Verify item was stored
+        retrieved_item = await manager.get_item_by_id(stac_item["id"])
+        assert retrieved_item is not None
+        assert retrieved_item["id"] == stac_item["id"]
+        
+    finally:
+        # Cleanup
+        await minio_storage.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_create_veg_matrix_item(minio_storage: MinioCloudStorage) -> None:
+    """Test creating a vegetation matrix STAC item with MinIO storage"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    
+    # Test data
+    fire_event_name = f"test_fire_{test_id}"
+    job_id = f"job_{test_id}"
+    csv_url = f"https://storage.example.com/veg_matrix_{test_id}.csv"
+    json_url = f"https://storage.example.com/veg_matrix_{test_id}.json"
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [-120.5, 35.5],
+                [-120.0, 35.5],
+                [-120.0, 36.0],
+                [-120.5, 36.0],
+                [-120.5, 35.5],
+            ]
+        ],
+    }
+    bbox = [-120.5, 35.5, -120.0, 36.0]
+    classification_breaks = [0.1, 0.27, 0.44, 0.66]
+    datetime_str = "2023-08-15T12:00:00Z"
+    
+    try:
+        # Create veg matrix item
+        stac_item = await manager.create_veg_matrix_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            fire_veg_matrix_csv_url=csv_url,
+            fire_veg_matrix_json_url=json_url,
+            geometry=geometry,
+            bbox=bbox,
+            classification_breaks=classification_breaks,
+            datetime_str=datetime_str,
+        )
+        
+        # Validate the created item
+        assert stac_item["id"] == f"{fire_event_name}-veg-matrix-{job_id}"
+        assert stac_item["properties"]["fire_event_name"] == fire_event_name
+        assert stac_item["properties"]["product_type"] == "vegetation_fire_matrix"
+        assert stac_item["properties"]["classification_breaks"] == classification_breaks
+        
+        # Check assets
+        assert "fire_veg_matrix_csv" in stac_item["assets"]
+        assert "fire_veg_matrix_json" in stac_item["assets"]
+        assert stac_item["assets"]["fire_veg_matrix_csv"]["href"] == csv_url
+        assert stac_item["assets"]["fire_veg_matrix_json"]["href"] == json_url
+        
+        # Verify item retrieval by classification breaks
+        retrieved_item = await manager.get_items_by_id_and_classification_breaks(
+            stac_item["id"], classification_breaks
+        )
+        assert retrieved_item is not None
+        assert retrieved_item["id"] == stac_item["id"]
+        
+    finally:
+        # Cleanup
+        await minio_storage.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_multiple_items_and_search(minio_storage: MinioCloudStorage) -> None:
+    """Test creating multiple items and searching with MinIO storage"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    
+    # Test data for multiple fire events
+    fire_event_1 = f"fire_one_{test_id}"
+    fire_event_2 = f"fire_two_{test_id}"
+    job_id = f"job_{test_id}"
+    
+    try:
+        # Create items for first fire event
+        await manager.create_fire_severity_item(
+            fire_event_name=fire_event_1,
+            job_id=job_id,
+            cog_urls={"rbr": "https://example.com/rbr1.tif"},
+            geometry={"type": "Point", "coordinates": [-120.0, 35.0]},
+            datetime_str="2023-08-15T12:00:00Z",
+        )
+        
+        await manager.create_boundary_item(
+            fire_event_name=fire_event_1,
+            job_id=job_id,
+            boundary_geojson_url="https://example.com/boundary1.geojson",
+            bbox=[-120.5, 35.5, -120.0, 36.0],
+            datetime_str="2023-08-15T12:00:00Z",
+        )
+        
+        # Create items for second fire event
+        await manager.create_fire_severity_item(
+            fire_event_name=fire_event_2,
+            job_id=job_id,
+            cog_urls={"dnbr": "https://example.com/dnbr2.tif"},
+            geometry={"type": "Point", "coordinates": [-121.0, 36.0]},
+            datetime_str="2023-08-16T12:00:00Z",
+        )
+        
+        # Test searching by fire event
+        fire1_items = await manager.get_items_by_fire_event(fire_event_1)
+        assert len(fire1_items) == 2
+        
+        fire2_items = await manager.get_items_by_fire_event(fire_event_2)
+        assert len(fire2_items) == 1
+        
+        # Test searching by product type
+        severity_items = await manager.search_items(
+            fire_event_name=fire_event_1, product_type="fire_severity"
+        )
+        assert len(severity_items) == 1
+        assert severity_items[0]["properties"]["product_type"] == "fire_severity"
+        
+        boundary_items = await manager.search_items(
+            fire_event_name=fire_event_1, product_type="fire_boundary"
+        )
+        assert len(boundary_items) == 1
+        assert boundary_items[0]["properties"]["product_type"] == "fire_boundary"
+        
+    finally:
+        # Cleanup
+        await minio_storage.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_factory_methods(minio_storage: MinioCloudStorage) -> None:
+    """Test the class method factory functions"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    
+    # Test testing factory method
+    test_manager = STACGeoParquetManager.for_testing(base_url)
+    assert test_manager.base_url == base_url
+    assert test_manager.storage is not None
+    # Testing storage should be from TEMP_BUCKET_NAME
+    assert hasattr(test_manager.storage, 'bucket_name')
+    
+    # Test production factory method
+    prod_manager = STACGeoParquetManager.for_production(base_url)
+    assert prod_manager.base_url == base_url
+    assert prod_manager.storage is not None
+    # Production storage should be from FINAL_BUCKET_NAME
+    assert hasattr(prod_manager.storage, 'bucket_name')
+    
+    # They should use different storage instances
+    assert test_manager.storage != prod_manager.storage
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_parquet_persistence(minio_storage: MinioCloudStorage) -> None:
+    """Test that items persist correctly in parquet format through MinIO"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    
+    fire_event_name = f"persistence_test_{test_id}"
+    job_id = f"job_{test_id}"
+    
+    try:
+        # Create first item
+        await manager.create_fire_severity_item(
+            fire_event_name=fire_event_name,
+            job_id=job_id,
+            cog_urls={"rbr": "https://example.com/rbr.tif"},
+            geometry={"type": "Point", "coordinates": [-120.0, 35.0]},
+            datetime_str="2023-08-15T12:00:00Z",
+        )
+        
+        # Create new manager instance to test persistence
+        manager2 = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+        
+        # Add second item through different manager instance
+        await manager2.create_boundary_item(
+            fire_event_name=fire_event_name,
+            job_id=f"job2_{test_id}",
+            boundary_geojson_url="https://example.com/boundary.geojson",
+            bbox=[-120.5, 35.5, -120.0, 36.0],
+            datetime_str="2023-08-15T12:00:00Z",
+        )
+        
+        # Both items should be retrievable
+        all_items = await manager.get_items_by_fire_event(fire_event_name)
+        assert len(all_items) == 2
+        
+        # Verify the parquet file exists in MinIO storage
+        parquet_files = await minio_storage.list_files("stac/")
+        assert any("fire_recovery_stac.parquet" in f for f in parquet_files)
+        
+    finally:
+        # Cleanup
+        await minio_storage.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_stac_manager_empty_parquet_handling(minio_storage: MinioCloudStorage) -> None:
+    """Test handling when no parquet file exists yet"""
+    test_id = str(uuid.uuid4())
+    base_url = f"https://test.example.com/{test_id}"
+    manager = STACGeoParquetManager(base_url=base_url, storage=minio_storage)
+    
+    fire_event_name = f"empty_test_{test_id}"
+    
+    try:
+        # Search for items in non-existent parquet file should return empty list
+        items = await manager.get_items_by_fire_event(fire_event_name)
+        assert items == []
+        
+        # Get item by ID should return None
+        item = await manager.get_item_by_id("non-existent-id")
+        assert item is None
+        
+        # Search should return empty list
+        search_results = await manager.search_items(fire_event_name)
+        assert search_results == []
+        
+    finally:
+        # Cleanup
+        await minio_storage.cleanup()
