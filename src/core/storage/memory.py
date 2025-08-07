@@ -5,6 +5,8 @@ import time
 from typing import BinaryIO, Callable, Dict, Any, List, Optional
 from src.core.storage.interface import StorageInterface
 import aiohttp
+import obstore as obs
+from obstore.store import MemoryStore
 
 
 class MemoryStorage(StorageInterface):
@@ -20,13 +22,14 @@ class MemoryStorage(StorageInterface):
         Args:
             base_url: Base URL prefix for virtual URLs
         """
-        self._storage: Dict[str, Dict[str, Any]] = {}
+        self._store = MemoryStore()
         self._base_url: str = base_url
+        self._metadata: Dict[str, Dict[str, Any]] = {}
 
     @property
-    def storage(self) -> Dict[str, Dict[str, Any]]:
-        """Get the internal storage dictionary"""
-        return self._storage
+    def store(self) -> MemoryStore:
+        """Get the internal obstore MemoryStore"""
+        return self._store
 
     @property
     def base_url(self) -> str:
@@ -42,13 +45,10 @@ class MemoryStorage(StorageInterface):
             path: Storage path
             temporary: If True, file will be deleted during cleanup
         """
-        buffer = io.BytesIO(data)
-        buffer.seek(0)
-        file_data = buffer
+        await obs.put_async(self._store, path, data)
 
-        # Store with metadata
-        self._storage[path] = {
-            "data": file_data,
+        # Store metadata separately
+        self._metadata[path] = {
             "timestamp": time.time(),
             "temporary": temporary,
         }
@@ -57,14 +57,11 @@ class MemoryStorage(StorageInterface):
 
     async def get_bytes(self, path: str) -> bytes:
         """Get binary data from in-memory storage"""
-        if path not in self._storage:
+        try:
+            result = await obs.get_async(self._store, path)
+            return bytes(await result.bytes_async())
+        except Exception:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
-
-        stored_item = self._storage[path]
-        stored_data = stored_item["data"]
-
-        stored_data.seek(0)
-        return stored_data.getvalue()
 
     async def save_json(
         self, data: Dict[str, Any], path: str, temporary: bool = False
@@ -80,14 +77,14 @@ class MemoryStorage(StorageInterface):
 
     async def list_files(self, prefix: str) -> List[str]:
         """List files in in-memory storage with given prefix"""
-        return [key for key in self._storage.keys() if key.startswith(prefix)]
+        objects = self._store.list(prefix=prefix)
+        return [obj["path"] for obj in objects.collect()]
 
     def get_url(self, path: str) -> str:
         """Get URL for a stored object (virtual URL for in-memory storage)"""
         return f"{self._base_url}/{path}"
 
-
-    def get_file_obj(self, path: str) -> io.BytesIO:
+    async def get_file_obj(self, path: str) -> io.BytesIO:
         """
         Get a file-like object for the stored data
 
@@ -97,26 +94,17 @@ class MemoryStorage(StorageInterface):
         Returns:
             BytesIO object for the stored data
         """
-        if path not in self._storage:
-            raise FileNotFoundError(f"Path not found in memory storage: {path}")
+        data = await self.get_bytes(path)
+        return io.BytesIO(data)
 
-        stored_data = self._storage[path]["data"]
-
-        # Return existing BytesIO buffer (reset position first)
-        stored_data.seek(0)
-        return stored_data
-
-    def get_data_url(self, path: str) -> str:
+    async def get_data_url(self, path: str) -> str:
         """
         Get data URL for a stored object (for browser usage)
 
         Returns:
             Data URL with base64-encoded content
         """
-        if path not in self._storage:
-            raise FileNotFoundError(f"Path not found in memory storage: {path}")
-
-        data = self.get_bytes_sync(path)
+        data = await self.get_bytes(path)
         mime_type = self._guess_content_type(path)
         b64_data = base64.b64encode(data).decode("ascii")
         return f"data:{mime_type};base64,{b64_data}"
@@ -131,13 +119,11 @@ class MemoryStorage(StorageInterface):
         Returns:
             Bytes data
         """
-        if path not in self._storage:
+        try:
+            result = obs.get(self._store, path)
+            return bytes(result.bytes())
+        except Exception:
             raise FileNotFoundError(f"Path not found in memory storage: {path}")
-
-        stored_data = self._storage[path]["data"]
-
-        stored_data.seek(0)
-        return stored_data.getvalue()
 
     async def process_stream(
         self,
@@ -148,7 +134,7 @@ class MemoryStorage(StorageInterface):
     ) -> str:
         """Process data in memory without temporary files"""
         # Get source as file-like object
-        source_file_obj = self.get_file_obj(source_path)
+        source_file_obj = await self.get_file_obj(source_path)
 
         # Process it
         result_bytes = processor(source_file_obj)
@@ -180,22 +166,29 @@ class MemoryStorage(StorageInterface):
         """
         current_time = time.time()
         removed_count = 0
+        paths_to_remove = []
 
-        for path in list(self._storage.keys()):
-            item = self._storage[path]
-
+        for path, metadata in list(self._metadata.items()):
             # Check if file is temporary
-            is_temporary = item["temporary"]
+            is_temporary = metadata["temporary"]
 
             # Check if file is older than max_age_seconds
             is_old = False
             if max_age_seconds is not None:
-                age = current_time - item["timestamp"]
+                age = current_time - metadata["timestamp"]
                 is_old = age > max_age_seconds
 
             # Remove if temporary or too old
             if is_temporary or is_old:
-                del self._storage[path]
+                paths_to_remove.append(path)
+
+        # Remove from obstore and metadata
+        for path in paths_to_remove:
+            try:
+                await obs.delete_async(self._store, path)
+                del self._metadata[path]
                 removed_count += 1
+            except Exception:
+                pass  # Path might not exist in store
 
         return removed_count

@@ -4,15 +4,15 @@ import json
 import os
 from typing import BinaryIO, Callable, Dict, Any, List, Optional
 import aiohttp
-from minio import Minio
-from minio.error import S3Error
+import obstore as obs
+from obstore.store import S3Store
 
 from src.core.storage.interface import StorageInterface
 from src.config.constants import DEFAULT_TEMP_FILE_MAX_AGE_SECONDS
 
 
 class MinioCloudStorage(StorageInterface):
-    """Storage implementation for any S3-compatible storage using Minio client"""
+    """Storage implementation for any S3-compatible storage using obstore S3Store"""
 
     def __init__(
         self,
@@ -56,20 +56,23 @@ class MinioCloudStorage(StorageInterface):
                 "Access key and secret key must be provided either as arguments or through environment variables"
             )
 
-        # Initialize Minio client
-        self._client = Minio(
-            endpoint,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-            secure=secure,
+        # Initialize obstore S3Store
+        client_options = {}
+        if not secure:
+            client_options["allow_http"] = True
+
+        self._store = S3Store(
+            bucket_name,
+            endpoint=f"{'https' if secure else 'http'}://{endpoint}",
+            access_key_id=self._access_key,
+            secret_access_key=self._secret_key,
             region=region,
+            virtual_hosted_style_request=False,
+            client_options=client_options,
         )
 
         # Set base URL for public access
         self._base_url = base_url or f"{endpoint}/{bucket_name}"
-
-        # Create bucket if it doesn't exist
-        self._ensure_bucket_exists()
 
     @property
     def bucket_name(self) -> str:
@@ -92,19 +95,14 @@ class MinioCloudStorage(StorageInterface):
         return self._secret_key
 
     @property
-    def client(self) -> Minio:
-        """Get the Minio client"""
-        return self._client
+    def store(self) -> S3Store:
+        """Get the obstore S3Store"""
+        return self._store
 
     @property
     def base_url(self) -> str:
         """Get the base URL"""
         return self._base_url
-
-    def _ensure_bucket_exists(self) -> None:
-        """Ensure the bucket exists, create it if not"""
-        if not self._client.bucket_exists(self._bucket_name):
-            self._client.make_bucket(self._bucket_name)
 
     async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
         """Save binary data to S3 bucket without using temp files"""
@@ -112,37 +110,20 @@ class MinioCloudStorage(StorageInterface):
         if temporary and not path.startswith("temp/"):
             path = f"temp/{path}"
 
-        # Determine content type based on file extension
-        content_type = self._guess_content_type(path)
-
-        # Use BytesIO to create a file-like object in memory
-        data_stream = io.BytesIO(data)
-
-        # Upload directly from memory without temp files
-        self._client.put_object(
-            self._bucket_name, path, data_stream, len(data), content_type=content_type
-        )
-
+        await obs.put_async(self._store, path, data)
         return self.get_url(path)
 
     async def get_bytes(self, path: str) -> bytes:
         """Get binary data from S3 bucket using direct streaming"""
         try:
-            # Get object directly as stream (no temp file)
-            response = self._client.get_object(self._bucket_name, path)
-            
-            # Read all data from the response
-            data = response.read()
-            
-            # Close the response
-            response.close()
-            response.release_conn()
-            
-            return data
-        except S3Error as e:
+            result = await obs.get_async(self._store, path)
+            return bytes(await result.bytes_async())
+        except Exception as e:
             raise Exception(f"Failed to get object {path}: {e}")
 
-    async def save_json(self, data: Dict[str, Any], path: str, temporary: bool = False) -> str:
+    async def save_json(
+        self, data: Dict[str, Any], path: str, temporary: bool = False
+    ) -> str:
         """Save JSON data to S3 bucket"""
         json_str = json.dumps(data)
         return await self.save_bytes(json_str.encode("utf-8"), path, temporary)
@@ -154,19 +135,19 @@ class MinioCloudStorage(StorageInterface):
 
     async def list_files(self, prefix: str) -> List[str]:
         """List files in S3 bucket with given prefix"""
-        objects = self._client.list_objects(
-            self._bucket_name, prefix=prefix, recursive=True
-        )
-        return [obj.object_name for obj in objects]
+        objects = self._store.list(prefix=prefix)
+        return [obj["path"] for obj in objects.collect()]
 
     def get_url(self, path: str) -> str:
         """Get public URL for an S3 object"""
         return f"{self._base_url}/{path}"
 
-
-
     async def process_stream(
-        self, source_path: str, processor: Callable[[BinaryIO], bytes], target_path: str, temporary: bool = False
+        self,
+        source_path: str,
+        processor: Callable[[BinaryIO], bytes],
+        target_path: str,
+        temporary: bool = False,
     ) -> str:
         """Process data with minimal temporary storage
 
@@ -179,8 +160,7 @@ class MinioCloudStorage(StorageInterface):
         Returns:
             Path in the bucket where the processed data was saved
         """
-        # For Minio, we need a temporary buffer in memory
-        # but we avoid disk I/O
+        # Get source data and create file-like object
         source_data = await self.get_bytes(source_path)
         source_file_obj = io.BytesIO(source_data)
 
@@ -190,7 +170,9 @@ class MinioCloudStorage(StorageInterface):
         # Save result directly
         return await self.save_bytes(result_bytes, target_path, temporary)
 
-    async def copy_from_url(self, url: str, target_path: str, temporary: bool = False) -> str:
+    async def copy_from_url(
+        self, url: str, target_path: str, temporary: bool = False
+    ) -> str:
         """Download from URL directly to blob storage.
 
         Args:
@@ -224,25 +206,29 @@ class MinioCloudStorage(StorageInterface):
             max_age_seconds = DEFAULT_TEMP_FILE_MAX_AGE_SECONDS
 
         current_time = datetime.now(timezone.utc)
+        removed_count = 0
+        paths_to_remove = []
 
         # List all objects in the bucket
-        objects = self._client.list_objects(self._bucket_name, recursive=True)
-        removed_count = 0
-
-        for obj in objects:
+        objects = self._store.list()
+        for obj in objects.collect():
             # Check if the object is temporary (in temp/ directory)
-            is_temporary = obj.object_name.startswith("temp/")
-            
+            is_temporary = obj["path"].startswith("temp/")
+
             # Check if the object is older than max_age_seconds
-            age_seconds = (current_time - obj.last_modified).total_seconds()
+            age_seconds = (current_time - obj["last_modified"]).total_seconds()
             is_old = age_seconds > max_age_seconds
-            
+
             # Remove if temporary or too old
             if is_temporary or is_old:
-                try:
-                    self._client.remove_object(self._bucket_name, obj.object_name)
-                    removed_count += 1
-                except S3Error as e:
-                    print(f"Failed to delete {obj.object_name}: {e}")
+                paths_to_remove.append(obj["path"])
+
+        # Remove objects
+        for path in paths_to_remove:
+            try:
+                await obs.delete_async(self._store, path)
+                removed_count += 1
+            except Exception as e:
+                print(f"Failed to delete {path}: {e}")
 
         return removed_count
