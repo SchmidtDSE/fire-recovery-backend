@@ -147,8 +147,8 @@ class TestMemoryStorage:
         assert b"PyTorch" in perm_data
 
         # Check internal storage metadata
-        assert memory_storage._storage[temp_path]["temporary"] == True
-        assert memory_storage._storage[perm_path]["temporary"] == False
+        assert memory_storage._metadata[temp_path]["temporary"]
+        assert not memory_storage._metadata[perm_path]["temporary"]
 
     @pytest.mark.asyncio
     async def test_save_bytes_temporary_flag(self, memory_storage: MemoryStorage) -> None:
@@ -172,8 +172,8 @@ class TestMemoryStorage:
         assert perm_retrieved == test_data
 
         # Check internal storage metadata
-        assert memory_storage._storage[temp_path]["temporary"] == True
-        assert memory_storage._storage[perm_path]["temporary"] == False
+        assert memory_storage._metadata[temp_path]["temporary"]
+        assert not memory_storage._metadata[perm_path]["temporary"]
 
     @pytest.mark.asyncio
     async def test_save_json_temporary_flag(self, memory_storage: MemoryStorage) -> None:
@@ -197,8 +197,8 @@ class TestMemoryStorage:
         assert perm_retrieved == test_data
 
         # Check internal storage metadata
-        assert memory_storage._storage[temp_path]["temporary"] == True
-        assert memory_storage._storage[perm_path]["temporary"] == False
+        assert memory_storage._metadata[temp_path]["temporary"]
+        assert not memory_storage._metadata[perm_path]["temporary"]
 
     @pytest.mark.asyncio
     async def test_process_stream_geospatial_workflow(self, memory_storage: MemoryStorage) -> None:
@@ -236,7 +236,7 @@ class TestMemoryStorage:
         assert processed_data == b"CROPPED:GeoTIFF mock data representing fire severity raster"
         
         # Verify it was marked as temporary
-        assert memory_storage._storage[processed_path]["temporary"] == True
+        assert memory_storage._metadata[processed_path]["temporary"]
 
     @pytest.mark.asyncio
     async def test_process_stream_cog_translation_workflow(self, memory_storage: MemoryStorage) -> None:
@@ -275,7 +275,7 @@ class TestMemoryStorage:
         assert b"fire_severity_array" in cog_data
         
         # Verify it was marked as permanent
-        assert memory_storage._storage[cog_path]["temporary"] == False
+        assert not memory_storage._metadata[cog_path]["temporary"]
 
     @pytest.mark.asyncio
     async def test_process_stream_vegetation_analysis_workflow(self, memory_storage: MemoryStorage) -> None:
@@ -318,4 +318,4 @@ class TestMemoryStorage:
         assert b"Geopackage data" in results_data
         
         # Verify it was marked as temporary (intermediate analysis result)
-        assert memory_storage._storage[results_path]["temporary"] == True
+        assert memory_storage._metadata[results_path]["temporary"]
