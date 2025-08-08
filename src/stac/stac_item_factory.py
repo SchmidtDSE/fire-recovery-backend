@@ -1,8 +1,8 @@
 from typing import Dict, List, Any
 from geojson_pydantic import Polygon
 from shapely.geometry import shape
-from stac_pydantic import Item as StacItem
-from pydantic import ValidationError
+import pystac
+from datetime import datetime
 
 
 class STACItemFactory:
@@ -17,20 +17,17 @@ class STACItemFactory:
         """
         self.base_url = base_url
 
-    def validate_stac_item(self, item: Dict[str, Any]) -> None:
+    def validate_stac_item(self, item: pystac.Item) -> None:
         """
-        Validate a STAC item against the STAC specification using stac-pydantic.
+        Validate a STAC item using pystac built-in validation
 
         Args:
-            item: The STAC item to validate
+            item: The pystac Item to validate
 
         Raises:
-            ValidationError: If the STAC item is invalid
+            Exception: If the STAC item is invalid
         """
-        try:
-            StacItem.model_validate(item)
-        except ValidationError as e:
-            raise ValidationError(f"STAC item validation failed: {str(e)}", StacItem)
+        item.validate()
 
     def create_fire_severity_item(
         self,
@@ -42,7 +39,7 @@ class STACItemFactory:
         boundary_type: str = "coarse",
     ) -> Dict[str, Any]:
         """
-        Create a STAC item for fire severity analysis
+        Create a STAC item for fire severity analysis using pystac
 
         Args:
             fire_event_name: Name of the fire event
@@ -53,78 +50,87 @@ class STACItemFactory:
             boundary_type: Type of boundary ('coarse' or 'refined')
 
         Returns:
-            The created STAC item
+            The created STAC item as dictionary
         """
         item_id = f"{fire_event_name}-severity-{job_id}"
 
-        # Get stac compliant bbox from the geometry
+        # Get bbox from geometry
         geom_shape = shape(geometry)
-        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
+        bbox = list(geom_shape.bounds)  # (minx, miny, maxx, maxy)
 
-        # Create assets dictionary with all three metrics
-        assets = {}
+        # Parse datetime
+        dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
 
-        # Add RBR asset if available
-        if "rbr" in cog_urls:
-            assets["rbr"] = {
-                "href": cog_urls["rbr"],
-                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                "title": "Relativized Burn Ratio (RBR)",
-                "roles": ["data"],
-            }
-
-        # Add dNBR asset if available
-        if "dnbr" in cog_urls:
-            assets["dnbr"] = {
-                "href": cog_urls["dnbr"],
-                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                "title": "Differenced Normalized Burn Ratio (dNBR)",
-                "roles": ["data"],
-            }
-
-        # Add RdNBR asset if available
-        if "rdnbr" in cog_urls:
-            assets["rdnbr"] = {
-                "href": cog_urls["rdnbr"],
-                "type": "image/tiff; application=geotiff; profile=cloud-optimized",
-                "title": "Relativized Differenced Normalized Burn Ratio (RdNBR)",
-                "roles": ["data"],
-            }
-
-        # Create the STAC item
-        stac_item: Dict[str, Any] = {
-            "type": "Feature",
-            "stac_version": "1.0.0",
-            "id": item_id,
-            "properties": {
-                "datetime": datetime_str,
+        # Create pystac Item
+        item = pystac.Item(
+            id=item_id,
+            geometry=geometry,
+            bbox=bbox,
+            datetime=dt,
+            properties={
                 "fire_event_name": fire_event_name,
                 "job_id": job_id,
                 "product_type": "fire_severity",
                 "boundary_type": boundary_type,
             },
-            "geometry": geometry,
-            "bbox": bbox,
-            "assets": assets,
-            "links": [
-                {
-                    "rel": "self",
-                    "href": f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "related",
-                    "href": f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-boundary-{job_id}.json",
-                    "type": "application/json",
-                    "title": "Related fire boundary product",
-                },
-            ],
-        }
+        )
 
-        # Validate the STAC item
-        self.validate_stac_item(stac_item)
+        # Add assets using pystac
+        if "rbr" in cog_urls:
+            item.add_asset(
+                "rbr",
+                pystac.Asset(
+                    href=cog_urls["rbr"],
+                    media_type=pystac.MediaType.COG,
+                    roles=["data"],
+                    title="Relativized Burn Ratio (RBR)",
+                ),
+            )
 
-        return stac_item
+        if "dnbr" in cog_urls:
+            item.add_asset(
+                "dnbr",
+                pystac.Asset(
+                    href=cog_urls["dnbr"],
+                    media_type=pystac.MediaType.COG,
+                    roles=["data"],
+                    title="Differenced Normalized Burn Ratio (dNBR)",
+                ),
+            )
+
+        if "rdnbr" in cog_urls:
+            item.add_asset(
+                "rdnbr",
+                pystac.Asset(
+                    href=cog_urls["rdnbr"],
+                    media_type=pystac.MediaType.COG,
+                    roles=["data"],
+                    title="Relativized Differenced Normalized Burn Ratio (RdNBR)",
+                ),
+            )
+
+        # Add links
+        item.add_link(
+            pystac.Link(
+                rel="self",
+                target=f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="related",
+                target=f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-boundary-{job_id}.json",
+                media_type="application/json",
+                title="Related fire boundary product",
+            )
+        )
+
+        # Validate using pystac
+        self.validate_stac_item(item)
+
+        return item.to_dict()
 
     def create_boundary_item(
         self,
@@ -136,79 +142,91 @@ class STACItemFactory:
         boundary_type: str = "coarse",
     ) -> Dict[str, Any]:
         """
-        Create a STAC item for boundary refinement
+        Create a STAC item for boundary refinement using pystac
         """
         item_id = f"{fire_event_name}-boundary-{job_id}"
 
-        # Create the STAC item
-        stac_item: Dict[str, Any] = {
-            "type": "Feature",
-            "stac_version": "1.0.0",
-            "id": item_id,
-            "properties": {
-                "datetime": datetime_str,
+        # Parse datetime
+        dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+
+        # Create geometry from bbox
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [bbox[0], bbox[1]],
+                    [bbox[2], bbox[1]],
+                    [bbox[2], bbox[3]],
+                    [bbox[0], bbox[3]],
+                    [bbox[0], bbox[1]],
+                ]
+            ],
+        }
+
+        # Create pystac Item
+        item = pystac.Item(
+            id=item_id,
+            geometry=geometry,
+            bbox=bbox,
+            datetime=dt,
+            properties={
+                "title": f"{fire_event_name} {boundary_type} boundary",
                 "fire_event_name": fire_event_name,
                 "job_id": job_id,
                 "product_type": "fire_boundary",
                 "boundary_type": boundary_type,
             },
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [bbox[0], bbox[1]],
-                        [bbox[2], bbox[1]],
-                        [bbox[2], bbox[3]],
-                        [bbox[0], bbox[3]],
-                        [bbox[0], bbox[1]],
-                    ]
-                ],
-            },
-            "bbox": bbox,
-            "assets": {
-                "refined_boundary": {
-                    "href": boundary_geojson_url,
-                    "type": "application/geo+json",
-                    "title": f"{boundary_type.capitalize()} Fire Boundary",
-                    "roles": ["data"],
-                },
-            },
-            "links": [
-                {
-                    "rel": "self",
-                    "href": f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "collection",
-                    "href": f"{self.base_url}/{fire_event_name}/collection.json",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "root",
-                    "href": f"{self.base_url}/catalog.json",
-                    "type": "application/json",
-                },
-            ],
-        }
-
-        # Add title to make the item more descriptive
-        stac_item["properties"]["title"] = f"{fire_event_name} {boundary_type} boundary"
-
-        # Add a related link to the severity item
-        stac_item["links"].append(
-            {
-                "rel": "related",
-                "href": f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-severity-{job_id}.json",
-                "type": "application/json",
-                "title": "Related fire severity product",
-            }
         )
 
-        # Validate the STAC item
-        self.validate_stac_item(stac_item)
+        # Add boundary asset
+        item.add_asset(
+            "refined_boundary",
+            pystac.Asset(
+                href=boundary_geojson_url,
+                media_type="application/geo+json",
+                roles=["data"],
+                title=f"{boundary_type.capitalize()} Fire Boundary",
+            ),
+        )
 
-        return stac_item
+        # Add links
+        item.add_link(
+            pystac.Link(
+                rel="self",
+                target=f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="collection",
+                target=f"{self.base_url}/{fire_event_name}/collection.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="root",
+                target=f"{self.base_url}/catalog.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="related",
+                target=f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-severity-{job_id}.json",
+                media_type="application/json",
+                title="Related fire severity product",
+            )
+        )
+
+        # Validate using pystac
+        self.validate_stac_item(item)
+
+        return item.to_dict()
 
     def create_veg_matrix_item(
         self,
@@ -222,7 +240,7 @@ class STACItemFactory:
         datetime_str: str,
     ) -> Dict[str, Any]:
         """
-        Create a STAC item for a vegetation/fire severity matrix.
+        Create a STAC item for a vegetation/fire severity matrix using pystac
 
         Args:
             fire_event_name: Name of the fire event
@@ -235,68 +253,88 @@ class STACItemFactory:
             datetime_str: Timestamp for the item
 
         Returns:
-            The created STAC item
+            The created STAC item as dictionary
         """
         item_id = f"{fire_event_name}-veg-matrix-{job_id}"
 
-        # Create the STAC item
-        stac_item: Dict[str, Any] = {
-            "type": "Feature",
-            "stac_version": "1.0.0",
-            "id": item_id,
-            "properties": {
+        # Parse datetime
+        dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+
+        # Create pystac Item
+        item = pystac.Item(
+            id=item_id,
+            geometry=geometry,
+            bbox=bbox,
+            datetime=dt,
+            properties={
                 "title": f"Vegetation Fire Matrix for {fire_event_name}",
                 "description": "Matrix of vegetation types affected by different fire severity classes",
-                "datetime": datetime_str,
                 "fire_event_name": fire_event_name,
                 "job_id": job_id,
                 "product_type": "vegetation_fire_matrix",
                 "classification_breaks": classification_breaks,
             },
-            "geometry": geometry,
-            "bbox": bbox,
-            "assets": {
-                "fire_veg_matrix_csv": {
-                    "href": fire_veg_matrix_csv_url,
-                    "type": "text/csv",
-                    "title": "Vegetation Fire Severity Matrix",
-                    "description": "CSV showing hectares of each vegetation type affected by fire severity classes",
-                    "roles": ["data"],
-                },
-                "fire_veg_matrix_json": {
-                    "href": fire_veg_matrix_json_url,
-                    "type": "application/json",
-                    "title": "Vegetation Fire Severity Matrix (JSON)",
-                    "description": "JSON representation of the vegetation fire severity matrix (for easier integration with frontend)",
-                    "roles": ["data"],
-                },
-            },
-            "links": [
-                {
-                    "rel": "self",
-                    "href": f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "collection",
-                    "href": f"{self.base_url}/{fire_event_name}/collection.json",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "root",
-                    "href": f"{self.base_url}/catalog.json",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "related",
-                    "href": f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-severity-{job_id}.json",
-                    "type": "application/json",
-                    "title": "Related fire severity product",
-                },
-            ],
-        }
+        )
 
-        # Validate the STAC item
-        self.validate_stac_item(stac_item)
+        # Add CSV asset
+        item.add_asset(
+            "fire_veg_matrix_csv",
+            pystac.Asset(
+                href=fire_veg_matrix_csv_url,
+                media_type="text/csv",
+                roles=["data"],
+                title="Vegetation Fire Severity Matrix",
+                description="CSV showing hectares of each vegetation type affected by fire severity classes",
+            ),
+        )
 
-        return stac_item
+        # Add JSON asset
+        item.add_asset(
+            "fire_veg_matrix_json",
+            pystac.Asset(
+                href=fire_veg_matrix_json_url,
+                media_type="application/json",
+                roles=["data"],
+                title="Vegetation Fire Severity Matrix (JSON)",
+                description="JSON representation of the vegetation fire severity matrix (for easier integration with frontend)",
+            ),
+        )
+
+        # Add links
+        item.add_link(
+            pystac.Link(
+                rel="self",
+                target=f"{self.base_url}/{fire_event_name}/items/{item_id}.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="collection",
+                target=f"{self.base_url}/{fire_event_name}/collection.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="root",
+                target=f"{self.base_url}/catalog.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="related",
+                target=f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-severity-{job_id}.json",
+                media_type="application/json",
+                title="Related fire severity product",
+            )
+        )
+
+        # Validate using pystac
+        self.validate_stac_item(item)
+
+        return item.to_dict()

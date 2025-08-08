@@ -10,11 +10,11 @@ from rio_cogeo.profiles import cog_profiles
 from shapely.geometry import shape
 
 from src.core.storage.safe_tempfile import safe_tempfile
-from src.stac.stac_geoparquet_manager import STACGeoParquetManager
+from src.stac.stac_json_manager import STACJSONManager
 
 
 async def get_fire_severity_cog_by_event(
-    stac_manager: STACGeoParquetManager, fire_event_name: str
+    stac_manager: STACJSONManager, fire_event_name: str
 ) -> str:
     """
     Find the most recent fire severity COG for a given fire event.

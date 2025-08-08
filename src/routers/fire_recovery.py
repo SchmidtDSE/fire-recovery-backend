@@ -23,7 +23,7 @@ from src.process.spectral_indices import (
     process_remote_sensing_data,
 )
 from src.stac.stac_endpoint_handler import StacEndpointHandler
-from src.stac.stac_geoparquet_manager import STACGeoParquetManager
+from src.stac.stac_json_manager import STACJSONManager
 from src.util.cog_ops import (
     create_cog_bytes,
     crop_cog_with_geometry,
@@ -135,9 +135,8 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 # Initialize STAC manager
-stac_manager = STACGeoParquetManager(
-    base_url=f"https://storage.googleapis.com/{BUCKET_NAME}/stac",
-    storage_dir=STAC_STORAGE_DIR,
+stac_manager = STACJSONManager.for_production(
+    base_url=f"https://storage.googleapis.com/{BUCKET_NAME}/stac"
 )
 
 
