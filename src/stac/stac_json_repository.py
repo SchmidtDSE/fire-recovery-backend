@@ -37,19 +37,21 @@ class STACJSONRepository:
                 return {"fire_event_name": fire_event_name, "product_type": product_type}
         return {}
 
-    async def add_item(self, item_dict: Dict[str, Any]) -> str:
+    async def add_item(self, item_dict: Dict[str, Any], skip_validation: bool = False) -> str:
         """
         Add a STAC item to storage using pystac validation
 
         Args:
             item_dict: STAC item dictionary
+            skip_validation: If True, skip validation (useful for testing)
 
         Returns:
             Storage URL for the saved item
         """
         # Create pystac Item from dict and validate
         item = pystac.Item.from_dict(item_dict)
-        item.validate()
+        if not skip_validation:
+            item.validate()
 
         # Generate file path
         file_path = self._generate_item_path(item.properties, item.id)

@@ -43,6 +43,7 @@ class STACJSONManager:
         geometry: Dict[str, Any],
         datetime_str: str,
         boundary_type: str = "coarse",
+        skip_validation: bool = False,
     ) -> Dict[str, Any]:
         """
         Create and store a fire severity STAC item
@@ -66,10 +67,11 @@ class STACJSONManager:
             geometry=geometry,
             datetime_str=datetime_str,
             boundary_type=boundary_type,
+            skip_validation=skip_validation,
         )
 
         # Store the item
-        await self._repository.add_item(stac_item)
+        await self._repository.add_item(stac_item, skip_validation=skip_validation)
 
         return stac_item
 
@@ -81,6 +83,7 @@ class STACJSONManager:
         bbox: List[float],
         datetime_str: str,
         boundary_type: str = "coarse",
+        skip_validation: bool = False,
     ) -> Dict[str, Any]:
         """
         Create and store a boundary STAC item
@@ -104,10 +107,11 @@ class STACJSONManager:
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type=boundary_type,
+            skip_validation=skip_validation,
         )
 
         # Store the item
-        await self._repository.add_item(stac_item)
+        await self._repository.add_item(stac_item, skip_validation=skip_validation)
 
         return stac_item
 
@@ -121,6 +125,7 @@ class STACJSONManager:
         bbox: List[float],
         classification_breaks: List[float],
         datetime_str: str,
+        skip_validation: bool = False,
     ) -> Dict[str, Any]:
         """
         Create and store a vegetation matrix STAC item
@@ -148,10 +153,11 @@ class STACJSONManager:
             bbox=bbox,
             classification_breaks=classification_breaks,
             datetime_str=datetime_str,
+            skip_validation=skip_validation,
         )
 
         # Store the item
-        await self._repository.add_item(stac_item)
+        await self._repository.add_item(stac_item, skip_validation=skip_validation)
 
         return stac_item
 

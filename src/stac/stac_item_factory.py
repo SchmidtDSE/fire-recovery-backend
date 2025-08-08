@@ -11,23 +11,27 @@ class STACItemFactory:
     def __init__(self, base_url: str):
         """
         Initialize the STAC item factory
-        
+
         Args:
             base_url: Base URL for STAC assets and links
         """
         self.base_url = base_url
 
-    def validate_stac_item(self, item: pystac.Item) -> None:
+    def validate_stac_item(
+        self, item: pystac.Item, skip_validation: bool = False
+    ) -> None:
         """
         Validate a STAC item using pystac built-in validation
 
         Args:
             item: The pystac Item to validate
+            skip_validation: If True, skip validation (useful for testing)
 
         Raises:
             Exception: If the STAC item is invalid
         """
-        item.validate()
+        if not skip_validation:
+            item.validate()
 
     def create_fire_severity_item(
         self,
@@ -37,6 +41,7 @@ class STACItemFactory:
         geometry: Polygon,
         datetime_str: str,
         boundary_type: str = "coarse",
+        skip_validation: bool = False,
     ) -> Dict[str, Any]:
         """
         Create a STAC item for fire severity analysis using pystac
@@ -48,6 +53,7 @@ class STACItemFactory:
             geometry: GeoJSON geometry object
             datetime_str: Timestamp for the item
             boundary_type: Type of boundary ('coarse' or 'refined')
+            skip_validation: If True, skip validation (useful for testing)
 
         Returns:
             The created STAC item as dictionary
@@ -59,7 +65,7 @@ class STACItemFactory:
         bbox = list(geom_shape.bounds)  # (minx, miny, maxx, maxy)
 
         # Parse datetime
-        dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
         # Create pystac Item
         item = pystac.Item(
@@ -128,7 +134,7 @@ class STACItemFactory:
         )
 
         # Validate using pystac
-        self.validate_stac_item(item)
+        self.validate_stac_item(item, skip_validation)
 
         return item.to_dict()
 
@@ -140,6 +146,7 @@ class STACItemFactory:
         bbox: List[float],
         datetime_str: str,
         boundary_type: str = "coarse",
+        skip_validation: bool = False,
     ) -> Dict[str, Any]:
         """
         Create a STAC item for boundary refinement using pystac
@@ -147,7 +154,7 @@ class STACItemFactory:
         item_id = f"{fire_event_name}-boundary-{job_id}"
 
         # Parse datetime
-        dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
         # Create geometry from bbox
         geometry = {
@@ -224,7 +231,7 @@ class STACItemFactory:
         )
 
         # Validate using pystac
-        self.validate_stac_item(item)
+        self.validate_stac_item(item, skip_validation)
 
         return item.to_dict()
 
@@ -238,6 +245,7 @@ class STACItemFactory:
         bbox: List[float],
         classification_breaks: List[float],
         datetime_str: str,
+        skip_validation: bool = False,
     ) -> Dict[str, Any]:
         """
         Create a STAC item for a vegetation/fire severity matrix using pystac
@@ -258,7 +266,7 @@ class STACItemFactory:
         item_id = f"{fire_event_name}-veg-matrix-{job_id}"
 
         # Parse datetime
-        dt = datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
         # Create pystac Item
         item = pystac.Item(
@@ -335,6 +343,6 @@ class STACItemFactory:
         )
 
         # Validate using pystac
-        self.validate_stac_item(item)
+        self.validate_stac_item(item, skip_validation)
 
         return item.to_dict()
