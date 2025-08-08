@@ -148,16 +148,22 @@ class TestSTACJSONRepository:
         await repository.add_item(sample_stac_item)
 
         # Test retrieval by fire event and ID
-        item = await repository.get_item_by_fire_event_and_id("test_fire", sample_stac_item["id"])
+        item = await repository.get_item_by_fire_event_and_id(
+            "test_fire", sample_stac_item["id"]
+        )
         assert item is not None
         assert item["id"] == sample_stac_item["id"]
 
         # Wrong fire event should return None
-        wrong_fire = await repository.get_item_by_fire_event_and_id("wrong_fire", sample_stac_item["id"])
+        wrong_fire = await repository.get_item_by_fire_event_and_id(
+            "wrong_fire", sample_stac_item["id"]
+        )
         assert wrong_fire is None
 
         # Non-existent ID should return None
-        non_existent = await repository.get_item_by_fire_event_and_id("test_fire", "non-existent-id")
+        non_existent = await repository.get_item_by_fire_event_and_id(
+            "test_fire", "non-existent-id"
+        )
         assert non_existent is None
 
     @pytest.mark.asyncio
@@ -167,16 +173,18 @@ class TestSTACJSONRepository:
         """Test retrieving items by ID and boundary type"""
         repository = STACJSONRepository(memory_storage)
 
-        # Create items with different boundary types
+        # Create items with different boundary types and different job_ids to ensure unique paths
         coarse_item = sample_stac_item.copy()
         coarse_item["id"] = "test_fire-severity-coarse"
         coarse_item["properties"] = coarse_item["properties"].copy()
         coarse_item["properties"]["boundary_type"] = "coarse"
+        coarse_item["properties"]["job_id"] = "job_coarse"
 
         refined_item = sample_stac_item.copy()
         refined_item["id"] = "test_fire-severity-refined"
         refined_item["properties"] = refined_item["properties"].copy()
         refined_item["properties"]["boundary_type"] = "refined"
+        refined_item["properties"]["job_id"] = "job_refined"
 
         await repository.add_item(coarse_item)
         await repository.add_item(refined_item)
@@ -336,7 +344,9 @@ class TestSTACJSONRepository:
         item = await repository.get_item_by_id("non-existent-id")
         assert item is None
 
-        item_by_fire = await repository.get_item_by_fire_event_and_id("non_existent", "non-existent-id")
+        item_by_fire = await repository.get_item_by_fire_event_and_id(
+            "non_existent", "non-existent-id"
+        )
         assert item_by_fire is None
 
         search_results = await repository.search_items("non_existent")
@@ -351,10 +361,9 @@ class TestSTACJSONRepository:
 
         # Test path generation
         path = repository._generate_item_path(
-            sample_stac_item["properties"], 
-            sample_stac_item["id"]
+            sample_stac_item["properties"], sample_stac_item["id"]
         )
-        
+
         expected_path = "stac/test_fire/fire_severity-job_123.json"
         assert path == expected_path
 
@@ -374,10 +383,10 @@ class TestSTACJSONRepository:
         # Test normal path
         path = "stac/test_fire/fire_severity-job_123.json"
         terms = repository._extract_search_terms_from_path(path)
-        
+
         expected_terms = {
             "fire_event_name": "test_fire",
-            "product_type": "fire_severity"
+            "product_type": "fire_severity",
         }
         assert terms == expected_terms
 
@@ -388,5 +397,7 @@ class TestSTACJSONRepository:
 
         # Test path without product separator
         no_separator_path = "stac/test_fire/no_separator.json"
-        no_separator_terms = repository._extract_search_terms_from_path(no_separator_path)
+        no_separator_terms = repository._extract_search_terms_from_path(
+            no_separator_path
+        )
         assert no_separator_terms == {}
