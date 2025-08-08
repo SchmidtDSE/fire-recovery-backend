@@ -20,6 +20,18 @@
                 "PYTHONARGS": "-Xfrozen_modules=off" // For dask debugging 
             },
             "envFile": "${workspaceFolder}/.devcontainer/.env"
+        },
+        {
+            "name": "Rustac Obstore Reproduction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rustac_obstore_reproduction.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/.pixi/envs/default/bin/python"
+            },
+            "envFile": "${workspaceFolder}/.devcontainer/test.env"
         }
     ]
 }
