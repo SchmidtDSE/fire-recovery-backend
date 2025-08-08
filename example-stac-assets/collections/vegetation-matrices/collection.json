@@ -1,0 +1,34 @@
+{
+  "type": "Collection",
+  "id": "vegetation-matrices",
+  "title": "Vegetation Fire Matrices",
+  "description": "Vegetation type by fire severity analysis matrices",
+  "keywords": ["vegetation", "fire", "severity", "matrix", "analysis"],
+  "stac_version": "1.0.0",
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2000-01-01T00:00:00Z", null]]
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/vegetation-matrices/collection.json"
+    },
+    {
+      "rel": "parent",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json"
+    }
+  ],
+  "stac_extensions": []
+}
