@@ -1,14 +1,15 @@
 {
   "type": "Catalog",
   "id": "fire-recovery-catalog",
-  "title": "Fire Recovery Analysis Catalog",
-  "description": "Fire Recovery Analysis Results Catalog",
+  "title": "Fire Recovery STAC Catalog",
+  "description": "Fire Recovery STAC Catalog",
   "stac_version": "1.0.0",
   "links": [
     {
       "rel": "self",
       "type": "application/json",
-      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json"
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json",
+      "title": "Fire Recovery STAC Catalog"
     },
     {
       "rel": "child",
@@ -29,5 +30,6 @@
       "title": "Vegetation Fire Matrices"
     }
   ],
-  "stac_extensions": []
+  "stac_extensions": [],
+  "license": "ISC"
 }

@@ -17,18 +17,22 @@
     {
       "rel": "self",
       "type": "application/json",
-      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/vegetation-matrices/collection.json"
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/vegetation-matrices/collection.json",
+      "title": "Vegetation Fire Matrices Collection"
     },
     {
       "rel": "parent",
       "type": "application/json",
-      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json"
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json",
+      "title": "Fire Recovery STAC Catalog"
     },
     {
       "rel": "root",
       "type": "application/json",
-      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json"
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json",
+      "title": "Fire Recovery STAC Catalog"
     }
   ],
-  "stac_extensions": []
+  "stac_extensions": [],
+  "license": "ISC"
 }
