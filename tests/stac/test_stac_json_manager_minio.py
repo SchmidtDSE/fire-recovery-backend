@@ -287,14 +287,15 @@ async def test_stac_json_manager_factory_methods(
     test_manager = STACJSONManager.for_testing(base_url)
     assert test_manager.base_url == base_url
     assert test_manager.storage is not None
-    # Testing storage should be from TEMP_BUCKET_NAME
-    assert hasattr(test_manager.storage, "bucket_name")
+    # Testing storage should be MemoryStorage (per config: TEMP_STORAGE_PROVIDER_TYPE = "memory")
+    assert test_manager.storage.__class__.__name__ == "MemoryStorage"
 
     # Test production factory method
     prod_manager = STACJSONManager.for_production(base_url)
     assert prod_manager.base_url == base_url
     assert prod_manager.storage is not None
-    # Production storage should be from FINAL_BUCKET_NAME
+    # Production storage should be MinIO (per config: FINAL_STORAGE_PROVIDER_TYPE = "minio")
+    assert prod_manager.storage.__class__.__name__ == "MinioCloudStorage"
     assert hasattr(prod_manager.storage, "bucket_name")
 
     # They should use different storage instances
