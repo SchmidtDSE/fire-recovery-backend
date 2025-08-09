@@ -33,6 +33,25 @@ class STACItemFactory:
         if not skip_validation:
             item.validate()
 
+    def item_to_dict(
+        self, item: pystac.Item, skip_validation: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Convert a pystac Item to a dictionary, thinly wrapping the to_dict method.
+        Pystac_client will check for the validity / structure of hrefs by default, based
+        on opinionated STAC spec choices that we want to opt into in prod, but skip in tests.
+
+        Args:
+            item: The pystac Item to convert
+
+        Returns:
+            Dictionary representation of the STAC item
+        """
+        if not skip_validation:
+            return item.to_dict()
+        else:
+            return item.to_dict(transform_hrefs=False)
+
     def create_fire_severity_item(
         self,
         fire_event_name: str,
@@ -79,6 +98,7 @@ class STACItemFactory:
                 "product_type": "fire_severity",
                 "boundary_type": boundary_type,
             },
+            collection="fire-severity",
         )
 
         # Add assets using pystac
@@ -126,6 +146,22 @@ class STACItemFactory:
 
         item.add_link(
             pystac.Link(
+                rel="collection",
+                target=f"{self.base_url}/collections/fire-severity/collection.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
+                rel="root",
+                target=f"{self.base_url}/catalog.json",
+                media_type="application/json",
+            )
+        )
+
+        item.add_link(
+            pystac.Link(
                 rel="related",
                 target=f"{self.base_url}/{fire_event_name}/items/{fire_event_name}-boundary-{job_id}.json",
                 media_type="application/json",
@@ -136,7 +172,7 @@ class STACItemFactory:
         # Validate using pystac
         self.validate_stac_item(item, skip_validation)
 
-        return item.to_dict()
+        return self.item_to_dict(item, skip_validation)
 
     def create_boundary_item(
         self,
@@ -183,6 +219,7 @@ class STACItemFactory:
                 "product_type": "fire_boundary",
                 "boundary_type": boundary_type,
             },
+            collection="fire-boundaries",
         )
 
         # Add boundary asset
@@ -233,7 +270,7 @@ class STACItemFactory:
         # Validate using pystac
         self.validate_stac_item(item, skip_validation)
 
-        return item.to_dict()
+        return self.item_to_dict(item, skip_validation)
 
     def create_veg_matrix_item(
         self,
@@ -282,6 +319,7 @@ class STACItemFactory:
                 "product_type": "vegetation_fire_matrix",
                 "classification_breaks": classification_breaks,
             },
+            collection="vegetation-matrices",
         )
 
         # Add CSV asset
@@ -345,4 +383,4 @@ class STACItemFactory:
         # Validate using pystac
         self.validate_stac_item(item, skip_validation)
 
-        return item.to_dict()
+        return self.item_to_dict(item, skip_validation)

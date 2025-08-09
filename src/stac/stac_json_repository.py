@@ -15,6 +15,24 @@ class STACJSONRepository:
         """
         self.storage = storage
 
+    def item_to_dict(
+        self, item: pystac.Item, skip_validation: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Convert a pystac Item to a dictionary, avoiding HREF validation in tests.
+
+        Args:
+            item: The pystac Item to convert
+            skip_validation: If True, skip HREF transformation to avoid validation
+
+        Returns:
+            Dictionary representation of the STAC item
+        """
+        if not skip_validation:
+            return item.to_dict()
+        else:
+            return item.to_dict(transform_hrefs=False)
+
     def _generate_item_path(self, item_properties: Dict[str, Any], item_id: str) -> str:
         """Generate storage path for STAC item based on properties"""
         fire_event_name = item_properties.get("fire_event_name", "unknown")
@@ -57,7 +75,7 @@ class STACJSONRepository:
         file_path = self._generate_item_path(item.properties, item.id)
 
         # Save as JSON using storage interface
-        return await self.storage.save_json(item.to_dict(), file_path)
+        return await self.storage.save_json(self.item_to_dict(item, skip_validation), file_path)
 
     async def get_item_by_id(self, item_id: str) -> Optional[Dict[str, Any]]:
         """

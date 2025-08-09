@@ -47,6 +47,7 @@ class TestSTACItemFactory:
             geometry=sample_geometry,
             datetime_str="2023-08-15T12:00:00Z",
             boundary_type="coarse",
+            skip_validation=True,
         )
 
         assert stac_item["id"] == "test_fire-severity-job_123"
@@ -71,6 +72,7 @@ class TestSTACItemFactory:
             cog_urls=cog_urls,
             geometry=sample_geometry,
             datetime_str="2023-08-15T12:00:00Z",
+            skip_validation=True,
         )
 
         assert len(stac_item["assets"]) == 1
@@ -138,9 +140,9 @@ class TestSTACItemFactory:
             skip_validation=True,
         )
 
-        # Convert dict to pystac Item and validate 
+        # Convert dict to pystac Item and validate
         stac_item = pystac.Item.from_dict(stac_item_dict)
-        
+
         # Should not raise an exception (skip validation to avoid HREF resolution)
         factory.validate_stac_item(stac_item, skip_validation=True)
 
@@ -154,6 +156,7 @@ class TestSTACItemFactory:
             cog_urls={"rbr": "https://storage.example.com/rbr.tif"},
             geometry=sample_geometry,
             datetime_str="2023-08-15T12:00:00Z",
+            skip_validation=True,
         )
 
         links = stac_item["links"]
@@ -178,6 +181,7 @@ class TestSTACItemFactory:
             boundary_geojson_url="https://storage.example.com/boundary.geojson",
             bbox=bbox,
             datetime_str="2023-08-15T12:00:00Z",
+            skip_validation=True,
         )
 
         geometry = stac_item["geometry"]
@@ -212,6 +216,7 @@ class TestSTACItemFactory:
             cog_urls={"rbr": "https://storage.example.com/rbr.tif"},
             geometry=geometry,
             datetime_str="2023-08-15T12:00:00Z",
+            skip_validation=True,
         )
 
         bbox = stac_item["bbox"]

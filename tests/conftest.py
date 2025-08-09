@@ -58,6 +58,21 @@ def unique_test_id() -> str:
     return str(uuid.uuid4())
 
 
+# STAC Test Asset URLs - these should exist on your MinIO test bucket
+STAC_TEST_BASE_URL = "https://storage.googleapis.com/fire-recovery-temp/example_stac"
+STAC_TEST_CATALOG_URL = f"{STAC_TEST_BASE_URL}/catalog.json"
+
+# Test asset URLs that should be available on MinIO
+STAC_TEST_ASSETS = {
+    "rbr_cog": f"{STAC_TEST_BASE_URL}/assets/test_fire-rbr.tif",
+    "dnbr_cog": f"{STAC_TEST_BASE_URL}/assets/test_fire-dnbr.tif",
+    "rdnbr_cog": f"{STAC_TEST_BASE_URL}/assets/test_fire-rdnbr.tif",
+    "boundary_geojson": f"{STAC_TEST_BASE_URL}/assets/test_fire-boundary.geojson",
+    "veg_matrix_csv": f"{STAC_TEST_BASE_URL}/assets/test_fire-veg-matrix.csv",
+    "veg_matrix_json": f"{STAC_TEST_BASE_URL}/assets/test_fire-veg-matrix.json",
+}
+
+
 @pytest.fixture
 def unique_parquet_path(unique_test_id: str) -> str:
     """Generate a unique parquet path for test isolation"""
