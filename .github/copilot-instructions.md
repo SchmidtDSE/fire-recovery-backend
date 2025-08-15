@@ -47,6 +47,10 @@ Do not default to generating code before fully understanding the problem. Always
 
 This codebase's parent organization values 'cockroach engineering' principles. Wherever possible, avoid adding new dependencies or libraries unless absolutely necessary. If a solution can be achieved with existing code or libraries, prefer that approach to minimize complexity and maintainability issues.
 
+Whenever reasonable, add logging statements to the code to help with debugging and monitoring, particularly in areas where exceptions might be raised or where the flow of execution is critical. Use a consistent logging format and level (e.g., INFO, DEBUG, ERROR) to ensure clarity and ease of use. Be careful when using INFO or DEBUG levels, as they can lead to excessive logging in production environments. Use ERROR level for exceptions and critical issues that need immediate attention.
+
+When suggesting code, ensure it is:
+
 NEVER do the following:
 - Suggest an import or library in the body of a function or method - instead suggest it at the top of the file.
 - Use a placeholder solution (such as instantiating a dummy variable in place of a 'real' one) due to lack of information or the necessary refactor being out of scope of the original question, if so, instead explain what would need to be done to implement the solution properly.
