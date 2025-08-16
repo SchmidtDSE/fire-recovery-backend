@@ -102,10 +102,16 @@ class CommandExecutor:
         
         last_error = None
         
+        # Create command instance outside retry loop - let ValueError propagate
+        try:
+            command = self._command_registry.create_command(command_name, context)
+        except (ValueError, TypeError) as e:
+            # These are configuration/setup errors that shouldn't be retried
+            logger.error(f"Failed to create command '{command_name}': {e}")
+            raise
+        
         for attempt in range(retries + 1):  # +1 for initial attempt
             try:
-                # Create command instance
-                command = self._command_registry.create_command(command_name, context)
                 
                 # Execute with timeout
                 result = await self._execute_with_timeout(

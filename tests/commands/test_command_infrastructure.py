@@ -253,15 +253,18 @@ class TestCommandImplementation:
         # Valid context should pass
         assert command.validate_context(command_context) is True
 
-        # Invalid context should fail
+        # Invalid context should fail - we can't create invalid context due to __post_init__ validation
+        # So we'll test by setting attributes to None after creation
         invalid_context = CommandContext(
             job_id="test",
             fire_event_name="test",
-            geometry={},
-            storage=None,  # Missing storage
+            geometry={"type": "Point", "coordinates": [0, 0]},
+            storage=Mock(),
             stac_manager=Mock(),
             index_registry=Mock(),
         )
+        # Make storage None to trigger validation failure
+        invalid_context.storage = None
         assert command.validate_context(invalid_context) is False
 
     @pytest.mark.asyncio
@@ -289,12 +292,19 @@ class TestCommandRegistry:
         self, mock_storage_factory, mock_stac_manager, mock_index_registry
     ):
         """Test creating command registry with dependencies"""
-        # Mock the import to avoid actual command implementations
-        with pytest.raises(ImportError):
-            # This will fail because we haven't implemented the other commands yet
-            CommandRegistry(
-                mock_storage_factory, mock_stac_manager, mock_index_registry
-            )
+        # Registry should create successfully even without command implementations
+        # because _setup_commands catches ImportError and continues
+        registry = CommandRegistry(
+            mock_storage_factory, mock_stac_manager, mock_index_registry
+        )
+
+        # Should have an empty command registry since no commands were found
+        assert len(registry.get_available_commands()) == 0
+
+        # Should still have the dependencies set
+        assert registry._storage_factory == mock_storage_factory
+        assert registry._stac_manager == mock_stac_manager
+        assert registry._index_registry == mock_index_registry
 
     def test_registry_with_test_command_only(
         self, mock_storage_factory, mock_stac_manager, mock_index_registry
