@@ -292,14 +292,16 @@ class TestCommandRegistry:
         self, mock_storage_factory, mock_stac_manager, mock_index_registry
     ):
         """Test creating command registry with dependencies"""
-        # Registry should create successfully even without command implementations
-        # because _setup_commands catches ImportError and continues
+        # Registry should create successfully and find implemented commands
         registry = CommandRegistry(
             mock_storage_factory, mock_stac_manager, mock_index_registry
         )
 
-        # Should have an empty command registry since no commands were found
-        assert len(registry.get_available_commands()) == 0
+        # Should have found our implemented commands
+        available_commands = registry.get_available_commands()
+        assert len(available_commands) >= 2  # At least fire_severity_analysis and upload_aoi
+        assert "fire_severity_analysis" in available_commands
+        assert "upload_aoi" in available_commands
 
         # Should still have the dependencies set
         assert registry._storage_factory == mock_storage_factory
