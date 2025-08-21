@@ -37,7 +37,7 @@ class CommandContext:
     computation_config: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate context after initialization"""
         if not self.job_id:
             raise ValueError("job_id is required")

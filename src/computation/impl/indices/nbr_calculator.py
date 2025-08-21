@@ -35,6 +35,7 @@ class NBRCalculator(IndexCalculator):
 
         # Use the provided data period
         data = prefire_data if prefire_data is not None else postfire_data
+        assert data is not None, "Data cannot be None after validation"
 
         band_mapping = context.get("band_mapping")
         if not band_mapping:

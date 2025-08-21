@@ -1,4 +1,4 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Union
 from geojson_pydantic import Polygon
 from shapely.geometry import shape
 import pystac
@@ -57,7 +57,7 @@ class STACItemFactory:
         fire_event_name: str,
         job_id: str,
         cog_urls: Dict[str, str],
-        geometry: Polygon,
+        geometry: Union[Polygon, Dict[str, Any]],
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
@@ -86,10 +86,13 @@ class STACItemFactory:
         # Parse datetime
         dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
+        # Convert geometry to dict if it's a Polygon object
+        geometry_dict = geometry.dict() if hasattr(geometry, 'dict') else geometry
+
         # Create pystac Item
         item = pystac.Item(
             id=item_id,
-            geometry=geometry,
+            geometry=geometry_dict,
             bbox=bbox,
             datetime=dt,
             properties={

@@ -16,11 +16,11 @@ from src.core.storage.storage_factory import StorageFactory
 class MockStorage(StorageInterface):
     """Mock storage implementation for testing"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._data: Dict[str, bytes] = {}
         self._json_data: Dict[str, Dict[str, Any]] = {}
 
-    def get_obstore(self):
+    def get_obstore(self) -> Mock:
         """Mock obstore - not needed for testing"""
         return Mock()
 
@@ -52,7 +52,7 @@ class MockStorage(StorageInterface):
         return f"mock://{path}"
 
     async def process_stream(
-        self, source_path: str, processor, target_path: str, temporary: bool = False
+        self, source_path: str, processor: Any, target_path: str, temporary: bool = False
     ) -> str:
         # Mock implementation - just copy data
         source_data = await self.get_bytes(source_path)
@@ -66,7 +66,7 @@ class MockStorage(StorageInterface):
         fake_data = f"Downloaded from {url}".encode()
         return await self.save_bytes(fake_data, target_path, temporary)
 
-    async def cleanup(self, max_age_seconds=None) -> int:
+    async def cleanup(self, max_age_seconds: int | None = None) -> int:
         count = len(self._data) + len(self._json_data)
         self._data.clear()
         self._json_data.clear()
@@ -74,13 +74,13 @@ class MockStorage(StorageInterface):
 
 
 @pytest.fixture
-def mock_storage():
+def mock_storage() -> MockStorage:
     """Create mock storage for testing"""
     return MockStorage()
 
 
 @pytest.fixture
-def mock_storage_factory(mock_storage):
+def mock_storage_factory(mock_storage: MockStorage) -> Mock:
     """Create mock storage factory"""
     factory = Mock(spec=StorageFactory)
     factory.get_temp_storage.return_value = mock_storage
@@ -89,7 +89,7 @@ def mock_storage_factory(mock_storage):
 
 
 @pytest.fixture
-def mock_stac_manager():
+def mock_stac_manager() -> Mock:
     """Create mock STAC manager"""
     manager = Mock(spec=STACJSONManager)
     manager.create_fire_severity_item = AsyncMock()
@@ -99,7 +99,7 @@ def mock_stac_manager():
 
 
 @pytest.fixture
-def mock_index_registry():
+def mock_index_registry() -> Mock:
     """Create mock index registry"""
     registry = Mock(spec=IndexRegistry)
     registry.get_available_indices.return_value = ["nbr", "dnbr", "rdnbr", "rbr"]
@@ -107,7 +107,7 @@ def mock_index_registry():
 
 
 @pytest.fixture
-def command_context(mock_storage, mock_stac_manager, mock_index_registry):
+def command_context(mock_storage: MockStorage, mock_stac_manager: Mock, mock_index_registry: Mock) -> CommandContext:
     """Create test command context"""
     return CommandContext(
         job_id="test-job-123",
@@ -129,7 +129,7 @@ def command_context(mock_storage, mock_stac_manager, mock_index_registry):
 class TestCommandContext:
     """Test CommandContext functionality"""
 
-    def test_context_creation(self, command_context):
+    def test_context_creation(self, command_context: CommandContext) -> None:
         """Test that context is created with all required fields"""
         assert command_context.job_id == "test-job-123"
         assert command_context.fire_event_name == "test-fire"
@@ -138,7 +138,7 @@ class TestCommandContext:
         assert command_context.stac_manager is not None
         assert command_context.index_registry is not None
 
-    def test_context_validation_missing_fields(self):
+    def test_context_validation_missing_fields(self) -> None:
         """Test context validation with missing required fields"""
         with pytest.raises(ValueError, match="job_id is required"):
             CommandContext(
@@ -150,7 +150,7 @@ class TestCommandContext:
                 index_registry=Mock(),
             )
 
-    def test_context_metadata_operations(self, command_context):
+    def test_context_metadata_operations(self, command_context: CommandContext) -> None:
         """Test metadata getter/setter operations"""
         # Test existing metadata
         assert command_context.get_metadata("test_metadata") == "value"
@@ -162,7 +162,7 @@ class TestCommandContext:
         command_context.add_metadata("new_key", "new_value")
         assert command_context.get_metadata("new_key") == "new_value"
 
-    def test_context_computation_config_operations(self, command_context):
+    def test_context_computation_config_operations(self, command_context: CommandContext) -> None:
         """Test computation config getter operations"""
         # Test existing config
         assert command_context.get_computation_config("test_config") is True
@@ -174,7 +174,7 @@ class TestCommandContext:
 class TestCommandResult:
     """Test CommandResult functionality"""
 
-    def test_success_result_creation(self):
+    def test_success_result_creation(self) -> None:
         """Test creating successful command result"""
         result = CommandResult.success(
             job_id="test-job",
@@ -191,7 +191,7 @@ class TestCommandResult:
         assert result.has_assets()
         assert result.get_asset_url("output") == "gs://bucket/output.tif"
 
-    def test_failure_result_creation(self):
+    def test_failure_result_creation(self) -> None:
         """Test creating failed command result"""
         result = CommandResult.failure(
             job_id="test-job",
@@ -208,7 +208,7 @@ class TestCommandResult:
         assert not result.has_assets()
         assert result.error_message == "Test error"
 
-    def test_result_asset_operations(self):
+    def test_result_asset_operations(self) -> None:
         """Test asset URL operations on result"""
         result = CommandResult.success(
             job_id="test-job",
@@ -232,7 +232,7 @@ class TestCommandResult:
 class TestCommandImplementation:
     """Test Command interface and TestCommand implementation"""
 
-    def test_test_command_properties(self):
+    def test_test_command_properties(self) -> None:
         """Test TestCommand basic properties"""
         from src.commands.impl.test_command import TestCommand
 
@@ -244,7 +244,7 @@ class TestCommandImplementation:
         assert command.get_dependencies() == []
         assert command.get_required_permissions() == []
 
-    def test_test_command_context_validation(self, command_context):
+    def test_test_command_context_validation(self, command_context: CommandContext) -> None:
         """Test TestCommand context validation"""
         from src.commands.impl.test_command import TestCommand
 
@@ -268,7 +268,7 @@ class TestCommandImplementation:
         assert command.validate_context(invalid_context) is False
 
     @pytest.mark.asyncio
-    async def test_test_command_execution_success(self, command_context):
+    async def test_test_command_execution_success(self, command_context: CommandContext) -> None:
         """Test successful TestCommand execution"""
         from src.commands.impl.test_command import TestCommand
 
@@ -289,8 +289,8 @@ class TestCommandRegistry:
     """Test CommandRegistry functionality"""
 
     def test_registry_creation(
-        self, mock_storage_factory, mock_stac_manager, mock_index_registry
-    ):
+        self, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+    ) -> None:
         """Test creating command registry with dependencies"""
         # Registry should create successfully and find implemented commands
         registry = CommandRegistry(
@@ -309,8 +309,8 @@ class TestCommandRegistry:
         assert registry._index_registry == mock_index_registry
 
     def test_registry_with_test_command_only(
-        self, mock_storage_factory, mock_stac_manager, mock_index_registry
-    ):
+        self, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+    ) -> None:
         """Test registry functionality with test command"""
         # Create registry without auto-setup
         registry = CommandRegistry.__new__(CommandRegistry)
@@ -341,11 +341,11 @@ class TestCommandExecutor:
     @pytest.mark.asyncio
     async def test_executor_command_execution(
         self,
-        mock_storage_factory,
-        mock_stac_manager,
-        mock_index_registry,
-        command_context,
-    ):
+        mock_storage_factory: Mock,
+        mock_stac_manager: Mock,
+        mock_index_registry: Mock,
+        command_context: CommandContext,
+    ) -> None:
         """Test command execution through executor"""
         # Create minimal registry with test command
         registry = CommandRegistry.__new__(CommandRegistry)
@@ -375,11 +375,11 @@ class TestCommandExecutor:
     @pytest.mark.asyncio
     async def test_executor_command_not_found(
         self,
-        mock_storage_factory,
-        mock_stac_manager,
-        mock_index_registry,
-        command_context,
-    ):
+        mock_storage_factory: Mock,
+        mock_stac_manager: Mock,
+        mock_index_registry: Mock,
+        command_context: CommandContext,
+    ) -> None:
         """Test executor with non-existent command"""
         # Create empty registry
         registry = CommandRegistry.__new__(CommandRegistry)
@@ -400,7 +400,7 @@ class TestCommandExecutor:
 if __name__ == "__main__":
     import asyncio
 
-    async def main():
+    async def main() -> bool:
         print("Running command infrastructure integration test...")
 
         # Create mocks

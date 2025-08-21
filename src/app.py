@@ -6,6 +6,7 @@ from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_cache.decorator import cache
 import hashlib
 import json
+from typing import Any
 from .routers import fire_recovery
 from contextlib import asynccontextmanager
 import time
@@ -13,7 +14,7 @@ import time
 
 # Initialize cache with in-memory backend at app startup
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> None:
     # Startup: initialize FastAPICache
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     yield
@@ -42,7 +43,7 @@ app.include_router(fire_recovery.router)
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, Any]:
     return {
         "message": "Welcome to the Fire Recovery Backend API",
         "docs_url": "/docs",
@@ -51,6 +52,6 @@ async def root():
 
 
 @app.get("/cache_test")
-async def cache_test():
+async def cache_test() -> dict[str, str]:
     time.sleep(10)
     return {"ping": "pong"}

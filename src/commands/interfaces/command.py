@@ -20,7 +20,7 @@ class Command(ABC):
     - get_required_permissions(): Security requirements
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     @abstractmethod

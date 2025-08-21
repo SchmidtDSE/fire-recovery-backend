@@ -704,8 +704,8 @@ async def process_veg_map_resolution(
         csv_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
         json_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.json"
 
-        csv_url = upload_to_gcs(result["output_csv"], csv_blob_name)
-        json_url = upload_to_gcs(result["output_json"], json_blob_name)
+        csv_url = await upload_to_gcs(result["output_csv"], csv_blob_name)
+        json_url = await upload_to_gcs(result["output_json"], json_blob_name)
 
         print(f"Vegetation fire matrix CSV uploaded to {csv_url}")
         print(f"Vegetation fire matrix JSON uploaded to {json_url}")

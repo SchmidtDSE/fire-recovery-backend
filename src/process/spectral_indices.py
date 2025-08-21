@@ -134,7 +134,7 @@ def initialize_workspace(job_id: str) -> Dict[str, str]:
     return {"output_dir": output_dir, "status_file": status_file}
 
 
-def get_buffered_bounds(geometry: Polygon, buffer: float):
+def get_buffered_bounds(geometry: Polygon, buffer: float) -> tuple[float, float, float, float]:
     # Extract the bounding box from the geometry
     geom_shape = shape(geometry)
     minx, miny, maxx, maxy = geom_shape.bounds
@@ -185,7 +185,7 @@ def calculate_nbr(
 #     namespace="burn_indices",
 #     expire=60 * 60 * 24 * 7,  # Cache for 7 days
 # )
-def calculate_burn_indices(prefire_data, postfire_data, nir_band_name, swir_band_name):
+def calculate_burn_indices(prefire_data: xr.DataArray, postfire_data: xr.DataArray, nir_band_name: str, swir_band_name: str) -> Dict[str, xr.DataArray]:
     """Calculate various burn indices from pre and post fire data"""
 
     # Calculate NBR for both periods

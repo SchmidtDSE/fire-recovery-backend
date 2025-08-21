@@ -94,7 +94,7 @@ class STACCatalogManager:
         """
         # Create a broad extent that will be updated as items are added
         # This represents the maximum possible extent for fire recovery data
-        spatial_extent = pystac.SpatialExtent([[-180, -90, 180, 90]])
+        spatial_extent = pystac.SpatialExtent([[-180.0, -90.0, 180.0, 90.0]])
 
         # Use a broad temporal extent that covers typical fire seasons
         temporal_extent = pystac.TemporalExtent(

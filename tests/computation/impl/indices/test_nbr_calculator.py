@@ -91,7 +91,7 @@ class TestNBRCalculator:
         self, calculator: NBRCalculator, mock_data: xr.DataArray
     ) -> None:
         """Test that calculation raises error when band mapping missing"""
-        context = {}
+        context: dict[str, Any] = {}
         with pytest.raises(ValueError, match="Context must include 'band_mapping'"):
             await calculator.calculate(mock_data, None, context)
 

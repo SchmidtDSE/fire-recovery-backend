@@ -6,6 +6,8 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
+mypy = "mypy . --show-error-codes"
+pytest = "python -m pytest"
 
 [dependencies]
 numpy = ">=2.2.4,<3"

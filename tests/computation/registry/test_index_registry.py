@@ -220,7 +220,7 @@ class TestIndexRegistry:
         assert isinstance(rbr_calc.dnbr_calculator, DNBRCalculator)
 
     @patch("src.computation.registry.index_registry.logger")
-    def test_logging_on_setup(self, mock_logger, registry: IndexRegistry) -> None:
+    def test_logging_on_setup(self, mock_logger: Mock, registry: IndexRegistry) -> None:
         """Test that appropriate log messages are generated during setup"""
         # Registry is already created in fixture, so create a new one to trigger setup
         new_registry = IndexRegistry()
@@ -247,7 +247,7 @@ class TestIndexRegistry:
 
     @patch("src.computation.registry.index_registry.logger")
     def test_logging_on_missing_calculator(
-        self, mock_logger, registry: IndexRegistry
+        self, mock_logger: Mock, registry: IndexRegistry
     ) -> None:
         """Test that warning is logged when requesting missing calculator"""
         registry.get_calculator("nonexistent")
@@ -278,9 +278,18 @@ class TestIndexRegistry:
         rdnbr_calc = registry.get_calculator("rdnbr")
         rbr_calc = registry.get_calculator("rbr")
 
+        assert dnbr_calc is not None
+        assert rdnbr_calc is not None
+        assert rbr_calc is not None
+
         # All should share the same NBR calculator instance
+        assert hasattr(dnbr_calc, 'nbr_calculator')
+        assert hasattr(rdnbr_calc, 'nbr_calculator') 
+        assert hasattr(rbr_calc, 'nbr_calculator')
         assert dnbr_calc.nbr_calculator is rdnbr_calc.nbr_calculator
         assert dnbr_calc.nbr_calculator is rbr_calc.nbr_calculator
 
         # RdNBR and RBR should share the same dNBR calculator instance
+        assert hasattr(rdnbr_calc, 'dnbr_calculator')
+        assert hasattr(rbr_calc, 'dnbr_calculator')
         assert rdnbr_calc.dnbr_calculator is rbr_calc.dnbr_calculator

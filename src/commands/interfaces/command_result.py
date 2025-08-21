@@ -44,7 +44,7 @@ class CommandResult:
     # Additional metadata
     metadata: Optional[Dict[str, Any]] = None
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate result after initialization"""
         if not self.job_id:
             raise ValueError("job_id is required")

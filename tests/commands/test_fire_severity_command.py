@@ -23,7 +23,7 @@ class MockIndexCalculator:
     def index_name(self) -> str:
         return self._index_name
 
-    async def calculate(self, prefire_data, postfire_data, context):
+    async def calculate(self, prefire_data: Any, postfire_data: Any, context: Dict[str, Any]) -> xr.DataArray:
         # Return mock xarray data
         data = xr.DataArray(
             np.random.random((10, 10)),
@@ -40,7 +40,7 @@ class MockIndexCalculator:
 
 
 @pytest.fixture
-def mock_storage():
+def mock_storage() -> Mock:
     """Create mock storage interface"""
     storage = Mock(spec=StorageInterface)
     storage.save_bytes = AsyncMock(return_value="mock://saved/path.tif")
@@ -48,7 +48,7 @@ def mock_storage():
 
 
 @pytest.fixture
-def mock_stac_manager():
+def mock_stac_manager() -> Mock:
     """Create mock STAC manager"""
     manager = Mock(spec=STACJSONManager)
     manager.create_fire_severity_item = AsyncMock(return_value="mock://stac/item.json")
@@ -56,7 +56,7 @@ def mock_stac_manager():
 
 
 @pytest.fixture
-def mock_index_registry():
+def mock_index_registry() -> Mock:
     """Create mock index registry with calculators"""
     registry = Mock(spec=IndexRegistry)
 
@@ -64,7 +64,7 @@ def mock_index_registry():
     nbr_calc = MockIndexCalculator("nbr")
     dnbr_calc = MockIndexCalculator("dnbr")
 
-    def get_calculator(index_name: str):
+    def get_calculator(index_name: str) -> MockIndexCalculator | None:
         calculators = {
             "nbr": nbr_calc,
             "dnbr": dnbr_calc,
@@ -78,7 +78,7 @@ def mock_index_registry():
 
 
 @pytest.fixture
-def command_context(mock_storage, mock_stac_manager, mock_index_registry):
+def command_context(mock_storage: Mock, mock_stac_manager: Mock, mock_index_registry: Mock) -> CommandContext:
     """Create test command context for fire severity analysis"""
     return CommandContext(
         job_id="test-fire-job-123",
