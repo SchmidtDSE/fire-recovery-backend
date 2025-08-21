@@ -49,6 +49,8 @@ This codebase's parent organization values 'cockroach engineering' principles. W
 
 Whenever reasonable, add logging statements to the code to help with debugging and monitoring, particularly in areas where exceptions might be raised or where the flow of execution is critical. Use a consistent logging format and level (e.g., INFO, DEBUG, ERROR) to ensure clarity and ease of use. Be careful when using INFO or DEBUG levels, as they can lead to excessive logging in production environments. Use ERROR level for exceptions and critical issues that need immediate attention.
 
+When generating code, ensure your solutions will statisfy mypy static type checking without any errors or warnings. Ensure that you annotate types for function parameters, return types, and class attributes where applicable. Use `Optional` from the `typing` module for parameters that can be `None`.
+
 When suggesting code, ensure it is:
 
 NEVER do the following:
