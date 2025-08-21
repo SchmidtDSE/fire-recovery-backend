@@ -1,6 +1,5 @@
 import pytest
 from typing import Dict, Any
-from pydantic import ValidationError
 import pystac
 
 from src.stac.stac_item_factory import STACItemFactory

@@ -27,7 +27,7 @@ class NBRCalculator(IndexCalculator):
             raise ValueError(
                 "NBR calculation requires either prefire_data or postfire_data"
             )
-        
+
         if prefire_data is not None and postfire_data is not None:
             raise ValueError(
                 "NBR calculation should receive only one period of data, not both"

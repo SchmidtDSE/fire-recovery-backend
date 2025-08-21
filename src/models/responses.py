@@ -46,7 +46,10 @@ class UploadedShapefileZipResponse(BaseResponse):
 
 class HealthCheckResponse(BaseResponse):
     """Response model for health check endpoint"""
+
     overall_status: str = Field(..., description="Overall system health status")
     timestamp: float = Field(..., description="Unix timestamp of the health check")
-    checks: Dict[str, Dict] = Field(..., description="Individual component health checks")
+    checks: Dict[str, Dict] = Field(
+        ..., description="Individual component health checks"
+    )
     unhealthy_components: int = Field(..., description="Number of unhealthy components")

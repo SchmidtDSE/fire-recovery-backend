@@ -1,6 +1,5 @@
 import pytest
 import uuid
-from typing import Dict, Any, List
 
 from src.stac.stac_json_manager import STACJSONManager
 from src.core.storage.minio import MinioCloudStorage
@@ -69,7 +68,7 @@ async def test_stac_json_manager_create_fire_severity_item(
         assert retrieved_items[0]["id"] == stac_item["id"]
 
         # Verify file exists in storage with correct path structure
-        expected_path = f"stac/{fire_event_name}/fire_severity-{job_id}.json"
+        __expected_path = f"stac/{fire_event_name}/fire_severity-{job_id}.json"
         files = await minio_storage.list_files(f"stac/{fire_event_name}/")
         assert any("fire_severity-" in f for f in files), (
             f"Expected severity file not found in: {files}"

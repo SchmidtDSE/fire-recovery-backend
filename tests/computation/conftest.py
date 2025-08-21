@@ -30,7 +30,7 @@ def simple_test_data() -> xr.DataArray:
     """Create simple test data with known values for formula verification"""
     nir_values = np.array([[0.8, 0.6], [0.7, 0.9]])
     swir_values = np.array([[0.2, 0.3], [0.1, 0.4]])
-    
+
     data = xr.DataArray(
         np.stack([nir_values, swir_values])[..., np.newaxis],
         dims=["band", "y", "x", "time"],
@@ -47,9 +47,4 @@ def simple_test_data() -> xr.DataArray:
 @pytest.fixture
 def band_context() -> dict[str, Any]:
     """Create mock context with band mapping"""
-    return {
-        "band_mapping": {
-            "nir": "nir",
-            "swir": "swir"
-        }
-    }
+    return {"band_mapping": {"nir": "nir", "swir": "swir"}}

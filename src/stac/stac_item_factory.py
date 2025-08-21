@@ -87,7 +87,7 @@ class STACItemFactory:
         dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
         # Convert geometry to dict if it's a Polygon object
-        geometry_dict = geometry.dict() if hasattr(geometry, 'dict') else geometry
+        geometry_dict = geometry.dict() if hasattr(geometry, "dict") else geometry
 
         # Create pystac Item
         item = pystac.Item(

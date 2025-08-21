@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock
 from typing import Dict, Any
 from src.commands.interfaces.command_context import CommandContext
-from src.commands.interfaces.command_result import CommandResult, CommandStatus
+from src.commands.interfaces.command_result import CommandResult
 from src.commands.registry.command_registry import CommandRegistry
 from src.commands.executor.command_executor import CommandExecutor
 
@@ -52,10 +52,14 @@ class MockStorage(StorageInterface):
         return f"mock://{path}"
 
     async def process_stream(
-        self, source_path: str, processor: Any, target_path: str, temporary: bool = False
+        self,
+        source_path: str,
+        processor: Any,
+        target_path: str,
+        temporary: bool = False,
     ) -> str:
         # Mock implementation - just copy data
-        source_data = await self.get_bytes(source_path)
+        __source_data = await self.get_bytes(source_path)
         processed_data = processor(Mock())  # Mock the stream processing
         return await self.save_bytes(processed_data, target_path, temporary)
 
@@ -66,7 +70,7 @@ class MockStorage(StorageInterface):
         fake_data = f"Downloaded from {url}".encode()
         return await self.save_bytes(fake_data, target_path, temporary)
 
-    async def cleanup(self, max_age_seconds: int | None = None) -> int:
+    async def cleanup(self, max_age_seconds: float | None = None) -> int:
         count = len(self._data) + len(self._json_data)
         self._data.clear()
         self._json_data.clear()
@@ -107,7 +111,9 @@ def mock_index_registry() -> Mock:
 
 
 @pytest.fixture
-def command_context(mock_storage: MockStorage, mock_stac_manager: Mock, mock_index_registry: Mock) -> CommandContext:
+def command_context(
+    mock_storage: MockStorage, mock_stac_manager: Mock, mock_index_registry: Mock
+) -> CommandContext:
     """Create test command context"""
     return CommandContext(
         job_id="test-job-123",
@@ -162,7 +168,9 @@ class TestCommandContext:
         command_context.add_metadata("new_key", "new_value")
         assert command_context.get_metadata("new_key") == "new_value"
 
-    def test_context_computation_config_operations(self, command_context: CommandContext) -> None:
+    def test_context_computation_config_operations(
+        self, command_context: CommandContext
+    ) -> None:
         """Test computation config getter operations"""
         # Test existing config
         assert command_context.get_computation_config("test_config") is True
@@ -244,7 +252,9 @@ class TestCommandImplementation:
         assert command.get_dependencies() == []
         assert command.get_required_permissions() == []
 
-    def test_test_command_context_validation(self, command_context: CommandContext) -> None:
+    def test_test_command_context_validation(
+        self, command_context: CommandContext
+    ) -> None:
         """Test TestCommand context validation"""
         from src.commands.impl.test_command import TestCommand
 
@@ -268,7 +278,9 @@ class TestCommandImplementation:
         assert command.validate_context(invalid_context) is False
 
     @pytest.mark.asyncio
-    async def test_test_command_execution_success(self, command_context: CommandContext) -> None:
+    async def test_test_command_execution_success(
+        self, command_context: CommandContext
+    ) -> None:
         """Test successful TestCommand execution"""
         from src.commands.impl.test_command import TestCommand
 
@@ -289,7 +301,10 @@ class TestCommandRegistry:
     """Test CommandRegistry functionality"""
 
     def test_registry_creation(
-        self, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+        self,
+        mock_storage_factory: Mock,
+        mock_stac_manager: Mock,
+        mock_index_registry: Mock,
     ) -> None:
         """Test creating command registry with dependencies"""
         # Registry should create successfully and find implemented commands
@@ -299,7 +314,9 @@ class TestCommandRegistry:
 
         # Should have found our implemented commands
         available_commands = registry.get_available_commands()
-        assert len(available_commands) >= 2  # At least fire_severity_analysis and upload_aoi
+        assert (
+            len(available_commands) >= 2
+        )  # At least fire_severity_analysis and upload_aoi
         assert "fire_severity_analysis" in available_commands
         assert "upload_aoi" in available_commands
 
@@ -309,7 +326,10 @@ class TestCommandRegistry:
         assert registry._index_registry == mock_index_registry
 
     def test_registry_with_test_command_only(
-        self, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+        self,
+        mock_storage_factory: Mock,
+        mock_stac_manager: Mock,
+        mock_index_registry: Mock,
     ) -> None:
         """Test registry functionality with test command"""
         # Create registry without auto-setup

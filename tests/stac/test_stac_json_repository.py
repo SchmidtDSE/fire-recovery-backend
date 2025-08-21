@@ -1,5 +1,5 @@
 import pytest
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from src.stac.stac_json_repository import STACJSONRepository
 from src.core.storage.interface import StorageInterface

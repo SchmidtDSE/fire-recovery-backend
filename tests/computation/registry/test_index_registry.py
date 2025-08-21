@@ -223,7 +223,7 @@ class TestIndexRegistry:
     def test_logging_on_setup(self, mock_logger: Mock, registry: IndexRegistry) -> None:
         """Test that appropriate log messages are generated during setup"""
         # Registry is already created in fixture, so create a new one to trigger setup
-        new_registry = IndexRegistry()
+        __new_registry = IndexRegistry()
 
         # Check that info logs were called
         mock_logger.info.assert_called()
@@ -283,13 +283,13 @@ class TestIndexRegistry:
         assert rbr_calc is not None
 
         # All should share the same NBR calculator instance
-        assert hasattr(dnbr_calc, 'nbr_calculator')
-        assert hasattr(rdnbr_calc, 'nbr_calculator') 
-        assert hasattr(rbr_calc, 'nbr_calculator')
+        assert hasattr(dnbr_calc, "nbr_calculator")
+        assert hasattr(rdnbr_calc, "nbr_calculator")
+        assert hasattr(rbr_calc, "nbr_calculator")
         assert dnbr_calc.nbr_calculator is rdnbr_calc.nbr_calculator
         assert dnbr_calc.nbr_calculator is rbr_calc.nbr_calculator
 
         # RdNBR and RBR should share the same dNBR calculator instance
-        assert hasattr(rdnbr_calc, 'dnbr_calculator')
-        assert hasattr(rbr_calc, 'dnbr_calculator')
+        assert hasattr(rdnbr_calc, "dnbr_calculator")
+        assert hasattr(rbr_calc, "dnbr_calculator")
         assert rdnbr_calc.dnbr_calculator is rbr_calc.dnbr_calculator

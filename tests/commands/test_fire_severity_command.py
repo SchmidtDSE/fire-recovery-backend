@@ -3,11 +3,9 @@ from unittest.mock import Mock, AsyncMock, patch
 from typing import Dict, Any
 import xarray as xr
 import numpy as np
-import rioxarray
 
 from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
 from src.commands.interfaces.command_context import CommandContext
-from src.commands.interfaces.command_result import CommandResult, CommandStatus
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
@@ -23,7 +21,9 @@ class MockIndexCalculator:
     def index_name(self) -> str:
         return self._index_name
 
-    async def calculate(self, prefire_data: Any, postfire_data: Any, context: Dict[str, Any]) -> xr.DataArray:
+    async def calculate(
+        self, prefire_data: Any, postfire_data: Any, context: Dict[str, Any]
+    ) -> xr.DataArray:
         # Return mock xarray data
         data = xr.DataArray(
             np.random.random((10, 10)),
@@ -78,7 +78,9 @@ def mock_index_registry() -> Mock:
 
 
 @pytest.fixture
-def command_context(mock_storage: Mock, mock_stac_manager: Mock, mock_index_registry: Mock) -> CommandContext:
+def command_context(
+    mock_storage: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+) -> CommandContext:
     """Create test command context for fire severity analysis"""
     return CommandContext(
         job_id="test-fire-job-123",
@@ -106,7 +108,7 @@ def command_context(mock_storage: Mock, mock_stac_manager: Mock, mock_index_regi
 class TestFireSeverityAnalysisCommand:
     """Test FireSeverityAnalysisCommand functionality"""
 
-    def test_command_properties(self):
+    def test_command_properties(self) -> None:
         """Test basic command properties"""
         command = FireSeverityAnalysisCommand()
 
@@ -118,12 +120,14 @@ class TestFireSeverityAnalysisCommand:
         assert "storage:write" in command.get_required_permissions()
         assert "computation:execute" in command.get_required_permissions()
 
-    def test_context_validation_success(self, command_context):
+    def test_context_validation_success(self, command_context: CommandContext) -> None:
         """Test successful context validation"""
         command = FireSeverityAnalysisCommand()
         assert command.validate_context(command_context) is True
 
-    def test_context_validation_missing_dates(self, command_context):
+    def test_context_validation_missing_dates(
+        self, command_context: CommandContext
+    ) -> None:
         """Test context validation with missing date ranges"""
         command = FireSeverityAnalysisCommand()
 
@@ -131,21 +135,25 @@ class TestFireSeverityAnalysisCommand:
         command_context.computation_config = {}
         assert command.validate_context(command_context) is False
 
-    def test_context_validation_missing_geometry(self, command_context):
+    def test_context_validation_missing_geometry(
+        self, command_context: CommandContext
+    ) -> None:
         """Test context validation with missing geometry"""
         command = FireSeverityAnalysisCommand()
 
-        command_context.geometry = None
+        command_context.geometry = None  # type: ignore
         assert command.validate_context(command_context) is False
 
-    def test_context_validation_missing_storage(self, command_context):
+    def test_context_validation_missing_storage(
+        self, command_context: CommandContext
+    ) -> None:
         """Test context validation with missing storage"""
         command = FireSeverityAnalysisCommand()
 
-        command_context.storage = None
+        command_context.storage = None  # type: ignore
         assert command.validate_context(command_context) is False
 
-    def test_get_buffered_bounds(self):
+    def test_get_buffered_bounds(self) -> None:
         """Test buffered bounds calculation"""
         command = FireSeverityAnalysisCommand()
 
@@ -169,7 +177,7 @@ class TestFireSeverityAnalysisCommand:
         assert maxx > -119
         assert maxy > 36
 
-    def test_subset_data_by_date_range(self):
+    def test_subset_data_by_date_range(self) -> None:
         """Test data subsetting by date range"""
         command = FireSeverityAnalysisCommand()
 
@@ -192,7 +200,7 @@ class TestFireSeverityAnalysisCommand:
         assert subset.time[0] == np.datetime64("2023-06-01")
         assert subset.time[1] == np.datetime64("2023-06-15")
 
-    def test_prepare_data_for_cog(self):
+    def test_prepare_data_for_cog(self) -> None:
         """Test data preparation for COG creation"""
         command = FireSeverityAnalysisCommand()
 
@@ -218,8 +226,11 @@ class TestFireSeverityAnalysisCommand:
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
     @patch("src.commands.impl.fire_severity_command.stackstac")
     async def test_fetch_satellite_data(
-        self, mock_stackstac, mock_stac_handler_class, command_context
-    ):
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
         """Test satellite data fetching workflow"""
         command = FireSeverityAnalysisCommand()
 
@@ -270,7 +281,9 @@ class TestFireSeverityAnalysisCommand:
         assert result["swir_band"] == "B12"
 
     @pytest.mark.asyncio
-    async def test_calculate_burn_indices(self, command_context):
+    async def test_calculate_burn_indices(
+        self, command_context: CommandContext
+    ) -> None:
         """Test burn indices calculation using strategy pattern"""
         command = FireSeverityAnalysisCommand()
 
@@ -288,7 +301,9 @@ class TestFireSeverityAnalysisCommand:
 
         # Test calculation
         result = await command._calculate_burn_indices(
-            command_context, stac_data, ["nbr", "dnbr"]
+            command_context,
+            stac_data,
+            ["nbr", "dnbr"],  # type: ignore
         )
 
         # Verify results
@@ -298,7 +313,7 @@ class TestFireSeverityAnalysisCommand:
         assert isinstance(result["dnbr"], xr.DataArray)
 
     @pytest.mark.asyncio
-    async def test_save_results_as_cogs(self, command_context):
+    async def test_save_results_as_cogs(self, command_context: CommandContext) -> None:
         """Test saving results as COGs"""
         command = FireSeverityAnalysisCommand()
 
@@ -318,10 +333,10 @@ class TestFireSeverityAnalysisCommand:
         assert asset_urls["dnbr"] == "mock://saved/path.tif"
 
         # Verify storage was called
-        assert command_context.storage.save_bytes.call_count == 2
+        assert command_context.storage.save_bytes.call_count == 2  # type: ignore
 
     @pytest.mark.asyncio
-    async def test_create_stac_metadata(self, command_context):
+    async def test_create_stac_metadata(self, command_context: CommandContext) -> None:
         """Test STAC metadata creation"""
         command = FireSeverityAnalysisCommand()
 
@@ -336,14 +351,17 @@ class TestFireSeverityAnalysisCommand:
 
         # Verify STAC item was created
         assert result == "mock://stac/item.json"
-        command_context.stac_manager.create_fire_severity_item.assert_called_once()
+        command_context.stac_manager.create_fire_severity_item.assert_called_once()  # type: ignore
 
     @pytest.mark.asyncio
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
     @patch("src.commands.impl.fire_severity_command.stackstac")
     async def test_execute_success(
-        self, mock_stackstac, mock_stac_handler_class, command_context
-    ):
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
         """Test successful command execution end-to-end"""
         command = FireSeverityAnalysisCommand()
 
@@ -407,7 +425,7 @@ class TestFireSeverityAnalysisCommand:
 # Integration test that can be run standalone
 if __name__ == "__main__":
 
-    async def integration_test():
+    async def integration_test() -> None:
         """Simple integration test"""
         print("Running FireSeverityAnalysisCommand integration test...")
 

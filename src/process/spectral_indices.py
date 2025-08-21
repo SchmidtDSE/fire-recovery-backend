@@ -1,22 +1,12 @@
-import coiled
-import dask.distributed
-import rioxarray
 import xarray as xr
-from pystac_client import Client as PystacClient
 import stackstac
 import numpy as np
-from rio_cogeo.cogeo import cog_validate, cog_translate, cog_info
+from rio_cogeo.cogeo import cog_validate, cog_translate
 from rio_cogeo.profiles import cog_profiles
 import os
 from typing import List, Dict, Optional, Any
 from geojson_pydantic import Polygon
 from shapely.geometry import shape
-import numpy as np
-import planetary_computer
-import hashlib
-import json
-from fastapi_cache.decorator import cache
-import pickle
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
@@ -134,7 +124,9 @@ def initialize_workspace(job_id: str) -> Dict[str, str]:
     return {"output_dir": output_dir, "status_file": status_file}
 
 
-def get_buffered_bounds(geometry: Polygon, buffer: float) -> tuple[float, float, float, float]:
+def get_buffered_bounds(
+    geometry: Polygon, buffer: float
+) -> tuple[float, float, float, float]:
     # Extract the bounding box from the geometry
     geom_shape = shape(geometry)
     minx, miny, maxx, maxy = geom_shape.bounds
@@ -185,7 +177,12 @@ def calculate_nbr(
 #     namespace="burn_indices",
 #     expire=60 * 60 * 24 * 7,  # Cache for 7 days
 # )
-def calculate_burn_indices(prefire_data: xr.DataArray, postfire_data: xr.DataArray, nir_band_name: str, swir_band_name: str) -> Dict[str, xr.DataArray]:
+def calculate_burn_indices(
+    prefire_data: xr.DataArray,
+    postfire_data: xr.DataArray,
+    nir_band_name: str,
+    swir_band_name: str,
+) -> Dict[str, xr.DataArray]:
     """Calculate various burn indices from pre and post fire data"""
 
     # Calculate NBR for both periods

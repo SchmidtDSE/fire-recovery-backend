@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
-from typing import Any
 import uuid
 
 
@@ -149,8 +148,8 @@ class TestHealthEndpoint:
         # Patch the router dependencies
         with (
             patch("src.routers.fire_recovery.storage_factory", mock_storage_factory),
-            patch("src.routers.fire_recovery.stac_manager") as mock_stac_manager,
-            patch("src.routers.fire_recovery.index_registry") as mock_index_registry,
+            patch("src.routers.fire_recovery.stac_manager") as __mock_stac_manager,
+            patch("src.routers.fire_recovery.index_registry") as __mock_index_registry,
         ):
             # Import app after patching
             from src.app import app

@@ -2,9 +2,8 @@ import json
 import os
 import time
 import uuid
-from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import (
     APIRouter,
@@ -14,10 +13,10 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from geojson_pydantic import Feature, FeatureCollection, Polygon
+from geojson_pydantic import Polygon
 from shapely.geometry import shape
 
-from src.config.constants import FINAL_BUCKET_NAME, STAC_STORAGE_DIR
+from src.config.constants import FINAL_BUCKET_NAME
 from src.process.resolve_veg import process_veg_map
 from src.process.spectral_indices import (
     process_remote_sensing_data,
@@ -41,7 +40,6 @@ from src.models.requests import (
     RefineRequest,
     VegMapResolveRequest,
     GeoJSONUploadRequest,
-    HealthCheckRequest,
 )
 from src.models.responses import (
     TaskPendingResponse,
@@ -160,61 +158,64 @@ async def root() -> Dict[str, str]:
 async def health_check() -> HealthCheckResponse:
     """
     Health check endpoint using command pattern.
-    
+
     This endpoint demonstrates the command pattern for a simple operation
     and serves as a template for other endpoints.
     """
     # Generate a unique job ID for the health check
     job_id = str(uuid.uuid4())
-    
+
     try:
         # Create command context for health check
         # Note: We use minimal geometry for health checks
         context = CommandContext(
             job_id=job_id,
             fire_event_name="health-check",
-            geometry={"type": "Feature", "geometry": {"type": "Point", "coordinates": [0, 0]}, "properties": {}},
+            geometry={
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [0, 0]},
+                "properties": {},
+            },
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,
-            metadata={"check_type": "health"}
+            metadata={"check_type": "health"},
         )
-        
+
         # Execute health check command
         command = HealthCheckCommand()
         result = await command.execute(context)
-        
+
         if result.is_failure():
             raise HTTPException(
                 status_code=503,  # Service Unavailable
-                detail=f"Health check failed: {result.error_message}"
+                detail=f"Health check failed: {result.error_message}",
             )
-        
+
         # Extract health data from command result
         if not result.data:
             raise HTTPException(
                 status_code=500,
-                detail="Health check succeeded but no health data returned"
+                detail="Health check succeeded but no health data returned",
             )
-        
+
         # Map command result to response model
         return HealthCheckResponse(
             fire_event_name="health-check",
-            status="healthy" if result.data["overall_status"] == "healthy" else "unhealthy",
+            status="healthy"
+            if result.data["overall_status"] == "healthy"
+            else "unhealthy",
             job_id=job_id,
             overall_status=result.data["overall_status"],
             timestamp=result.data["timestamp"],
             checks=result.data["checks"],
-            unhealthy_components=result.data["unhealthy_components"]
+            unhealthy_components=result.data["unhealthy_components"],
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Health check error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Health check error: {str(e)}")
 
 
 @router.post(
@@ -530,9 +531,7 @@ async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONRespon
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,
-            metadata={
-                "upload_type": "geojson"
-            }
+            metadata={"upload_type": "geojson"},
         )
 
         # Execute upload command
@@ -541,22 +540,20 @@ async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONRespon
 
         if result.is_failure():
             raise HTTPException(
-                status_code=500, 
-                detail=f"Error uploading GeoJSON: {result.error_message}"
+                status_code=500,
+                detail=f"Error uploading GeoJSON: {result.error_message}",
             )
 
         # Extract the boundary URL from command result
         if not result.data:
             raise HTTPException(
-                status_code=500, 
-                detail="Upload succeeded but no result data returned"
+                status_code=500, detail="Upload succeeded but no result data returned"
             )
-        
+
         boundary_url = result.data.get("boundary_geojson_url")
         if not boundary_url:
             raise HTTPException(
-                status_code=500, 
-                detail="Upload succeeded but no boundary URL returned"
+                status_code=500, detail="Upload succeeded but no boundary URL returned"
             )
 
         return UploadedGeoJSONResponse(
@@ -589,14 +586,15 @@ async def upload_shapefile(
         context = CommandContext(
             job_id=job_id,
             fire_event_name=fire_event_name,
-            geometry={"type": "Feature", "geometry": {"type": "Point", "coordinates": [0, 0]}, "properties": {}},  # Placeholder
+            geometry={
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [0, 0]},
+                "properties": {},
+            },  # Placeholder
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,
-            metadata={
-                "upload_type": "shapefile",
-                "upload_data": shapefile
-            }
+            metadata={"upload_type": "shapefile", "upload_data": shapefile},
         )
 
         # Execute upload command
@@ -605,22 +603,20 @@ async def upload_shapefile(
 
         if result.is_failure():
             raise HTTPException(
-                status_code=500, 
-                detail=f"Error uploading shapefile: {result.error_message}"
+                status_code=500,
+                detail=f"Error uploading shapefile: {result.error_message}",
             )
 
         # Extract the shapefile URL from command result
         if not result.data:
             raise HTTPException(
-                status_code=500, 
-                detail="Upload succeeded but no result data returned"
+                status_code=500, detail="Upload succeeded but no result data returned"
             )
-        
+
         shapefile_url = result.data.get("shapefile_url")
         if not shapefile_url:
             raise HTTPException(
-                status_code=500, 
-                detail="Upload succeeded but no shapefile URL returned"
+                status_code=500, detail="Upload succeeded but no shapefile URL returned"
             )
 
         return UploadedShapefileZipResponse(

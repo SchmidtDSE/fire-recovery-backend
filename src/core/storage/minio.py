@@ -220,7 +220,7 @@ class MinioCloudStorage(StorageInterface):
             # Skip example STAC assets - these are permanent test/demo files
             if obj["path"].startswith("example_stac/"):
                 continue
-                
+
             # Check if the object is temporary (in temp/ directory)
             is_temporary = obj["path"].startswith("temp/")
 

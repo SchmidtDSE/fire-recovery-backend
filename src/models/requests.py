@@ -44,6 +44,7 @@ class GeoJSONUploadRequest(BaseModel):
 
 class HealthCheckRequest(BaseModel):
     """Request model for health check endpoint"""
+
     # Health check is typically a GET request with no body,
     # but we'll include this for consistency with command pattern
     pass
