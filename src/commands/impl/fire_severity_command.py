@@ -11,6 +11,7 @@ from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult, CommandStatus
 from src.stac.stac_endpoint_handler import StacEndpointHandler
+from src.util.cog_ops import create_cog_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -414,21 +415,12 @@ class FireSeverityAnalysisCommand(Command):
         cog_path: str
     ) -> str:
         """Create and save COG via storage abstraction"""
-        # This is a simplified implementation
-        # In production, this would use rio-cogeo and proper COG creation
-        
-        # For now, save as netCDF and return the storage URL
-        # TODO: Implement proper COG creation workflow
-        
-        # Convert to bytes (simplified)
-        import io
-        buffer = io.BytesIO()
-        data.to_netcdf(buffer)
-        buffer.seek(0)
+        # Use the proper COG creation utility
+        cog_data = await create_cog_bytes(data)
         
         # Save via storage interface
         asset_url = await storage.save_bytes(
-            data=buffer.getvalue(),
+            data=cog_data,
             path=cog_path,
             temporary=False
         )

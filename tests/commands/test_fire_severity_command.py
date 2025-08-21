@@ -3,6 +3,7 @@ from unittest.mock import Mock, AsyncMock, patch
 from typing import Dict, Any
 import xarray as xr
 import numpy as np
+import rioxarray
 
 from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
 from src.commands.interfaces.command_context import CommandContext
@@ -26,8 +27,8 @@ class MockIndexCalculator:
         # Return mock xarray data
         data = xr.DataArray(
             np.random.random((10, 10)),
-            dims=["x", "y"],
-            coords={"x": range(10), "y": range(10)},
+            dims=["y", "x"],
+            coords={"y": range(10), "x": range(10)},
         )
         return data
 
@@ -179,8 +180,8 @@ class TestFireSeverityAnalysisCommand:
 
         data = xr.DataArray(
             np.random.random((4, 10, 10)),
-            dims=["time", "x", "y"],
-            coords={"time": time_coords, "x": range(10), "y": range(10)},
+            dims=["time", "y", "x"],
+            coords={"time": time_coords, "y": range(10), "x": range(10)},
         )
 
         # Subset to June data
@@ -198,8 +199,8 @@ class TestFireSeverityAnalysisCommand:
         # Create test data
         data = xr.DataArray(
             np.random.random((10, 10)),
-            dims=["x", "y"],
-            coords={"x": range(10), "y": range(10)},
+            dims=["y", "x"],
+            coords={"y": range(10), "x": range(10)},
         )
 
         prepared = command._prepare_data_for_cog(data)
@@ -238,15 +239,15 @@ class TestFireSeverityAnalysisCommand:
         # Mock stackstac.stack
         mock_data = xr.DataArray(
             np.random.random((4, 2, 10, 10)),
-            dims=["time", "band", "x", "y"],
+            dims=["time", "band", "y", "x"],
             coords={
                 "time": np.array(
                     ["2023-06-01", "2023-06-15", "2023-07-01", "2023-07-15"],
                     dtype="datetime64",
                 ),
                 "band": ["B08", "B12"],
-                "x": range(10),
                 "y": range(10),
+                "x": range(10),
             },
         )
         mock_stackstac.stack.return_value = mock_data
@@ -303,8 +304,8 @@ class TestFireSeverityAnalysisCommand:
 
         # Create mock index results
         index_results = {
-            "nbr": xr.DataArray(np.random.random((10, 10)), dims=["x", "y"]),
-            "dnbr": xr.DataArray(np.random.random((10, 10)), dims=["x", "y"]),
+            "nbr": xr.DataArray(np.random.random((10, 10)), dims=["y", "x"]),
+            "dnbr": xr.DataArray(np.random.random((10, 10)), dims=["y", "x"]),
         }
 
         # Test saving
@@ -361,15 +362,15 @@ class TestFireSeverityAnalysisCommand:
 
         mock_data = xr.DataArray(
             np.random.random((4, 2, 10, 10)),
-            dims=["time", "band", "x", "y"],
+            dims=["time", "band", "y", "x"],
             coords={
                 "time": np.array(
                     ["2023-06-01", "2023-06-15", "2023-07-01", "2023-07-15"],
                     dtype="datetime64",
                 ),
                 "band": ["B08", "B12"],
-                "x": range(10),
                 "y": range(10),
+                "x": range(10),
             },
         )
         mock_stackstac.stack.return_value = mock_data
