@@ -28,12 +28,20 @@ This document outlines the implementation of the Command pattern to separate API
 - **Issue**: Single modules handling multiple responsibilities (I/O, computation, orchestration)
 - **Impact**: Violates Single Responsibility Principle
 
+#### 5. Incomplete Workflow Command Coverage
+- **Location**: Missing commands for complete 7-step user workflow
+- **Issue**: Only fire severity analysis has been extracted to command pattern
+- **Impact**: Inconsistent architecture across the application
+
 ### Current Architecture Strengths
 
 ✅ **Strategy Pattern**: Well-implemented for spectral indices calculation
 ✅ **STAC Integration**: Clean separation using pystac library
 ✅ **Storage Abstraction**: Factory pattern for memory/minio storage
 ✅ **Dependency Injection**: IndexRegistry properly manages calculator dependencies
+✅ **Command Infrastructure**: Robust command interfaces with lifecycle hooks
+✅ **Command Registry**: Existing registry pattern for dependency injection
+✅ **Result Handling**: Sophisticated CommandResult with factory methods
 
 ## Design Pattern Selection: Command Pattern
 
@@ -128,13 +136,45 @@ class CommandContext:
     computation_config: Dict[str, Any]
 ```
 
-### Command Implementations
+### Complete User Workflow Commands
 
-#### 1. FireSeverityAnalysisCommand
+#### User Journey Overview
+1. **Upload AOI** - User uploads approximate area of interest
+2. **Compute Fire Severity** - Server generates coarse COGs and metrics  
+3. **Draw Boundary** - User refines boundary or uploads shapefile
+4. **Refine Boundary** - Server crops coarse COGs to new boundary
+5. **Accept/Retry** - User accepts refinement or tries again
+6. **Submit Veg Request** - User requests vegetation analysis
+7. **Compute Overlap** - Server analyzes fire vs vegetation communities
+
+### Core Workflow Commands
+
+#### 1. UploadAOICommand ✨ NEW
+
+**Responsibility**: Process and validate uploaded AOI (GeoJSON/Shapefile)
+
+**Current Logic Location**: `src/routers/fire_recovery.py:444-478` (GeoJSON), `src/routers/fire_recovery.py:481-512` (Shapefile)
+
+**Dependencies**:
+- `StorageInterface` (for file upload)
+- `BoundaryValidationCommand` (composition)
+- `STACMetadataCommand` (composition)
+
+**Execution Flow**:
+1. Validate uploaded file format and structure
+2. Convert to standardized GeoJSON format
+3. Validate geometry using BoundaryValidationCommand
+4. Upload to storage with proper naming
+5. Create STAC boundary item via STACMetadataCommand
+6. Return upload confirmation with job_id
+
+#### 2. FireSeverityAnalysisCommand ✅ EXISTING
 
 **Responsibility**: Process remote sensing data to calculate fire severity indices
 
-**Current Logic Location**: `src/process/spectral_indices.py` + `src/routers/fire_recovery.py:179-241`
+**Current Logic Location**: `src/commands/impl/fire_severity_command.py` (implemented)
+
+**Status**: Already migrated and following command pattern
 
 **Dependencies**:
 - `IndexRegistry` (existing strategy pattern)
@@ -150,43 +190,121 @@ class CommandContext:
 5. Create STAC metadata
 6. Return command result with asset URLs
 
-#### 2. BoundaryRefinementCommand
+#### 3. BoundaryRefinementCommand ⏳ NEEDS MIGRATION
 
 **Responsibility**: Refine fire boundaries and crop existing COGs
 
 **Current Logic Location**: `src/routers/fire_recovery.py:311-374`
 
 **Dependencies**:
-- `StorageInterface` (for COG processing)
-- `STACJSONManager` (for metadata)
-- Geometry processing utilities
+- `COGProcessingCommand` (composition)
+- `BoundaryValidationCommand` (composition)
+- `STACMetadataCommand` (composition)
 
 **Execution Flow**:
-1. Validate refined boundary geometry
-2. Retrieve original COG from storage
-3. Crop COG with refined boundary
-4. Store refined COG via storage abstraction
-5. Update STAC metadata
+1. Validate refined boundary using BoundaryValidationCommand
+2. Retrieve original COG URLs from STAC
+3. Crop COGs using COGProcessingCommand
+4. Store refined assets via storage abstraction
+5. Update STAC metadata via STACMetadataCommand
 6. Return refined asset URLs
 
-#### 3. VegetationAnalysisCommand
+#### 4. VegetationResolveCommand ⏳ NEEDS MIGRATION
 
 **Responsibility**: Analyze vegetation impact from fire severity data
 
-**Current Logic Location**: `src/process/resolve_veg.py`
+**Current Logic Location**: `src/routers/fire_recovery.py:545-621`
 
 **Dependencies**:
 - `StorageInterface` (no tempfiles)
-- Vegetation data processing utilities
-- Statistical analysis components
+- Vegetation analysis utilities
+- `STACMetadataCommand` (composition)
 
 **Execution Flow**:
-1. Download vegetation and fire data to memory
+1. Download vegetation GPKG and fire COG to memory
 2. Perform zonal statistics calculation
-3. Generate CSV and JSON reports
+3. Generate CSV and JSON matrix reports
 4. Store results via storage abstraction
-5. Create STAC metadata for analysis
+5. Create STAC metadata via STACMetadataCommand
 6. Return analysis result URLs
+
+### Utility Commands (Composition Pattern)
+
+#### 5. BoundaryValidationCommand ✨ NEW
+
+**Responsibility**: Validate and normalize geometries
+
+**Current Logic Location**: `src/routers/fire_recovery.py:52-89` (process_and_upload_geojson)
+
+**Single Responsibility**: Geometry validation and normalization
+
+**Reusable Across**: Upload, refinement, and validation workflows
+
+**Execution Flow**:
+1. Convert geometry to valid GeoJSON format
+2. Validate geometry topology and CRS
+3. Calculate bounding box
+4. Return validated geometry and metadata
+
+#### 6. COGProcessingCommand ✨ NEW
+
+**Responsibility**: Handle all COG-related operations (download, crop, create, upload)
+
+**Current Logic Location**: `src/routers/fire_recovery.py:92-126` (process_cog_with_boundary)
+
+**Single Responsibility**: COG lifecycle management
+
+**Reusable Across**: Fire severity analysis and boundary refinement
+
+**Execution Flow**:
+1. Download COG from URL to memory
+2. Crop COG with provided geometry
+3. Create new COG from cropped data
+4. Upload to storage with proper naming
+5. Return new COG URL
+
+#### 7. STACMetadataCommand ✨ NEW
+
+**Responsibility**: Create and manage STAC items and collections
+
+**Current Logic Location**: Scattered across workflow functions
+
+**Single Responsibility**: STAC metadata lifecycle
+
+**Reusable Across**: All workflow commands that generate assets
+
+**Execution Flow**:
+1. Accept metadata payload and asset URLs
+2. Create appropriate STAC item type
+3. Set proper STAC properties and links
+4. Store STAC item via STACJSONManager
+5. Return STAC item URL
+
+### Composite Commands (Orchestration)
+
+#### 8. CompleteFireAnalysisWorkflow ✨ NEW
+
+**Responsibility**: Orchestrate steps 1-2 of user workflow
+
+**Composed Commands**: UploadAOICommand → FireSeverityAnalysisCommand
+
+**Use Case**: Direct AOI upload to fire severity analysis
+
+#### 9. CompleteBoundaryWorkflow ✨ NEW
+
+**Responsibility**: Orchestrate steps 3-5 of user workflow
+
+**Composed Commands**: BoundaryRefinementCommand (with retry logic)
+
+**Use Case**: Boundary refinement with user acceptance loop
+
+#### 10. CompleteVegWorkflow ✨ NEW
+
+**Responsibility**: Orchestrate steps 6-7 of user workflow
+
+**Composed Commands**: VegetationResolveCommand
+
+**Use Case**: Final vegetation analysis after boundary acceptance
 
 ### Command Registry Pattern
 
@@ -246,46 +364,81 @@ class CommandRegistry:
 - Mock command can be registered and executed
 - Error handling works correctly
 
-### Phase 2: Business Logic Commands (Days 3-5)
+### Phase 2: Utility Commands (Days 3-4)
 
 **Deliverables**:
-- [ ] `FireSeverityAnalysisCommand` implementation
+- [ ] `BoundaryValidationCommand` implementation
+- [ ] `COGProcessingCommand` implementation  
+- [ ] `STACMetadataCommand` implementation
+- [ ] Refactor existing utilities to use commands
+- [ ] Unit tests for utility commands
+
+**Success Criteria**:
+- Utility commands are reusable across workflows
+- Single responsibility principle maintained
+- All geometry validation logic centralized
+- COG operations abstracted from business logic
+
+### Phase 3: Core Workflow Commands (Days 5-7)
+
+**Deliverables**:
+- [ ] `UploadAOICommand` implementation
 - [ ] `BoundaryRefinementCommand` implementation
-- [ ] `VegetationAnalysisCommand` implementation
-- [ ] Integration with existing strategy patterns
+- [ ] `VegetationResolveCommand` implementation
+- [ ] Integration with utility commands (composition)
 - [ ] Comprehensive unit tests
 
 **Success Criteria**:
 - Each command passes unit tests in isolation
-- Commands properly use storage abstraction
+- Commands properly compose utility commands
 - No tempfile dependencies remain
 - Logging covers all execution paths
+- FireSeverityAnalysisCommand integration verified
 
-### Phase 3: API Layer Refactoring (Days 6-7)
+### Phase 4: Composite Commands (Days 8-9)
+
+**Deliverables**:
+- [ ] `CompleteFireAnalysisWorkflow` implementation
+- [ ] `CompleteBoundaryWorkflow` implementation
+- [ ] `CompleteVegWorkflow` implementation
+- [ ] Workflow orchestration patterns
+- [ ] End-to-end integration tests
+
+**Success Criteria**:
+- Workflows correctly orchestrate individual commands
+- Error handling and rollback mechanisms work
+- Commands can be executed individually or as workflows
+- Dependency resolution works correctly
+
+### Phase 5: API Layer Refactoring (Days 10-11)
 
 **Deliverables**:
 - [ ] Refactored HTTP handlers to use commands
 - [ ] Request validation moved to appropriate layer
 - [ ] Response mapping from command results
+- [ ] Background task integration with commands
 - [ ] Integration tests
 
 **Success Criteria**:
 - All existing API endpoints work unchanged
 - API handlers contain only HTTP concerns
 - Business logic fully encapsulated in commands
+- Command execution integrated with FastAPI background tasks
 
-### Phase 4: Serverless Compatibility (Day 8)
+### Phase 6: Serverless Compatibility (Day 12)
 
 **Deliverables**:
 - [ ] Remove all tempfile usage
-- [ ] Eliminate local filesystem dependencies
+- [ ] Eliminate local filesystem dependencies  
 - [ ] Memory-based intermediate storage
 - [ ] Cloud storage integration tests
+- [ ] Command executor serverless deployment
 
 **Success Criteria**:
 - No local I/O operations in business logic
 - Commands work in serverless environments
 - Storage abstraction handles all persistence
+- Command registry works in stateless environment
 
 ## Benefits of This Approach
 
@@ -338,18 +491,24 @@ class CommandRegistry:
 - [ ] 100% unit test coverage for commands
 - [ ] <50ms additional latency per command
 - [ ] 0 local filesystem dependencies
+- [ ] 10 commands implemented (7 core + 3 composite)
+- [ ] All 7 user workflow steps covered by commands
 
 ### Quality Metrics
 - [ ] All SOLID principles violations resolved
 - [ ] Code complexity reduced by 30%
-- [ ] API handler line count reduced by 50%
+- [ ] API handler line count reduced by 70%
 - [ ] Business logic fully testable in isolation
+- [ ] Utility commands reused across multiple workflows
+- [ ] Command composition properly implemented
 
 ### Operational Metrics
 - [ ] Commands deployable in serverless environment
 - [ ] Centralized logging covers all execution paths
 - [ ] Error handling provides actionable debugging information
 - [ ] Resource cleanup prevents memory leaks
+- [ ] Workflow orchestration supports retry and rollback
+- [ ] Command registry enables dynamic command loading
 
 ## Conclusion
 
