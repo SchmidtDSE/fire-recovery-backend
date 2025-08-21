@@ -4,10 +4,9 @@ from fastapi import Request
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_cache.decorator import cache
-from src.util.api_cache import request_key_builder
 import hashlib
 import json
-from .routers import stac_server, fire_recovery
+from .routers import fire_recovery
 from contextlib import asynccontextmanager
 import time
 
@@ -40,15 +39,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(fire_recovery.router)
-app.include_router(stac_server.router)
 
 
 @app.get("/")
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
-)
 async def root():
     return {
         "message": "Welcome to the Fire Recovery Backend API",
@@ -58,11 +51,6 @@ async def root():
 
 
 @app.get("/cache_test")
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60,  # Cache for 1 hour
-)
 async def cache_test():
     time.sleep(10)
     return {"ping": "pong"}

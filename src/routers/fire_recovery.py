@@ -17,7 +17,7 @@ from fastapi import (
 from geojson_pydantic import Feature, FeatureCollection, Polygon
 from shapely.geometry import shape
 
-from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
+from src.config.constants import FINAL_BUCKET_NAME, STAC_STORAGE_DIR
 from src.process.resolve_veg import process_veg_map
 from src.process.spectral_indices import (
     process_remote_sensing_data,
@@ -31,11 +31,17 @@ from src.util.cog_ops import (
 )
 from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
+from src.commands.impl.upload_aoi_command import UploadAOICommand
+from src.commands.impl.health_check_command import HealthCheckCommand
+from src.commands.interfaces.command_context import CommandContext
+from src.core.storage.storage_factory import StorageFactory
+from src.computation.registry.index_registry import IndexRegistry
 from src.models.requests import (
     ProcessingRequest,
     RefineRequest,
     VegMapResolveRequest,
     GeoJSONUploadRequest,
+    HealthCheckRequest,
 )
 from src.models.responses import (
     TaskPendingResponse,
@@ -45,6 +51,7 @@ from src.models.responses import (
     VegMapMatrixResponse,
     UploadedGeoJSONResponse,
     UploadedShapefileZipResponse,
+    HealthCheckResponse,
 )
 from src.config.storage import get_temp_storage
 
@@ -136,13 +143,78 @@ router = APIRouter(
 )
 # Initialize STAC manager
 stac_manager = STACJSONManager.for_production(
-    base_url=f"https://storage.googleapis.com/{BUCKET_NAME}/stac"
+    base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac"
 )
+
+# Initialize storage factory and index registry for commands
+storage_factory = StorageFactory()
+index_registry = IndexRegistry()
 
 
 @router.get("/", tags=["Root"])
 async def root() -> Dict[str, str]:
     return {"message": "Welcome to the Fire Recovery Backend API"}
+
+
+@router.get("/healthz", response_model=HealthCheckResponse, tags=["Health"])
+async def health_check() -> HealthCheckResponse:
+    """
+    Health check endpoint using command pattern.
+    
+    This endpoint demonstrates the command pattern for a simple operation
+    and serves as a template for other endpoints.
+    """
+    # Generate a unique job ID for the health check
+    job_id = str(uuid.uuid4())
+    
+    try:
+        # Create command context for health check
+        # Note: We use minimal geometry for health checks
+        context = CommandContext(
+            job_id=job_id,
+            fire_event_name="health-check",
+            geometry={"type": "Feature", "geometry": {"type": "Point", "coordinates": [0, 0]}, "properties": {}},
+            storage=storage_factory.get_temp_storage(),
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={"check_type": "health"}
+        )
+        
+        # Execute health check command
+        command = HealthCheckCommand()
+        result = await command.execute(context)
+        
+        if result.is_failure():
+            raise HTTPException(
+                status_code=503,  # Service Unavailable
+                detail=f"Health check failed: {result.error_message}"
+            )
+        
+        # Extract health data from command result
+        if not result.data:
+            raise HTTPException(
+                status_code=500,
+                detail="Health check succeeded but no health data returned"
+            )
+        
+        # Map command result to response model
+        return HealthCheckResponse(
+            fire_event_name="health-check",
+            status="healthy" if result.data["overall_status"] == "healthy" else "unhealthy",
+            job_id=job_id,
+            overall_status=result.data["overall_status"],
+            timestamp=result.data["timestamp"],
+            checks=result.data["checks"],
+            unhealthy_components=result.data["unhealthy_components"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Health check error: {str(e)}"
+        )
 
 
 @router.post(
@@ -201,7 +273,7 @@ async def process_fire_severity(
         for key, value in result["output_files"].items():
             cog_path = value
             blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
-            uploaded_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
+            uploaded_url = upload_to_gcs(cog_path, blob_name)
 
             # Store the URL in the dictionary
             cog_urls[key] = uploaded_url
@@ -450,28 +522,51 @@ async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONRespon
     job_id = str(uuid.uuid4())
 
     try:
-        # Validate the GeoJSON using geojson_pydantic
-        if request.geojson.get("type") == "FeatureCollection":
-            FeatureCollection.model_validate(request.geojson)
-        elif request.geojson.get("type") == "Feature":
-            Feature.model_validate(request.geojson)
-        else:
-            raise ValueError(f"Unsupported GeoJSON type: {request.geojson.get('type')}")
-
-        # Process and upload the GeoJSON file
-        geojson_url, _, _ = await process_and_upload_geojson(
-            geometry=request.geojson,
-            fire_event_name=request.fire_event_name,
+        # Create command context for GeoJSON upload
+        context = CommandContext(
             job_id=job_id,
-            filename="uploaded",
+            fire_event_name=request.fire_event_name,
+            geometry=request.geojson,
+            storage=storage_factory.get_temp_storage(),
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={
+                "upload_type": "geojson"
+            }
         )
+
+        # Execute upload command
+        command = UploadAOICommand()
+        result = await command.execute(context)
+
+        if result.is_failure():
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error uploading GeoJSON: {result.error_message}"
+            )
+
+        # Extract the boundary URL from command result
+        if not result.data:
+            raise HTTPException(
+                status_code=500, 
+                detail="Upload succeeded but no result data returned"
+            )
+        
+        boundary_url = result.data.get("boundary_geojson_url")
+        if not boundary_url:
+            raise HTTPException(
+                status_code=500, 
+                detail="Upload succeeded but no boundary URL returned"
+            )
 
         return UploadedGeoJSONResponse(
             fire_event_name=request.fire_event_name,
             status="complete",
             job_id=job_id,
-            refined_boundary_geojson_url=geojson_url,
+            refined_boundary_geojson_url=boundary_url,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
@@ -488,16 +583,45 @@ async def upload_shapefile(
     job_id = str(uuid.uuid4())
 
     try:
-        # Verify that this is a zip file
-        if not shapefile.filename or not shapefile.filename.lower().endswith(".zip"):
-            raise ValueError("Only zipped shapefiles (.zip) are supported")
+        # Create command context for shapefile upload
+        # Note: For shapefile uploads, we provide a minimal geometry to satisfy context validation
+        # The actual upload data is in metadata
+        context = CommandContext(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            geometry={"type": "Feature", "geometry": {"type": "Point", "coordinates": [0, 0]}, "properties": {}},  # Placeholder
+            storage=storage_factory.get_temp_storage(),
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={
+                "upload_type": "shapefile",
+                "upload_data": shapefile
+            }
+        )
 
-        # Read the file content directly
-        content = await shapefile.read()
+        # Execute upload command
+        command = UploadAOICommand()
+        result = await command.execute(context)
 
-        # Upload the zip file directly to GCS without a temp file
-        zip_blob_name = f"{fire_event_name}/{job_id}/original_shapefile.zip"
-        shapefile_url = await upload_to_gcs(content, BUCKET_NAME, zip_blob_name)
+        if result.is_failure():
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error uploading shapefile: {result.error_message}"
+            )
+
+        # Extract the shapefile URL from command result
+        if not result.data:
+            raise HTTPException(
+                status_code=500, 
+                detail="Upload succeeded but no result data returned"
+            )
+        
+        shapefile_url = result.data.get("shapefile_url")
+        if not shapefile_url:
+            raise HTTPException(
+                status_code=500, 
+                detail="Upload succeeded but no shapefile URL returned"
+            )
 
         return UploadedShapefileZipResponse(
             fire_event_name=fire_event_name,
@@ -506,6 +630,8 @@ async def upload_shapefile(
             shapefile_url=shapefile_url,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error uploading shapefile: {str(e)}"
@@ -578,8 +704,8 @@ async def process_veg_map_resolution(
         csv_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
         json_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.json"
 
-        csv_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, csv_blob_name)
-        json_url = upload_to_gcs(result["output_json"], BUCKET_NAME, json_blob_name)
+        csv_url = upload_to_gcs(result["output_csv"], csv_blob_name)
+        json_url = upload_to_gcs(result["output_json"], json_blob_name)
 
         print(f"Vegetation fire matrix CSV uploaded to {csv_url}")
         print(f"Vegetation fire matrix JSON uploaded to {json_url}")

@@ -63,17 +63,28 @@ class CommandRegistry:
         # Note: Importing here to avoid circular dependencies
         try:
             from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
-            from src.commands.impl.boundary_refinement_command import BoundaryRefinementCommand
-            from src.commands.impl.vegetation_analysis_command import VegetationAnalysisCommand
+            from src.commands.impl.upload_aoi_command import UploadAOICommand
             
-            # Register command classes
+            # Register implemented command classes
             self._register_command_class(FireSeverityAnalysisCommand)
-            self._register_command_class(BoundaryRefinementCommand)
-            self._register_command_class(VegetationAnalysisCommand)
+            self._register_command_class(UploadAOICommand)
             
         except ImportError as e:
             logger.warning(f"Some command implementations not available: {e}")
             # In development, it's ok if not all commands are implemented yet
+        
+        # Try to import other command implementations (may not exist yet)
+        try:
+            from src.commands.impl.boundary_refinement_command import BoundaryRefinementCommand
+            self._register_command_class(BoundaryRefinementCommand)
+        except ImportError:
+            logger.debug("BoundaryRefinementCommand not available yet")
+        
+        try:
+            from src.commands.impl.vegetation_analysis_command import VegetationAnalysisCommand
+            self._register_command_class(VegetationAnalysisCommand)
+        except ImportError:
+            logger.debug("VegetationAnalysisCommand not available yet")
         
         logger.info(
             f"Registered {len(self._command_classes)} command classes: "

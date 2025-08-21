@@ -40,3 +40,10 @@ class VegMapResolveRequest(BaseModel):
 class GeoJSONUploadRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
     geojson: dict = Field(..., description="GeoJSON data to upload")
+
+
+class HealthCheckRequest(BaseModel):
+    """Request model for health check endpoint"""
+    # Health check is typically a GET request with no body,
+    # but we'll include this for consistency with command pattern
+    pass
