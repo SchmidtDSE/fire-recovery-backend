@@ -1,15 +1,16 @@
-### Pixi
+### Pixi (Python)
 
-In order to use the relevant pixi environment, you can call:
+Python and its dependencies are managed by `pixi` - you will need to activate pixi to use python, either by activating using `pixi shell`, or by using `pixi run`. 
 
 ```bash
-pixi shell && ...
+pixi shell
+python3 -m src.app
 ```
 
 Or, optionally, as a one-liner:
 
 ```bash
-pixi run ...
+pixi run python3 -m src.app
 ```
 
 Additionally, by inspecting `pixi.toml`, you can see particular pre-configured tasks such as:
