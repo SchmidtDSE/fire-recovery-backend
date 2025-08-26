@@ -51,8 +51,6 @@ Whenever reasonable, add logging statements to the code to help with debugging a
 
 When generating code, ensure your solutions will statisfy mypy static type checking without any errors or warnings. Ensure that you annotate types for function parameters, return types, and class attributes where applicable. Use `Optional` from the `typing` module for parameters that can be `None`.
 
-When suggesting code, ensure it is:
-
 NEVER do the following:
 - Suggest an import or library in the body of a function or method - instead suggest it at the top of the file.
 - Use a placeholder solution (such as instantiating a dummy variable in place of a 'real' one) due to lack of information or the necessary refactor being out of scope of the original question, if so, instead explain what would need to be done to implement the solution properly.

@@ -192,12 +192,12 @@ class TestHealthEndpoint:
         with pytest.raises(Exception):  # Pydantic validation error
             HealthCheckResponse(
                 fire_event_name="health-check",
-                status="healthy",
+                # Missing status field to trigger validation error
                 job_id=job_id,
-                overall_status="healthy",  # This is required
+                overall_status="healthy",
                 timestamp=1234567890.0,
                 checks={},
-                # Missing unhealthy_components to trigger validation error
+                unhealthy_components=0,
             )
 
 
