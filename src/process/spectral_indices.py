@@ -224,7 +224,7 @@ def calculate_burn_indices(
     return result
 
 
-def create_cog(data, output_path: str) -> Dict[str, Any]:
+def create_cog(data: xr.DataArray, output_path: str) -> Dict[str, Any]:
     """Create a Cloud Optimized GeoTIFF from xarray data"""
 
     naive_tiff = output_path.replace(".tif", "_raw.tif")

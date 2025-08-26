@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import List
+from typing import List, Dict, Any
 
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
@@ -81,9 +81,9 @@ class HealthCheckCommand(Command):
                 },
             )
 
-    async def _check_system_health(self, context: CommandContext) -> dict:
+    async def _check_system_health(self, context: CommandContext) -> Dict[str, Any]:
         """Perform basic system health checks"""
-        checks = {}
+        checks: Dict[str, Dict[str, Any]] = {}
 
         # Check storage availability (if available)
         if context.storage:
@@ -116,7 +116,7 @@ class HealthCheckCommand(Command):
             try:
                 # Simple check - get available calculators
                 available_calculators = (
-                    context.index_registry.get_available_calculators()
+                    context.index_registry.get_available_indices()
                 )
                 checks["index_registry"] = {
                     "status": "healthy",

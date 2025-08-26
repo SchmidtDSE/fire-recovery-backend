@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from pydantic import BaseModel, Field
 
 
@@ -49,7 +49,7 @@ class HealthCheckResponse(BaseResponse):
 
     overall_status: str = Field(..., description="Overall system health status")
     timestamp: float = Field(..., description="Unix timestamp of the health check")
-    checks: Dict[str, Dict] = Field(
+    checks: Dict[str, Dict[str, Any]] = Field(
         ..., description="Individual component health checks"
     )
     unhealthy_components: int = Field(..., description="Number of unhealthy components")

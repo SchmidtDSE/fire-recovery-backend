@@ -10,6 +10,7 @@ from geojson_pydantic import Polygon
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult
+from src.core.storage.interface import StorageInterface
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
 
@@ -423,7 +424,7 @@ class FireSeverityAnalysisCommand(Command):
         return processed
 
     async def _create_and_save_cog(
-        self, storage, data: xr.DataArray, cog_path: str
+        self, storage: StorageInterface, data: xr.DataArray, cog_path: str
     ) -> str:
         """Create and save COG via storage abstraction"""
         # Use the proper COG creation utility

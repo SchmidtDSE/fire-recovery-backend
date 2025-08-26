@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import httpx
 import rioxarray
@@ -31,7 +31,7 @@ async def get_fire_severity_cog_by_event(
     """
     # Search for fire severity items for this event
     stac_items = await stac_manager.search_items(
-        collection="fire-severity", query={"fire_event_name": fire_event_name}
+        fire_event_name=fire_event_name, product_type="fire-severity"
     )
 
     if not stac_items or len(stac_items) == 0:
@@ -96,7 +96,7 @@ def crop_cog_with_geometry(cog_path: str, geometry: Dict[str, Any]) -> xr.DataAr
         geom = shape(geometry)
 
     # Open the COG with rioxarray
-    data = rioxarray.open_rasterio(cog_path)
+    data = cast(xr.DataArray, rioxarray.open_rasterio(cog_path))
 
     # Crop the data with the geometry
     # Note: mask accepts a list of geometries
