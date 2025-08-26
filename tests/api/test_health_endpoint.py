@@ -18,9 +18,9 @@ class TestHealthEndpoint:
         # Create mock STAC manager
         mock_stac_manager = AsyncMock()
 
-        # Create mock index registry with get_available_calculators method
+        # Create mock index registry with get_available_indices method
         mock_index_registry = MagicMock()
-        mock_index_registry.get_available_calculators.return_value = [
+        mock_index_registry.get_available_indices.return_value = [
             "nbr",
             "dnbr",
             "rdnbr",
@@ -81,7 +81,7 @@ class TestHealthEndpoint:
             assert data["unhealthy_components"] == 0
 
             # Verify index registry was called
-            mock_index_registry.get_available_calculators.assert_called_once()
+            mock_index_registry.get_available_indices.assert_called_once()
 
     @patch("src.config.storage.get_storage")
     def test_health_check_with_unhealthy_component(
@@ -98,7 +98,7 @@ class TestHealthEndpoint:
 
         # Create mock index registry that throws an error
         mock_index_registry = MagicMock()
-        mock_index_registry.get_available_calculators.side_effect = Exception(
+        mock_index_registry.get_available_indices.side_effect = Exception(
             "Calculator registry failed"
         )
 

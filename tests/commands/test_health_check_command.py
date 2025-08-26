@@ -21,7 +21,7 @@ def mock_stac_manager() -> AsyncMock:
 def mock_index_registry() -> MagicMock:
     """Mock index registry"""
     mock_registry = MagicMock()
-    mock_registry.get_available_calculators.return_value = [
+    mock_registry.get_available_indices.return_value = [
         "nbr",
         "dnbr",
         "rdnbr",
@@ -114,7 +114,7 @@ class TestHealthCheckCommand:
         assert checks["index_registry"]["status"] == "healthy"
 
         # Verify index registry was queried
-        mock_index_registry.get_available_calculators.assert_called_once()
+        mock_index_registry.get_available_indices.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_with_unhealthy_component(
@@ -122,7 +122,7 @@ class TestHealthCheckCommand:
     ) -> None:
         """Test execution when index registry fails"""
         # Make index registry fail
-        mock_index_registry.get_available_calculators.side_effect = Exception(
+        mock_index_registry.get_available_indices.side_effect = Exception(
             "Registry failed"
         )
 
