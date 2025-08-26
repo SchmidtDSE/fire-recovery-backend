@@ -97,8 +97,7 @@ The Fire Recovery Backend API serves as the computational engine for a fire reco
 
 ### External Data Sources
 - **Microsoft Planetary Computer**: Primary STAC endpoint for Sentinel-2 imagery
-- **Google Earth Engine**: Alternative satellite data source
-- **National Park Service**: Vegetation classification datasets (GeoPackage format)
+- **National Park Service**: Vegetation cover class datasets
 
 ### Storage Systems  
 - **Google Cloud Storage**: Primary storage for all generated assets
@@ -115,10 +114,3 @@ GCP_ACCESS_KEY_ID=[MINIO ACCESS KEY]
 GCP_SECRET_ACCESS_KEY=[MINIO SECRET]  
 RUN_LOCAL=True
 ```
-
-### Architecture
-- **Framework**: FastAPI with async processing
-- **Background Tasks**: Celery-style background job processing
-- **Caching**: In-memory caching with FastAPI-cache
-- **Geospatial**: GDAL/GEOS stack with rioxarray and geopandas
-- **Remote Sensing**: stackstac for STAC data processing
