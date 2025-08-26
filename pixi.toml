@@ -6,11 +6,17 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-mypy = "mypy . --show-error-codes"
 pytest = "python -m pytest"
 ruff-check = "ruff check ."
 ruff-format = "ruff format ."
 ruff-fix = "ruff check . --fix"
+
+[tasks.mypy]
+args = [
+  { "arg" = "path", "default" = "." }
+]
+cmd = "mypy {{ path }} --show-error-codes"
+
 
 [dependencies]
 numpy = ">=2.2.4,<3"
