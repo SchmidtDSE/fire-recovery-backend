@@ -1,18 +1,19 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Union
 
 from geojson_pydantic import FeatureCollection
 from shapely import Polygon as ShapelyPolygon
 from shapely import from_geojson, to_geojson
+from geojson_pydantic import Polygon, Feature
 
 
-def validate_polygon(polygon_data: Dict[str, Any]) -> ShapelyPolygon:
+def validate_polygon(polygon_data: Union[Polygon, Feature, Dict[str, Any]]) -> ShapelyPolygon:
     """
     Validates a GeoJSON polygon using shapely.
 
     Args:
-        polygon_data: Dictionary containing polygon data
+        polygon_data: Polygon, Feature (geojson-pydantic), or dictionary containing polygon data
 
     Returns:
         Validated Shapely Polygon object
@@ -21,11 +22,28 @@ def validate_polygon(polygon_data: Dict[str, Any]) -> ShapelyPolygon:
         ValueError: If the polygon is invalid
     """
     try:
-        # Convert the input data to JSON string if it's a dict
-        if isinstance(polygon_data, dict):
+        polygon_json: str
+        
+        # Handle geojson-pydantic Feature objects
+        if isinstance(polygon_data, Feature):
+            if polygon_data.geometry is None:
+                raise ValueError("Feature has no geometry")
+            if polygon_data.geometry.type != "Polygon":
+                raise ValueError(
+                    f"Expected Polygon geometry in Feature, got {polygon_data.geometry.type}"
+                )
+            polygon_json = polygon_data.geometry.model_dump_json()
+        
+        # Handle geojson-pydantic Polygon objects  
+        elif isinstance(polygon_data, Polygon):
+            polygon_json = polygon_data.model_dump_json()
+        
+        # Handle dictionary inputs (for backward compatibility)
+        elif isinstance(polygon_data, dict):
             # If we have a nested geometry
             if (
                 "geometry" in polygon_data
+                and isinstance(polygon_data["geometry"], dict)
                 and polygon_data["geometry"].get("type") == "Polygon"
             ):
                 polygon_json = json.dumps(polygon_data["geometry"])
@@ -39,45 +57,47 @@ def validate_polygon(polygon_data: Dict[str, Any]) -> ShapelyPolygon:
                     "Invalid polygon data. Expected either a Polygon geometry "
                     "or an object with a geometry property containing a Polygon"
                 )
-
-            # Parse the GeoJSON with shapely
-            shapely_geom = from_geojson(polygon_json)
-
-            # Verify it's a polygon
-            if shapely_geom.geom_type != "Polygon":
-                raise ValueError(
-                    f"Expected Polygon geometry, got {shapely_geom.geom_type}"
-                )
-
-            return shapely_geom
         else:
-            raise ValueError("Input must be a dictionary")
+            raise ValueError(
+                f"Input must be a Polygon, Feature, or dictionary, got {type(polygon_data)}"
+            )
+
+        # Parse the GeoJSON with shapely
+        shapely_geom = from_geojson(polygon_json)
+
+        # Verify it's a polygon
+        if shapely_geom.geom_type != "Polygon":
+            raise ValueError(
+                f"Expected Polygon geometry, got {shapely_geom.geom_type}"
+            )
+
+        return shapely_geom
     except Exception as e:
         raise ValueError(f"Failed to validate polygon: {str(e)}")
 
 
 def polygon_to_feature(
-    polygon: Union[ShapelyPolygon, Dict[str, Any]],
+    polygon: Union[ShapelyPolygon, Polygon, Feature, Dict[str, Any]],
     properties: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Converts a polygon to a GeoJSON Feature.
 
     Args:
-        polygon: Shapely Polygon object or dict with polygon data
+        polygon: Shapely Polygon, geojson-pydantic Polygon/Feature, or dict with polygon data
         properties: Optional properties for the Feature
 
     Returns:
         Feature as dictionary
     """
-    # Convert dict to Shapely object if needed
+    # Convert to Shapely object if needed
     if not isinstance(polygon, ShapelyPolygon):
         polygon = validate_polygon(polygon)
 
     # Default properties
     if properties is None:
         properties = {
-            "created": datetime.utcnow().isoformat(),
+            "created": datetime.now(timezone.utc).isoformat(),
         }
 
     # Get GeoJSON representation of the polygon
@@ -91,42 +111,58 @@ def polygon_to_feature(
 
 
 def polygon_to_valid_geojson(
-    polygon_data: Dict[str, Any],
+    polygon_data: Union[Polygon, Feature, Dict[str, Any]],
     properties: Optional[Dict[str, Any]] = None,
     collection_properties: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+) -> FeatureCollection:
     """
     Validates a polygon, constructs a FeatureCollection containing it,
-    validates the FeatureCollection, and returns it as a dictionary.
+    validates the FeatureCollection, and returns it as a geojson-pydantic FeatureCollection.
 
     Args:
-        polygon_data: Dictionary containing polygon data
+        polygon_data: Polygon, Feature (geojson-pydantic), or dictionary containing polygon data
         properties: Optional properties for the Feature
         collection_properties: Optional properties for the FeatureCollection
 
     Returns:
-        Dictionary containing valid GeoJSON FeatureCollection
+        Valid GeoJSON FeatureCollection (geojson-pydantic object)
     """
     try:
-        # Step 1: Validate the polygon using shapely
-        shapely_polygon = validate_polygon(polygon_data)
+        # Step 1: Handle different input types
+        if isinstance(polygon_data, Feature):
+            # If it's already a Feature, use it directly (with optional property override)
+            if properties is not None:
+                # Create new feature with merged properties
+                existing_properties = polygon_data.properties or {}
+                merged_properties = {**existing_properties, **properties}
+                if polygon_data.geometry is None:
+                    raise ValueError("Feature has no geometry")
+                feature_dict = {
+                    "type": "Feature",
+                    "geometry": polygon_data.geometry.model_dump(),
+                    "properties": merged_properties
+                }
+            else:
+                feature_dict = polygon_data.model_dump()
+        else:
+            # For Polygon or dict inputs, validate and create feature
+            shapely_polygon = validate_polygon(polygon_data)
+            feature_dict = polygon_to_feature(shapely_polygon, properties)
 
-        # Step 2: Create a Feature from the polygon
-        feature = polygon_to_feature(shapely_polygon, properties)
+        # Step 2: Create FeatureCollection
+        feature_collection_dict = {
+            "type": "FeatureCollection", 
+            "features": [feature_dict]
+        }
 
-        # Step 3: Create a FeatureCollection containing the Feature
-        feature_collection = {"type": "FeatureCollection", "features": [feature]}
-
-        # Step 4: Add collection properties if provided
+        # Step 3: Add collection properties if provided
         if collection_properties:
             # Some GeoJSON implementations support collection-level properties
             # Not in the core spec, but often used
-            feature_collection.update(collection_properties)
+            feature_collection_dict.update(collection_properties)
 
-        # Optional: Validate with geojson_pydantic to ensure compliance
-        FeatureCollection.model_validate(feature_collection)
-
-        return feature_collection
+        # Step 4: Validate and return as geojson-pydantic FeatureCollection
+        return FeatureCollection.model_validate(feature_collection_dict)
 
     except Exception as e:
         raise ValueError(f"GeoJSON validation failed: {str(e)}")
@@ -158,4 +194,4 @@ if __name__ == "__main__":
         test_polygon, properties={"name": "Fire Boundary", "id": "fire-123"}
     )
 
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result.model_dump(), indent=2))

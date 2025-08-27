@@ -5,7 +5,7 @@ from rio_cogeo.cogeo import cog_validate, cog_translate
 from rio_cogeo.profiles import cog_profiles
 import os
 from typing import List, Dict, Optional, Any
-from geojson_pydantic import Polygon
+from geojson_pydantic import Polygon, Feature
 from shapely.geometry import shape
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 
@@ -14,7 +14,7 @@ RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
 async def process_remote_sensing_data(
     job_id: str,
-    geometry: Polygon,
+    geometry: Polygon | Feature,
     stac_endpoint_handler: StacEndpointHandler,
     prefire_date_range: Optional[List[str]],
     postfire_date_range: Optional[List[str]],
@@ -125,10 +125,19 @@ def initialize_workspace(job_id: str) -> Dict[str, str]:
 
 
 def get_buffered_bounds(
-    geometry: Polygon, buffer: float
+    geometry: Polygon | Feature, buffer: float
 ) -> tuple[float, float, float, float]:
     # Extract the bounding box from the geometry
-    geom_shape = shape(geometry)
+    # Convert pydantic object to dict for shapely
+    if hasattr(geometry, 'model_dump'):
+        geom_dict = geometry.model_dump()
+        # If it's a Feature, extract the geometry part
+        if geom_dict.get("type") == "Feature":
+            geom_shape = shape(geom_dict["geometry"])
+        else:
+            geom_shape = shape(geom_dict)
+    else:
+        geom_shape = shape(geometry)
     minx, miny, maxx, maxy = geom_shape.bounds
 
     # Calculate width and height in degrees

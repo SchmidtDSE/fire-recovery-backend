@@ -1,8 +1,8 @@
-from typing import Dict, List, Any, Union
-from geojson_pydantic import Polygon
+from typing import Dict, List, Any, cast
 from shapely.geometry import shape
 import pystac
 from datetime import datetime
+from geojson_pydantic import Polygon, Feature
 
 
 class STACItemFactory:
@@ -57,7 +57,7 @@ class STACItemFactory:
         fire_event_name: str,
         job_id: str,
         cog_urls: Dict[str, str],
-        geometry: Union[Polygon, Dict[str, Any]],
+        geometry: Polygon | Feature,
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
@@ -86,9 +86,10 @@ class STACItemFactory:
         # Parse datetime
         dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
-        # Convert geometry to dict if it's a Polygon object
-        geometry_dict = geometry.dict() if hasattr(geometry, "dict") else geometry
-
+        # Geometry is already GeoJSONGeometry (dict format)
+        # Cast required: PySTAC expects dict[str, Any] but doesn't recognize TypedDict structural compatibility
+        geometry_dict = cast(dict[str, Any], geometry)
+        
         # Create pystac Item
         item = pystac.Item(
             id=item_id,
@@ -281,7 +282,7 @@ class STACItemFactory:
         job_id: str,
         fire_veg_matrix_csv_url: str,
         fire_veg_matrix_json_url: str,
-        geometry: Dict[str, Any],
+        geometry: Polygon | Feature,
         bbox: List[float],
         classification_breaks: List[float],
         datetime_str: str,
@@ -308,10 +309,13 @@ class STACItemFactory:
         # Parse datetime
         dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
+        # Cast required: PySTAC expects dict[str, Any] but doesn't recognize TypedDict structural compatibility
+        geometry_dict = cast(dict[str, Any], geometry)
+        
         # Create pystac Item
         item = pystac.Item(
             id=item_id,
-            geometry=geometry,
+            geometry=geometry_dict,
             bbox=bbox,
             datetime=dt,
             properties={

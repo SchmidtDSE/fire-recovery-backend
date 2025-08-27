@@ -1,9 +1,9 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from geojson_pydantic import Polygon
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
+from geojson_pydantic import Polygon, Feature
 
 
 @dataclass
@@ -20,8 +20,8 @@ class CommandContext:
     job_id: str
     fire_event_name: str
 
-    # Geometry data (can be Polygon or dict representation)
-    geometry: Union[Polygon, Dict[str, Any]]
+    # Geometry data (GeoJSON format only)
+    geometry: Polygon | Feature
 
     # Dependencies (injected by command registry)
     storage: StorageInterface

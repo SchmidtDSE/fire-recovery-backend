@@ -3,6 +3,7 @@ from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_repository import STACJSONRepository
 from src.stac.stac_item_factory import STACItemFactory
 from src.config.storage import get_temp_storage, get_final_storage
+from geojson_pydantic import Polygon, Feature
 
 
 class STACJSONManager:
@@ -40,11 +41,11 @@ class STACJSONManager:
         fire_event_name: str,
         job_id: str,
         cog_urls: Dict[str, str],
-        geometry: Dict[str, Any],
+        geometry: Polygon | Feature,
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> str:
         """
         Create and store a fire severity STAC item
 
@@ -70,10 +71,10 @@ class STACJSONManager:
             skip_validation=skip_validation,
         )
 
-        # Store the item
-        await self._repository.add_item(stac_item, skip_validation=skip_validation)
+        # Store the item and return the storage URL
+        stac_item_url = await self._repository.add_item(stac_item, skip_validation=skip_validation)
 
-        return stac_item
+        return stac_item_url
 
     async def create_boundary_item(
         self,
@@ -121,7 +122,7 @@ class STACJSONManager:
         job_id: str,
         fire_veg_matrix_csv_url: str,
         fire_veg_matrix_json_url: str,
-        geometry: Dict[str, Any],
+        geometry: Polygon | Feature,
         bbox: List[float],
         classification_breaks: List[float],
         datetime_str: str,

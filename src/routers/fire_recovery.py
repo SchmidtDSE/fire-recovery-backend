@@ -13,7 +13,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from geojson_pydantic import Polygon
+from geojson_pydantic import Polygon, Feature
 from shapely.geometry import shape
 
 from src.config.constants import FINAL_BUCKET_NAME
@@ -52,10 +52,19 @@ from src.models.responses import (
     HealthCheckResponse,
 )
 from src.config.storage import get_temp_storage
+from typing import Any
+
+
+def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | Feature:
+    """Convert dict geometry to geojson-pydantic type"""
+    if geometry.get("type") == "Feature":
+        return Feature.model_validate(geometry)
+    else:
+        return Polygon.model_validate(geometry)
 
 
 async def process_and_upload_geojson(
-    geometry: dict, fire_event_name: str, job_id: str, filename: str
+    geometry: Polygon | Feature | dict, fire_event_name: str, job_id: str, filename: str
 ) -> Tuple[str, Dict[str, Any], List[float]]:
     """
     Validate, save and upload a GeoJSON boundary
@@ -77,7 +86,7 @@ async def process_and_upload_geojson(
 
     # Save directly to temp storage and upload
     temp_storage = get_temp_storage()
-    geojson_bytes = json.dumps(valid_geojson).encode("utf-8")
+    geojson_bytes = json.dumps(valid_geojson.model_dump()).encode("utf-8")
 
     # Generate temp path for intermediate storage
     temp_path = f"{job_id}/{filename}.geojson"
@@ -88,10 +97,11 @@ async def process_and_upload_geojson(
     geojson_url = await upload_to_gcs(geojson_bytes, blob_name)
 
     # Extract bbox from geometry for STAC
-    geom_shape = shape(valid_geojson["features"][0]["geometry"])
+    valid_geojson_dict = valid_geojson.model_dump()
+    geom_shape = shape(valid_geojson_dict["features"][0]["geometry"])
     bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
 
-    return geojson_url, valid_geojson, list(bbox)
+    return geojson_url, valid_geojson_dict, list(bbox)
 
 
 async def process_cog_with_boundary(
@@ -171,11 +181,11 @@ async def health_check() -> HealthCheckResponse:
         context = CommandContext(
             job_id=job_id,
             fire_event_name="health-check",
-            geometry={
+            geometry=convert_geometry_to_pydantic({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [0, 0]},
                 "properties": {},
-            },
+            }),
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,
@@ -237,7 +247,7 @@ async def analyze_fire_severity(
         process_fire_severity,
         job_id=job_id,
         fire_event_name=request.fire_event_name,
-        geometry=request.geometry,
+        geometry=convert_geometry_to_pydantic(request.geometry),
         prefire_date_range=request.prefire_date_range,
         postfire_date_range=request.postfire_date_range,
     )
@@ -252,7 +262,7 @@ async def analyze_fire_severity(
 async def process_fire_severity(
     job_id: str,
     fire_event_name: str,
-    geometry: Polygon,
+    geometry: Polygon | Feature,
     prefire_date_range: list[str],
     postfire_date_range: list[str],
 ) -> None:
@@ -274,7 +284,7 @@ async def process_fire_severity(
         for key, value in result["output_files"].items():
             cog_path = value
             blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
-            uploaded_url = upload_to_gcs(cog_path, blob_name)
+            uploaded_url = await upload_to_gcs(cog_path, blob_name)
 
             # Store the URL in the dictionary
             cog_urls[key] = uploaded_url
@@ -527,7 +537,7 @@ async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONRespon
         context = CommandContext(
             job_id=job_id,
             fire_event_name=request.fire_event_name,
-            geometry=request.geojson,
+            geometry=convert_geometry_to_pydantic(request.geojson),
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,
@@ -586,11 +596,11 @@ async def upload_shapefile(
         context = CommandContext(
             job_id=job_id,
             fire_event_name=fire_event_name,
-            geometry={
+            geometry=convert_geometry_to_pydantic({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [0, 0]},
                 "properties": {},
-            },  # Placeholder
+            }),  # Placeholder
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,

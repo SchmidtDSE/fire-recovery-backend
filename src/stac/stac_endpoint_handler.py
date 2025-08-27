@@ -6,6 +6,7 @@ from enum import Enum
 from pydantic import BaseModel
 import json
 import logging
+from geojson_pydantic import Polygon, Feature
 
 
 class StacProvider(Enum):
@@ -106,7 +107,7 @@ class StacEndpointHandler:
 
     async def search_items(
         self,
-        geometry: Dict,
+        geometry: Polygon | Feature | Dict[str, Any],
         date_range: List[str],
         collections: Optional[List[str]] = None,
         provider_index: Optional[int] = None,

@@ -1,11 +1,10 @@
 import logging
 import time
-from typing import Dict, Any, List, Union
+from typing import Dict, List, Any
 import xarray as xr
 import stackstac
 import numpy as np
 from shapely.geometry import shape
-from geojson_pydantic import Polygon
 
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
@@ -13,6 +12,7 @@ from src.commands.interfaces.command_result import CommandResult
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
+from src.models.types import STACDataPayload, FireSeveritySTACItem
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class FireSeverityAnalysisCommand(Command):
         postfire_date_range: List[str],
         collection: str,
         buffer_meters: float,
-    ) -> Dict[str, xr.DataArray]:
+    ) -> STACDataPayload:
         """Fetch satellite data for pre and post-fire periods"""
         logger.info("Fetching satellite data via STAC")
 
@@ -204,7 +204,12 @@ class FireSeverityAnalysisCommand(Command):
             )
 
             # Calculate buffered bounds
-            buffered_bounds = self._get_buffered_bounds(context.geometry, buffer_meters)
+            # Convert geometry to dict format for shapely processing
+            if hasattr(context.geometry, 'model_dump'):
+                geometry_dict: Dict[str, Any] = context.geometry.model_dump()
+            else:
+                geometry_dict: Dict[str, Any] = context.geometry  # type: ignore
+            buffered_bounds = self._get_buffered_bounds(geometry_dict, buffer_meters)
 
             # Stack data using stackstac
             stacked_data = stackstac.stack(
@@ -227,12 +232,12 @@ class FireSeverityAnalysisCommand(Command):
                 f"Data shapes - Prefire: {prefire_data.shape}, Postfire: {postfire_data.shape}"
             )
 
-            return {
-                "prefire_data": prefire_data,
-                "postfire_data": postfire_data,
-                "nir_band": nir_band,
-                "swir_band": swir_band,
-            }
+            return STACDataPayload(
+                prefire_data=prefire_data,
+                postfire_data=postfire_data,
+                nir_band=nir_band,
+                swir_band=swir_band,
+            )
 
         except Exception as e:
             logger.error(f"Data fetch failed: {str(e)}", exc_info=True)
@@ -241,8 +246,9 @@ class FireSeverityAnalysisCommand(Command):
     async def _calculate_burn_indices(
         self,
         context: CommandContext,
-        stac_data: Dict[str, xr.DataArray],
+        stac_data: STACDataPayload,
         requested_indices: List[str],
+        band_mapping: Dict[str, str] = {"nir": "B08", "swir": "B12"},
     ) -> Dict[str, xr.DataArray]:
         """Calculate burn indices using the strategy pattern"""
         logger.info(f"Calculating burn indices: {requested_indices}")
@@ -250,8 +256,8 @@ class FireSeverityAnalysisCommand(Command):
         try:
             prefire_data = stac_data["prefire_data"]
             postfire_data = stac_data["postfire_data"]
-            nir_band = stac_data["nir_band"]
-            swir_band = stac_data["swir_band"]
+            nir_band = band_mapping["nir"]
+            swir_band = band_mapping["swir"]
 
             # Prepare context for index calculators
             calc_context = {
@@ -341,18 +347,16 @@ class FireSeverityAnalysisCommand(Command):
         logger.info("Creating STAC metadata for fire severity analysis")
 
         try:
-            # Prepare STAC item data
-            stac_item_data = {
-                "job_id": context.job_id,
-                "fire_event_name": context.fire_event_name,
-                "analysis_type": "fire_severity",
-                "prefire_date_range": prefire_date_range,
-                "postfire_date_range": postfire_date_range,
-                "asset_urls": asset_urls,
-                "geometry": context.geometry,
-                "indices": list(asset_urls.keys()),
-                "datetime_str": postfire_date_range[1],
-            }
+            # Prepare STAC item data using TypedDict for type safety
+            stac_item_data = FireSeveritySTACItem(
+                fire_event_name=context.fire_event_name,
+                job_id=context.job_id,
+                cog_urls=asset_urls,
+                geometry=context.geometry,
+                datetime_str=postfire_date_range[1],
+                boundary_type="coarse",
+                skip_validation=False,
+            )
 
             # Create STAC item via STAC manager
             stac_item_url = await context.stac_manager.create_fire_severity_item(
@@ -367,14 +371,11 @@ class FireSeverityAnalysisCommand(Command):
             raise
 
     def _get_buffered_bounds(
-        self, geometry: Union[Polygon, Dict[str, Any]], buffer_meters: float
+        self, geometry: Dict[str, Any], buffer_meters: float
     ) -> tuple:
-        """Calculate buffered bounds for the geometry (migrated from original code)"""
-        # Handle both Polygon objects and dict representations
-        if isinstance(geometry, dict):
-            geom_shape = shape(geometry)
-        else:
-            geom_shape = shape(geometry.model_dump())
+        """Calculate buffered bounds for the geometry"""
+        # Convert GeoJSON geometry to shapely object
+        geom_shape = shape(geometry)
 
         minx, miny, maxx, maxy = geom_shape.bounds
 

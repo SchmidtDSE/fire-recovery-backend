@@ -10,6 +10,7 @@ from shapely.geometry import shape
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult
+# GeoJSONGeometry type removed - using Dict[str, Any] for dictionary-based geometry data
 from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
 
@@ -135,14 +136,14 @@ class UploadAOICommand(Command):
         logger.info("Processing GeoJSON upload")
 
         try:
-            # Get geometry from context
-            geojson_data = context.geometry
-
-            # Convert to dict if it's a Polygon object
-            if hasattr(geojson_data, "model_dump"):
-                geojson_dict = geojson_data.model_dump()
+            # Get geometry from context and convert to dict format for processing
+            geometry_obj = context.geometry
+            if hasattr(geometry_obj, 'model_dump'):
+                # Handle pydantic models - convert to dict
+                geojson_dict: Dict[str, Any] = geometry_obj.model_dump()
             else:
-                geojson_dict = geojson_data
+                # Handle dict format (backwards compatibility)
+                geojson_dict: Dict[str, Any] = geometry_obj  # type: ignore
 
             # Validate GeoJSON structure using geojson_pydantic
             if geojson_dict.get("type") == "FeatureCollection":
@@ -253,7 +254,7 @@ class UploadAOICommand(Command):
         # Save to storage via abstraction
         geojson_path = f"{context.job_id}/boundaries/{filename}.geojson"
 
-        geojson_bytes = json.dumps(valid_geojson).encode("utf-8")
+        geojson_bytes = json.dumps(valid_geojson.model_dump()).encode("utf-8")
 
         # Upload via storage interface
         geojson_url = await context.storage.save_bytes(
@@ -265,12 +266,13 @@ class UploadAOICommand(Command):
         gcs_url = await upload_to_gcs(geojson_bytes, gcs_blob_name)
 
         # Extract bbox from geometry for STAC
-        geom_shape = shape(valid_geojson["features"][0]["geometry"])
+        valid_geojson_dict = valid_geojson.model_dump()
+        geom_shape = shape(valid_geojson_dict["features"][0]["geometry"])
         bbox = list(geom_shape.bounds)  # (minx, miny, maxx, maxy)
 
         logger.info(f"GeoJSON uploaded to storage: {geojson_url} and GCS: {gcs_url}")
 
-        return geojson_url, valid_geojson, bbox
+        return geojson_url, valid_geojson_dict, bbox
 
     async def _create_boundary_stac_item(
         self,

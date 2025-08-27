@@ -4,6 +4,7 @@ from src.core.storage.interface import StorageInterface
 from src.stac.stac_item_factory import STACItemFactory
 from src.config.storage import get_temp_storage, get_final_storage
 from datetime import datetime
+from geojson_pydantic import Polygon, Feature
 
 
 class STACCatalogManager:
@@ -139,7 +140,7 @@ class STACCatalogManager:
         fire_event_name: str,
         job_id: str,
         cog_urls: Dict[str, str],
-        geometry: Dict[str, Any],
+        geometry: Polygon | Feature,
         datetime_str: str,
         boundary_type: str = "coarse",
     ) -> Dict[str, Any]:
@@ -222,7 +223,7 @@ class STACCatalogManager:
         job_id: str,
         fire_veg_matrix_csv_url: str,
         fire_veg_matrix_json_url: str,
-        geometry: Dict[str, Any],
+        geometry: Polygon | Feature,
         bbox: List[float],
         classification_breaks: List[float],
         datetime_str: str,
