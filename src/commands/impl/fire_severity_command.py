@@ -159,7 +159,7 @@ class FireSeverityAnalysisCommand(Command):
                 error_message=str(e),
                 error_details={
                     "error_type": type(e).__name__,
-                    "stage": getattr(e, "_analysis_stage", "unknown"),
+                    "stage": "execute",
                 },
             )
 
@@ -235,7 +235,7 @@ class FireSeverityAnalysisCommand(Command):
             }
 
         except Exception as e:
-            e._analysis_stage = "data_fetch"
+            logger.error(f"Data fetch failed: {str(e)}", exc_info=True)
             raise
 
     async def _calculate_burn_indices(
@@ -294,7 +294,7 @@ class FireSeverityAnalysisCommand(Command):
             return index_results
 
         except Exception as e:
-            e._analysis_stage = "index_calculation"
+            logger.error(f"Index calculation failed: {str(e)}", exc_info=True)
             raise
 
     async def _save_results_as_cogs(
@@ -327,7 +327,7 @@ class FireSeverityAnalysisCommand(Command):
             return asset_urls
 
         except Exception as e:
-            e._analysis_stage = "cog_creation"
+            logger.error(f"COG creation failed: {str(e)}", exc_info=True)
             raise
 
     async def _create_stac_metadata(
@@ -351,18 +351,19 @@ class FireSeverityAnalysisCommand(Command):
                 "asset_urls": asset_urls,
                 "geometry": context.geometry,
                 "indices": list(asset_urls.keys()),
+                "datetime_str": postfire_date_range[1],
             }
 
             # Create STAC item via STAC manager
             stac_item_url = await context.stac_manager.create_fire_severity_item(
-                stac_item_data
+                **stac_item_data
             )
 
             logger.info(f"Created STAC item: {stac_item_url}")
             return stac_item_url
 
         except Exception as e:
-            e._analysis_stage = "stac_creation"
+            logger.error(f"STAC creation failed: {str(e)}", exc_info=True)
             raise
 
     def _get_buffered_bounds(
