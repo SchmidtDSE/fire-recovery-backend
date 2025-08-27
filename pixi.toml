@@ -11,13 +11,6 @@ ruff-check = "ruff check ."
 ruff-format = "ruff format ."
 ruff-fix = "ruff check . --fix"
 
-[tasks.mypy]
-args = [
-  { "arg" = "path", "default" = "." }
-]
-cmd = "mypy {{ path }} --show-error-codes"
-
-
 [dependencies]
 numpy = ">=2.2.4,<3"
 rasterio = ">=1.4.3,<2"
@@ -47,6 +40,7 @@ pytest-dotenv = ">=0.5.2,<0.6"
 obstore = ">=0.7.3,<0.8"
 stac-check = ">=1.3.3,<2"
 ruff = ">=0.12.9,<0.13"
+geojson-pydantic = ">=2.0.0,<3"
 
 [pypi-dependencies]
 stac-pydantic = ">=3.2.0, <4"
