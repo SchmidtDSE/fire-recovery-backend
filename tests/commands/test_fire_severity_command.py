@@ -406,7 +406,9 @@ class TestFireSeverityAnalysisCommand:
         assert result.has_assets()
 
     @pytest.mark.asyncio
-    async def test_execute_failure_missing_config(self, command_context: CommandContext) -> None:
+    async def test_execute_failure_missing_config(
+        self, command_context: CommandContext
+    ) -> None:
         """Test command execution failure with missing configuration"""
         command = FireSeverityAnalysisCommand()
 

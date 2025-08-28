@@ -38,7 +38,7 @@ async def test_stac_json_manager_create_fire_severity_item(
 
     try:
         # Create fire severity item
-        stac_item = await manager.create_fire_severity_item(
+        await manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
             cog_urls=cog_urls,
@@ -47,6 +47,11 @@ async def test_stac_json_manager_create_fire_severity_item(
             boundary_type="coarse",
             skip_validation=True,
         )
+
+        # Get the actual STAC item for validation
+        retrieved_items = await manager.get_items_by_fire_event(fire_event_name)
+        assert len(retrieved_items) == 1
+        stac_item = retrieved_items[0]  # Get the first (and only) item
 
         # Validate the created item structure (pystac validation already done in factory)
         assert stac_item["id"] == f"{fire_event_name}-severity-{job_id}"
@@ -63,9 +68,7 @@ async def test_stac_json_manager_create_fire_severity_item(
         assert stac_item["assets"]["rbr"]["href"] == cog_urls["rbr"]
 
         # Verify item was stored as individual JSON file
-        retrieved_items = await manager.get_items_by_fire_event(fire_event_name)
-        assert len(retrieved_items) == 1
-        assert retrieved_items[0]["id"] == stac_item["id"]
+        assert stac_item["id"] == f"{fire_event_name}-severity-{job_id}"
 
         # Verify file exists in storage with correct path structure
         __expected_path = f"stac/{fire_event_name}/fire_severity-{job_id}.json"

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import UploadFile
 from io import BytesIO
 
+from geojson_pydantic import FeatureCollection, Feature, Polygon
 from src.commands.impl.upload_aoi_command import UploadAOICommand
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandStatus
@@ -196,10 +197,25 @@ class TestUploadAOICommand:
     ) -> None:
         """Test successful GeoJSON upload execution"""
         # Setup mocks
-        mock_polygon_to_valid_geojson.return_value = {
-            "type": "FeatureCollection",
-            "features": [sample_geojson],
-        }
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[[
+                            (-120.0, 35.0),
+                            (-119.0, 35.0),
+                            (-119.0, 36.0),
+                            (-120.0, 36.0),
+                            (-120.0, 35.0),
+                        ]]
+                    ),
+                    properties={}
+                )
+            ]
+        )
         mock_upload_to_gcs.return_value = "https://gcs.example.com/test.geojson"
 
         # Mock shapely bounds
@@ -332,10 +348,25 @@ class TestUploadAOICommand:
     ) -> None:
         """Test execution with storage failure"""
         # Setup mocks
-        mock_polygon_to_valid_geojson.return_value = {
-            "type": "FeatureCollection",
-            "features": [sample_geojson],
-        }
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[[
+                            (-120.0, 35.0),
+                            (-119.0, 35.0),
+                            (-119.0, 36.0),
+                            (-120.0, 36.0),
+                            (-120.0, 35.0),
+                        ]]
+                    ),
+                    properties={}
+                )
+            ]
+        )
 
         # Make storage fail
         geojson_command_context.storage.save_bytes.side_effect = Exception(
@@ -366,10 +397,25 @@ class TestUploadAOICommand:
             patch("src.commands.impl.upload_aoi_command.shape") as mock_shape,
         ):
             # Setup mocks
-            mock_polygon.return_value = {
-                "type": "FeatureCollection",
-                "features": [sample_feature_collection["features"][0]],
-            }
+            mock_polygon.return_value = FeatureCollection(
+                type="FeatureCollection",
+                features=[
+                    Feature(
+                        type="Feature",
+                        geometry=Polygon(
+                            type="Polygon",
+                            coordinates=[[
+                                [-120.0, 35.0],
+                                [-119.0, 35.0],
+                                [-119.0, 36.0],
+                                [-120.0, 36.0],
+                                [-120.0, 35.0],
+                            ]]
+                        ),
+                        properties={}
+                    )
+                ]
+            )
             mock_upload.return_value = "https://gcs.example.com/test.geojson"
 
             mock_geom = MagicMock()
