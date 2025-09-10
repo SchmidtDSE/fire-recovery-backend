@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
 import logging
 from .command_context import CommandContext
 from .command_result import CommandResult
@@ -57,7 +57,7 @@ class Command(ABC):
         pass
 
     @abstractmethod
-    def validate_context(self, context: CommandContext) -> bool:
+    def validate_context(self, context: CommandContext) -> Tuple[bool, str]:
         """
         Validate that the context contains all required data for execution.
 

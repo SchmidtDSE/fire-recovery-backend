@@ -150,30 +150,33 @@ router = APIRouter(
     tags=["Fire Recovery"],
     responses={404: {"description": "Not found"}},
 )
+
+
 # Dependency functions
 async def get_stac_manager() -> STACJSONManager:
     """Get STAC JSON manager instance and ensure catalog exists"""
     stac_manager = STACJSONManager.for_production(
         base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac"
     )
-    
+
     # Ensure catalog exists by initializing it
     catalog_manager = STACCatalogManager.for_production(
         base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac"
     )
-    
+
     # Check if catalog exists, if not initialize it
-    try:
-        await catalog_manager.get_catalog()
-    except Exception:
+    __root_catalog = await catalog_manager.get_catalog()
+    if __root_catalog is None:
         # Catalog doesn't exist, initialize it
         await catalog_manager.initialize_catalog()
-    
+
     return stac_manager
+
 
 def get_storage_factory() -> StorageFactory:
     """Get storage factory instance"""
     return StorageFactory()
+
 
 def get_index_registry() -> IndexRegistry:
     """Get index registry instance"""
@@ -206,11 +209,13 @@ async def health_check(
         context = CommandContext(
             job_id=job_id,
             fire_event_name="health-check",
-            geometry=convert_geometry_to_pydantic({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [0, 0]},
-                "properties": {},
-            }),
+            geometry=convert_geometry_to_pydantic(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [0, 0]},
+                    "properties": {},
+                }
+            ),
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,
@@ -626,11 +631,13 @@ async def upload_shapefile(
         context = CommandContext(
             job_id=job_id,
             fire_event_name=fire_event_name,
-            geometry=convert_geometry_to_pydantic({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [0, 0]},
-                "properties": {},
-            }),  # Placeholder
+            geometry=convert_geometry_to_pydantic(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [0, 0]},
+                    "properties": {},
+                }
+            ),  # Placeholder
             storage=storage_factory.get_temp_storage(),
             stac_manager=stac_manager,
             index_registry=index_registry,

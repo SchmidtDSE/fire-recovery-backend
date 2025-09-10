@@ -29,8 +29,12 @@ class TestHealthEndpoint:
 
         # Import app and router dependency functions
         from src.app import app
-        from src.routers.fire_recovery import get_stac_manager, get_storage_factory, get_index_registry
-        
+        from src.routers.fire_recovery import (
+            get_stac_manager,
+            get_storage_factory,
+            get_index_registry,
+        )
+
         # Create mock storage factory
         mock_storage_factory = MagicMock()
         mock_storage_factory.get_temp_storage.return_value = mock_storage
@@ -38,9 +42,9 @@ class TestHealthEndpoint:
         # Override dependencies with mocks
         async def mock_get_stac_manager():
             return mock_stac_manager
-            
+
         app.dependency_overrides[get_stac_manager] = mock_get_stac_manager
-        app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory  
+        app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory
         app.dependency_overrides[get_index_registry] = lambda: mock_index_registry
 
         try:
@@ -113,8 +117,12 @@ class TestHealthEndpoint:
 
         # Import app and router dependency functions
         from src.app import app
-        from src.routers.fire_recovery import get_stac_manager, get_storage_factory, get_index_registry
-        
+        from src.routers.fire_recovery import (
+            get_stac_manager,
+            get_storage_factory,
+            get_index_registry,
+        )
+
         # Create mock storage factory
         mock_storage_factory = MagicMock()
         mock_storage_factory.get_temp_storage.return_value = mock_storage
@@ -122,7 +130,7 @@ class TestHealthEndpoint:
         # Override dependencies with mocks
         async def mock_get_stac_manager():
             return mock_stac_manager
-            
+
         app.dependency_overrides[get_stac_manager] = mock_get_stac_manager
         app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory
         app.dependency_overrides[get_index_registry] = lambda: mock_index_registry
@@ -165,8 +173,12 @@ class TestHealthEndpoint:
 
         # Import app and router dependency functions
         from src.app import app
-        from src.routers.fire_recovery import get_stac_manager, get_storage_factory, get_index_registry
-        
+        from src.routers.fire_recovery import (
+            get_stac_manager,
+            get_storage_factory,
+            get_index_registry,
+        )
+
         # Create mock STAC manager and index registry
         mock_stac_manager = MagicMock()
         mock_index_registry = MagicMock()
@@ -174,7 +186,7 @@ class TestHealthEndpoint:
         # Override dependencies with mocks
         async def mock_get_stac_manager():
             return mock_stac_manager
-            
+
         app.dependency_overrides[get_stac_manager] = mock_get_stac_manager
         app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory
         app.dependency_overrides[get_index_registry] = lambda: mock_index_registry
