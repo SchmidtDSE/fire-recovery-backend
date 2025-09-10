@@ -129,7 +129,7 @@ def get_buffered_bounds(
 ) -> tuple[float, float, float, float]:
     # Extract the bounding box from the geometry
     # Convert pydantic object to dict for shapely
-    if hasattr(geometry, 'model_dump'):
+    if hasattr(geometry, "model_dump"):
         geom_dict = geometry.model_dump()
         # If it's a Feature, extract the geometry part
         if geom_dict.get("type") == "Feature":
@@ -181,11 +181,6 @@ def calculate_nbr(
 #     keepalive="6 hours",
 #     local=False,
 # )
-# @cache(
-#     key_builder=burn_indices_key_builder,
-#     namespace="burn_indices",
-#     expire=60 * 60 * 24 * 7,  # Cache for 7 days
-# )
 def calculate_burn_indices(
     prefire_data: xr.DataArray,
     postfire_data: xr.DataArray,
@@ -227,49 +222,46 @@ def calculate_burn_indices(
         "rbr": rbr,
     }
 
-    # Write to cache
-    # write_to_cache(cache_key=cache_key, result=result)
-
     return result
 
 
-def create_cog(data: xr.DataArray, output_path: str) -> Dict[str, Any]:
-    """Create a Cloud Optimized GeoTIFF from xarray data"""
+# def create_cog(data: xr.DataArray, output_path: str) -> Dict[str, Any]:
+#     """Create a Cloud Optimized GeoTIFF from xarray data"""
 
-    naive_tiff = output_path.replace(".tif", "_raw.tif")
+#     naive_tiff = output_path.replace(".tif", "_raw.tif")
 
-    # Dask arrays are lazy - this is where dask-distributed will
-    # actually compute the burn metrics from the various href'd COGs
-    computed = data.compute()
+#     # Dask arrays are lazy - this is where dask-distributed will
+#     # actually compute the burn metrics from the various href'd COGs
+#     computed = data.compute()
 
-    # Ensure data is float32 and has proper nodata value
-    computed = computed.astype("float32")
+#     # Ensure data is float32 and has proper nodata value
+#     computed = computed.astype("float32")
 
-    # Set nodata value for NaN values
-    nodata = -9999.0
-    computed = computed.rio.write_nodata(nodata)
-    computed.rio.set_crs("EPSG:4326", inplace=True)
+#     # Set nodata value for NaN values
+#     nodata = -9999.0
+#     computed = computed.rio.write_nodata(nodata)
+#     computed.rio.set_crs("EPSG:4326", inplace=True)
 
-    # Write the naive GeoTIFF
-    computed.rio.to_raster(naive_tiff, driver="GTiff", dtype="float32")
+#     # Write the naive GeoTIFF
+#     computed.rio.to_raster(naive_tiff, driver="GTiff", dtype="float32")
 
-    cog_profile = cog_profiles.get("deflate")
-    # Update the profile to include nodata value
-    cog_profile.update(dtype="float32", nodata=nodata)
+#     cog_profile = cog_profiles.get("deflate")
+#     # Update the profile to include nodata value
+#     cog_profile.update(dtype="float32", nodata=nodata)
 
-    cog_translate(
-        naive_tiff,
-        output_path,
-        cog_profile,
-        add_mask=True,
-        overview_resampling="average",
-        forward_band_tags=True,
-        use_cog_driver=True,
-    )
+#     cog_translate(
+#         naive_tiff,
+#         output_path,
+#         cog_profile,
+#         add_mask=True,
+#         overview_resampling="average",
+#         forward_band_tags=True,
+#         use_cog_driver=True,
+#     )
 
-    is_valid, __errors, __warnings = cog_validate(output_path)
+#     is_valid, __errors, __warnings = cog_validate(output_path)
 
-    # Clean up intermediate naive file
-    os.remove(naive_tiff)
+#     # Clean up intermediate naive file
+#     os.remove(naive_tiff)
 
-    return {"path": output_path, "is_valid": is_valid}
+#     return {"path": output_path, "is_valid": is_valid}

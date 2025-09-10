@@ -203,7 +203,7 @@ class UploadAOICommand(Command):
             content = await upload_file.read()
 
             # Upload zip file to storage
-            zip_path = f"{context.job_id}/uploads/original_shapefile.zip"
+            zip_path = f"assets/{context.job_id}/uploads/original_shapefile.zip"
             shapefile_url = await context.storage.save_bytes(
                 data=content, path=zip_path, temporary=False
             )
@@ -252,7 +252,7 @@ class UploadAOICommand(Command):
         valid_geojson = polygon_to_valid_geojson(geometry)
 
         # Save to storage via abstraction
-        geojson_path = f"{context.job_id}/boundaries/{filename}.geojson"
+        geojson_path = f"assets/{context.job_id}/boundaries/{filename}.geojson"
 
         geojson_bytes = json.dumps(valid_geojson.model_dump()).encode("utf-8")
 

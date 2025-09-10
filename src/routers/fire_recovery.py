@@ -19,10 +19,6 @@ from shapely.geometry import shape
 
 from src.config.constants import FINAL_BUCKET_NAME
 from src.process.resolve_veg import process_veg_map
-from src.process.spectral_indices import (
-    process_remote_sensing_data,
-)
-from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.stac.stac_json_manager import STACJSONManager
 from src.stac.stac_catalog_manager import STACCatalogManager
 from src.util.cog_ops import (
@@ -34,6 +30,7 @@ from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
 from src.commands.impl.upload_aoi_command import UploadAOICommand
 from src.commands.impl.health_check_command import HealthCheckCommand
+from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
 from src.commands.interfaces.command_context import CommandContext
 from src.core.storage.storage_factory import StorageFactory
 from src.computation.registry.index_registry import IndexRegistry
@@ -295,41 +292,39 @@ async def process_fire_severity(
     geometry: Polygon | Feature,
     prefire_date_range: list[str],
     postfire_date_range: list[str],
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> None:
     try:
-        # Create STAC endpoint handler
-        stac_handler = StacEndpointHandler()
-
-        # 1. Process the data
-        result = await process_remote_sensing_data(
+        # Create command context for fire severity analysis
+        context = CommandContext(
             job_id=job_id,
-            geometry=geometry,
-            stac_endpoint_handler=stac_handler,
-            prefire_date_range=prefire_date_range,
-            postfire_date_range=postfire_date_range,
-        )
-
-        # 2. Upload the COGs to GCS
-        cog_urls = {}  # Store all COG URLs in a dictionary
-        for key, value in result["output_files"].items():
-            cog_path = value
-            blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
-            uploaded_url = await upload_to_gcs(cog_path, blob_name)
-
-            # Store the URL in the dictionary
-            cog_urls[key] = uploaded_url
-
-        # 3. Create a STAC item for the fire severity
-        datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
-            job_id=job_id,
-            cog_urls=cog_urls,  # Pass the dictionary of COG URLs
             geometry=geometry,
-            datetime_str=datetime_str,
+            storage=storage_factory.get_temp_storage(),
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            computation_config={
+                "prefire_date_range": prefire_date_range,
+                "postfire_date_range": postfire_date_range,
+                "collection": "sentinel-2-l2a",
+                "buffer_meters": 100,
+                "indices": ["dnbr", "rdnbr", "rbr"],
+            },
         )
 
-        # 4. Process and upload the boundary GeoJSON
+        # Execute the fire severity analysis command
+        command = FireSeverityAnalysisCommand()
+        result = await command.execute(context)
+
+        if result.is_failure():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing fire severity: {result.error_message}",
+            )
+
+        # Process and upload the boundary GeoJSON
         boundary_geojson_url, valid_geojson, bbox = await process_and_upload_geojson(
             geometry=geometry,
             fire_event_name=fire_event_name,
@@ -337,7 +332,10 @@ async def process_fire_severity(
             filename="coarse_boundary",
         )
 
-        # 5. Create a STAC item for the coarse boundary
+        # Create a STAC item for the coarse boundary
+        datetime_str = datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
@@ -359,7 +357,9 @@ async def process_fire_severity(
     tags=["Fire Severity"],
 )
 async def get_fire_severity_result(
-    fire_event_name: str, job_id: str
+    fire_event_name: str,
+    job_id: str,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> Union[TaskPendingResponse, FireSeverityResponse]:
     """
     Get the result of the fire severity analysis.
@@ -422,7 +422,10 @@ async def refine_fire_boundary(
 
 
 async def process_boundary_refinement(
-    job_id: str, fire_event_name: str, refine_geojson: dict
+    job_id: str,
+    fire_event_name: str,
+    refine_geojson: dict,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> None:
     """
     Process boundary refinement, upload results, and create STAC assets
@@ -492,7 +495,9 @@ async def process_boundary_refinement(
     tags=["Boundary Refinement"],
 )
 async def get_refine_result(
-    fire_event_name: str, job_id: str
+    fire_event_name: str,
+    job_id: str,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> Union[TaskPendingResponse, RefinedBoundaryResponse]:
     """
     Get the result of the fire boundary refinement.
@@ -619,7 +624,11 @@ async def upload_geojson(
     "/upload/shapefile", response_model=UploadedShapefileZipResponse, tags=["Upload"]
 )
 async def upload_shapefile(
-    fire_event_name: str = Form(...), shapefile: UploadFile = File(...)
+    fire_event_name: str = Form(...),
+    shapefile: UploadFile = File(...),
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> UploadedShapefileZipResponse:
     """Upload a zipped shapefile for a fire event."""
     job_id = str(uuid.uuid4())
@@ -718,6 +727,7 @@ async def process_veg_map_resolution(
     fire_cog_url: str,
     severity_breaks: List[float],
     geojson_url: str,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> None:
     """
     Process vegetation map against fire severity COG to create area matrix.
@@ -795,7 +805,10 @@ async def process_veg_map_resolution(
     tags=["Vegetation Map Analysis"],
 )
 async def get_veg_map_result(
-    fire_event_name: str, job_id: str, severity_breaks: Optional[List[float]] = None
+    fire_event_name: str,
+    job_id: str,
+    severity_breaks: Optional[List[float]] = None,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> Union[TaskPendingResponse, VegMapMatrixResponse]:
     """
     Get the result of the vegetation map resolution against fire severity.

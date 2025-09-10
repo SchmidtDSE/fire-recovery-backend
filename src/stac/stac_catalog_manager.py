@@ -274,7 +274,7 @@ class STACCatalogManager:
         # Load the existing collection
         collection_path = f"collections/{collection_id}/collection.json"
         try:
-            collection_dict = await self.storage.get_json(collection_path)
+            collection_dict = await self.storage.get_json(f"stac/{collection_path}")
             collection = pystac.Collection.from_dict(collection_dict)
         except Exception:
             # Collection doesn't exist, create it
@@ -321,7 +321,9 @@ class STACCatalogManager:
             Storage URL
         """
         obj_dict = obj.to_dict(transform_hrefs=True)
-        return await self.storage.save_json(obj_dict, path)
+        # Ensure all STAC catalog files are saved under stac/ prefix
+        stac_path = f"stac/{path}"
+        return await self.storage.save_json(obj_dict, stac_path)
 
     async def get_catalog(self) -> Optional[Dict[str, Any]]:
         """
@@ -331,7 +333,7 @@ class STACCatalogManager:
             Root catalog dictionary or None if not found
         """
         try:
-            return await self.storage.get_json("catalog.json")
+            return await self.storage.get_json("stac/catalog.json")
         except Exception:
             return None
 
@@ -347,7 +349,7 @@ class STACCatalogManager:
         """
         try:
             return await self.storage.get_json(
-                f"collections/{collection_id}/collection.json"
+                f"stac/collections/{collection_id}/collection.json"
             )
         except Exception:
             return None
@@ -365,7 +367,7 @@ class STACCatalogManager:
         items = []
         try:
             item_files = await self.storage.list_files(
-                f"collections/{collection_id}/items/"
+                f"stac/collections/{collection_id}/items/"
             )
             for file_path in item_files:
                 if file_path.endswith(".json"):

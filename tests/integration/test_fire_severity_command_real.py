@@ -120,7 +120,7 @@ class TestFireSeverityCommandReal:
         # Validate COG files exist and have content
         for index_name in ["dnbr", "rdnbr", "rbr"]:
             assert index_name in asset_urls
-            cog_path = f"integration-test-small/fire_severity/{index_name}.tif"
+            cog_path = f"assets/integration-test-small/fire_severity/{index_name}.tif"
             assert cog_path in files_in_storage
 
             # Verify COG has realistic content
@@ -208,7 +208,7 @@ class TestFireSeverityCommandReal:
 
         # Validate COG files exist and have larger content than small geometry
         for index_name in ["dnbr", "rdnbr", "rbr"]:
-            cog_path = f"integration-test-medium/fire_severity/{index_name}.tif"
+            cog_path = f"assets/integration-test-medium/fire_severity/{index_name}.tif"
             assert cog_path in files_in_storage
 
             cog_bytes = await real_memory_storage.get_bytes(cog_path)
@@ -286,7 +286,7 @@ class TestFireSeverityCommandReal:
 
         # Validate COG files exist and have largest content
         for index_name in ["dnbr", "rdnbr", "rbr"]:
-            cog_path = f"integration-test-large/fire_severity/{index_name}.tif"
+            cog_path = f"assets/integration-test-large/fire_severity/{index_name}.tif"
             assert cog_path in files_in_storage
 
             cog_bytes = await real_memory_storage.get_bytes(cog_path)
@@ -347,7 +347,7 @@ class TestFireSeverityCommandReal:
 
         # Load and validate actual computed values from storage
         for index_name in ["dnbr", "rdnbr", "rbr"]:
-            cog_path = f"integration-test-small/fire_severity/{index_name}.tif"
+            cog_path = f"assets/integration-test-small/fire_severity/{index_name}.tif"
 
             # Verify file exists
             files = await real_memory_storage.list_files("")
@@ -513,7 +513,7 @@ class TestFireSeverityCommandReal:
         # Validate each COG file
         expected_indices = ["dnbr", "rdnbr", "rbr"]
         for index_name in expected_indices:
-            cog_path = f"integration-test-small/fire_severity/{index_name}.tif"
+            cog_path = f"assets/integration-test-small/fire_severity/{index_name}.tif"
 
             # Verify file exists in storage
             assert cog_path in files_in_storage
@@ -533,7 +533,7 @@ class TestFireSeverityCommandReal:
             assert result.asset_urls[index_name] == expected_url
 
         # Validate storage metadata
-        storage_files = await real_memory_storage.list_files("integration-test-small/")
+        storage_files = await real_memory_storage.list_files("assets/integration-test-small/")
         assert len(storage_files) == 3  # RBR, dNBR, RdNBR
 
         # Validate no temporary files remain (should be cleaned automatically)

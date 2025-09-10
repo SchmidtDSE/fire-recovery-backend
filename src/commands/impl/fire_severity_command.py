@@ -346,7 +346,7 @@ class FireSeverityAnalysisCommand(Command):
                 processed_data = self._prepare_data_for_cog(data)
 
                 # Save as COG through storage abstraction
-                cog_path = f"{context.job_id}/fire_severity/{index_name}.tif"
+                cog_path = f"assets/{context.job_id}/fire_severity/{index_name}.tif"
 
                 # Convert xarray to bytes for storage (simplified approach)
                 # In production, this would use proper COG creation
