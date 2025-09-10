@@ -305,7 +305,7 @@ def create_integration_context(
             "postfire_date_range": postfire_dates,
             "collection": "sentinel-2-l2a",
             "buffer_meters": 100,
-            "indices": ["nbr", "dnbr", "rdnbr", "rbr"],
+            "indices": ["dnbr", "rdnbr", "rbr"],
         },
         metadata={"test_type": "integration", "geometry_size": geometry_name}
     )

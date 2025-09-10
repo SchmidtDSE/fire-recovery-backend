@@ -123,7 +123,9 @@ class TestFireSeverityAnalysisCommand:
     def test_context_validation_success(self, command_context: CommandContext) -> None:
         """Test successful context validation"""
         command = FireSeverityAnalysisCommand()
-        assert command.validate_context(command_context) is True
+        result, message = command.validate_context(command_context)
+        assert result is True
+        assert message == ""
 
     def test_context_validation_missing_dates(
         self, command_context: CommandContext
@@ -133,7 +135,9 @@ class TestFireSeverityAnalysisCommand:
 
         # Remove date ranges from computation config
         command_context.computation_config = {}
-        assert command.validate_context(command_context) is False
+        result, message = command.validate_context(command_context)
+        assert result is False
+        assert "prefire_date_range and postfire_date_range are required" in message
 
     def test_context_validation_missing_geometry(
         self, command_context: CommandContext
@@ -142,7 +146,10 @@ class TestFireSeverityAnalysisCommand:
         command = FireSeverityAnalysisCommand()
 
         command_context.geometry = None  # type: ignore
-        assert command.validate_context(command_context) is False
+        assert command.validate_context(command_context) == (
+            False,
+            "geometry is required for spatial analysis",
+        )
 
     def test_context_validation_missing_storage(
         self, command_context: CommandContext
@@ -151,7 +158,9 @@ class TestFireSeverityAnalysisCommand:
         command = FireSeverityAnalysisCommand()
 
         command_context.storage = None  # type: ignore
-        assert command.validate_context(command_context) is False
+        result, message = command.validate_context(command_context)
+        assert result is False
+        assert message == "storage interface is required"
 
     def test_get_buffered_bounds(self) -> None:
         """Test buffered bounds calculation"""

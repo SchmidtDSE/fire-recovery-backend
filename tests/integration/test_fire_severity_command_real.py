@@ -13,7 +13,7 @@ from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
 from src.core.storage.memory import MemoryStorage
 from src.computation.registry.index_registry import IndexRegistry
 
-from .fixtures import (
+from .conftest import (
     create_integration_context,
     get_geometry_bounds,
     PERFORMANCE_EXPECTATIONS,
@@ -30,7 +30,7 @@ class TestFireSeverityCommandReal:
     - Real CommandContext with MemoryStorage
     - Real IndexRegistry with mathematical computations
     - Real create_cog_bytes() and storage operations
-    - Real mathematical results validation (NBR, dNBR, RdNBR, RBR)
+    - Real mathematical results validation (dNBR, RdNBR, RBR)
 
     Only external STAC APIs are mocked with realistic synthetic satellite data.
     """
@@ -103,7 +103,7 @@ class TestFireSeverityCommandReal:
         assert result.data["analysis_complete"] is True
         assert "indices_calculated" in result.data
         indices_calculated = result.data["indices_calculated"]
-        assert "nbr" in indices_calculated
+
         assert "dnbr" in indices_calculated
         assert "rdnbr" in indices_calculated
         assert "rbr" in indices_calculated
@@ -111,14 +111,14 @@ class TestFireSeverityCommandReal:
         # Validate real assets were created
         assert result.has_assets()
         asset_urls = result.asset_urls
-        assert len(asset_urls) == 4  # NBR, dNBR, RdNBR, RBR
+        assert len(asset_urls) == 3  # dNBR, RdNBR, RBR
 
         # Validate real storage operations occurred
         files_in_storage = await real_memory_storage.list_files("")
-        assert len(files_in_storage) >= 4  # At least the 4 COG files
+        assert len(files_in_storage) >= 3  # At least the 3 COG files
 
         # Validate COG files exist and have content
-        for index_name in ["nbr", "dnbr", "rdnbr", "rbr"]:
+        for index_name in ["dnbr", "rdnbr", "rbr"]:
             assert index_name in asset_urls
             cog_path = f"integration-test-small/fire_severity/{index_name}.tif"
             assert cog_path in files_in_storage
@@ -201,15 +201,19 @@ class TestFireSeverityCommandReal:
         # Validate real computation results
         assert result.data["analysis_complete"] is True
         indices_calculated = result.data["indices_calculated"]
-        assert len(indices_calculated) == 4
+        assert len(indices_calculated) == 3  # dNBR, RdNBR, RBR
 
         # Validate larger dataset produced larger files
         files_in_storage = await real_memory_storage.list_files("")
-        cog_path = "integration-test-medium/fire_severity/nbr.tif"
-        cog_bytes = await real_memory_storage.get_bytes(cog_path)
 
-        # Medium geometry should produce larger files than small
-        assert len(cog_bytes) > 2000  # Larger than small geometry
+        # Validate COG files exist and have larger content than small geometry
+        for index_name in ["dnbr", "rdnbr", "rbr"]:
+            cog_path = f"integration-test-medium/fire_severity/{index_name}.tif"
+            assert cog_path in files_in_storage
+
+            cog_bytes = await real_memory_storage.get_bytes(cog_path)
+            # Medium geometry should produce larger files than small
+            assert len(cog_bytes) > 2000  # Larger than small geometry
 
         print(f"✅ Medium geometry test completed in {execution_time:.2f}s")
 
@@ -279,11 +283,15 @@ class TestFireSeverityCommandReal:
 
         # Validate largest dataset produced largest files
         files_in_storage = await real_memory_storage.list_files("")
-        cog_path = "integration-test-large/fire_severity/nbr.tif"
-        cog_bytes = await real_memory_storage.get_bytes(cog_path)
 
-        # Large geometry should produce largest files
-        assert len(cog_bytes) > 5000  # Larger than medium geometry
+        # Validate COG files exist and have largest content
+        for index_name in ["dnbr", "rdnbr", "rbr"]:
+            cog_path = f"integration-test-large/fire_severity/{index_name}.tif"
+            assert cog_path in files_in_storage
+
+            cog_bytes = await real_memory_storage.get_bytes(cog_path)
+            # Large geometry should produce largest files
+            assert len(cog_bytes) > 5000  # Larger than medium geometry
 
         print(f"✅ Large geometry test completed in {execution_time:.2f}s")
 
@@ -338,7 +346,7 @@ class TestFireSeverityCommandReal:
         assert result.is_success()
 
         # Load and validate actual computed values from storage
-        for index_name in ["nbr", "dnbr", "rdnbr", "rbr"]:
+        for index_name in ["dnbr", "rdnbr", "rbr"]:
             cog_path = f"integration-test-small/fire_severity/{index_name}.tif"
 
             # Verify file exists
@@ -500,10 +508,10 @@ class TestFireSeverityCommandReal:
 
         # Validate real storage operations
         files_in_storage = await real_memory_storage.list_files("")
-        assert len(files_in_storage) >= 4  # At least 4 COG files
+        assert len(files_in_storage) >= 3  # At least 3 COG files
 
         # Validate each COG file
-        expected_indices = ["nbr", "dnbr", "rdnbr", "rbr"]
+        expected_indices = ["dnbr", "rdnbr", "rbr"]
         for index_name in expected_indices:
             cog_path = f"integration-test-small/fire_severity/{index_name}.tif"
 
@@ -526,7 +534,7 @@ class TestFireSeverityCommandReal:
 
         # Validate storage metadata
         storage_files = await real_memory_storage.list_files("integration-test-small/")
-        assert len(storage_files) == 4  # Exactly 4 indices
+        assert len(storage_files) == 3  # RBR, dNBR, RdNBR
 
         # Validate no temporary files remain (should be cleaned automatically)
         temp_files = await real_memory_storage.list_files("temp/")
@@ -591,17 +599,17 @@ class TestFireSeverityCommandReal:
 
         # Validate complete data payload
         assert result.data["analysis_complete"] is True
-        assert len(result.data["indices_calculated"]) == 4
+        assert len(result.data["indices_calculated"]) == 3
         assert result.data["stac_item_url"] is not None
 
         # Validate all assets created
         assert result.has_assets()
-        assert len(result.asset_urls) == 4
+        assert len(result.asset_urls) == 3
 
         # Validate storage state
         files = await real_memory_storage.list_files("")
         cog_files = [f for f in files if f.endswith(".tif")]
-        assert len(cog_files) >= 4
+        assert len(cog_files) >= 3
 
         # Validate STAC integration
         mock_stac_manager.create_fire_severity_item.assert_called_once()

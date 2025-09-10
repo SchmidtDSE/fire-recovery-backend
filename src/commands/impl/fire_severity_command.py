@@ -47,35 +47,38 @@ class FireSeverityAnalysisCommand(Command):
     def get_required_permissions(self) -> List[str]:
         return ["stac:read", "storage:write", "computation:execute"]
 
-    def validate_context(self, context: CommandContext) -> bool:
+    def validate_context(self, context: CommandContext) -> tuple[bool, str]:
         """Validate that context has required data for fire severity analysis"""
         if not context.job_id or not context.fire_event_name:
-            logger.error("job_id and fire_event_name are required")
-            return False
+            error_msg = "job_id and fire_event_name are required"
+            logger.error(error_msg)
+            return False, error_msg
 
         if not context.geometry:
-            logger.error("geometry is required for spatial analysis")
-            return False
+            error_msg = "geometry is required for spatial analysis"
+            logger.error(error_msg)
+            return False, error_msg
 
         if not context.storage:
-            logger.error("storage interface is required")
-            return False
+            error_msg = "storage interface is required"
+            logger.error(error_msg)
+            return False, error_msg
 
         if not context.index_registry:
-            logger.error("index_registry is required for burn index calculations")
-            return False
+            error_msg = "index_registry is required for burn index calculations"
+            logger.error(error_msg)
+            return False, error_msg
 
         # Check for required date ranges in computation config
         prefire_dates = context.get_computation_config("prefire_date_range")
         postfire_dates = context.get_computation_config("postfire_date_range")
 
         if not prefire_dates or not postfire_dates:
-            logger.error(
-                "prefire_date_range and postfire_date_range are required in computation_config"
-            )
-            return False
+            error_msg = "prefire_date_range and postfire_date_range are required in computation_config"
+            logger.error(error_msg)
+            return False, error_msg
 
-        return True
+        return True, ""
 
     async def execute(self, context: CommandContext) -> CommandResult:
         """Execute fire severity analysis workflow"""
@@ -85,6 +88,22 @@ class FireSeverityAnalysisCommand(Command):
             f"Starting fire severity analysis for job {context.job_id}, "
             f"fire event: {context.fire_event_name}"
         )
+
+        # Validate context before execution
+        is_valid, error_msg = self.validate_context(context)
+        if not is_valid:
+            execution_time = (time.time() - start_time) * 1000
+            return CommandResult.failure(
+                job_id=context.job_id,
+                fire_event_name=context.fire_event_name,
+                command_name=self.get_command_name(),
+                execution_time_ms=execution_time,
+                error_message=error_msg,
+                error_details={
+                    "error_type": "ValidationError",
+                    "stage": "validate_context",
+                },
+            )
 
         try:
             # Extract configuration

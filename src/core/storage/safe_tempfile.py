@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 import uuid
+import os
 
 from src.config.storage import get_temp_storage
 
@@ -25,5 +26,10 @@ async def safe_tempfile(
 
         yield path
     finally:
-        # Cleanup handled by storage provider's cleanup mechanism
-        pass
+        # Clean up local files that may have been created
+        if path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                # If file doesn't exist or can't be deleted, ignore
+                pass
