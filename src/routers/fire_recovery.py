@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -23,6 +24,7 @@ from src.process.spectral_indices import (
 )
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.stac.stac_json_manager import STACJSONManager
+from src.stac.stac_catalog_manager import STACCatalogManager
 from src.util.cog_ops import (
     create_cog_bytes,
     crop_cog_with_geometry,
@@ -148,14 +150,34 @@ router = APIRouter(
     tags=["Fire Recovery"],
     responses={404: {"description": "Not found"}},
 )
-# Initialize STAC manager
-stac_manager = STACJSONManager.for_production(
-    base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac"
-)
+# Dependency functions
+async def get_stac_manager() -> STACJSONManager:
+    """Get STAC JSON manager instance and ensure catalog exists"""
+    stac_manager = STACJSONManager.for_production(
+        base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac"
+    )
+    
+    # Ensure catalog exists by initializing it
+    catalog_manager = STACCatalogManager.for_production(
+        base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac"
+    )
+    
+    # Check if catalog exists, if not initialize it
+    try:
+        await catalog_manager.get_catalog()
+    except Exception:
+        # Catalog doesn't exist, initialize it
+        await catalog_manager.initialize_catalog()
+    
+    return stac_manager
 
-# Initialize storage factory and index registry for commands
-storage_factory = StorageFactory()
-index_registry = IndexRegistry()
+def get_storage_factory() -> StorageFactory:
+    """Get storage factory instance"""
+    return StorageFactory()
+
+def get_index_registry() -> IndexRegistry:
+    """Get index registry instance"""
+    return IndexRegistry()
 
 
 @router.get("/", tags=["Root"])
@@ -524,7 +546,12 @@ async def get_refine_result(
 
 
 @router.post("/upload/geojson", response_model=UploadedGeoJSONResponse, tags=["Upload"])
-async def upload_geojson(request: GeoJSONUploadRequest) -> UploadedGeoJSONResponse:
+async def upload_geojson(
+    request: GeoJSONUploadRequest,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> UploadedGeoJSONResponse:
     """
     Upload GeoJSON data for a fire event.
     """
