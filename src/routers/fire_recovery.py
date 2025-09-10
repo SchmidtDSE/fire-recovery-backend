@@ -261,7 +261,11 @@ async def health_check(
     tags=["Fire Severity"],
 )
 async def analyze_fire_severity(
-    request: ProcessingRequest, background_tasks: BackgroundTasks
+    request: ProcessingRequest,
+    background_tasks: BackgroundTasks,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> ProcessingStartedResponse:
     """
     Analyze fire severity using remote sensing data.
@@ -277,6 +281,9 @@ async def analyze_fire_severity(
         geometry=convert_geometry_to_pydantic(request.geometry),
         prefire_date_range=request.prefire_date_range,
         postfire_date_range=request.postfire_date_range,
+        stac_manager=stac_manager,
+        storage_factory=storage_factory,
+        index_registry=index_registry,
     )
 
     return ProcessingStartedResponse(
@@ -292,9 +299,9 @@ async def process_fire_severity(
     geometry: Polygon | Feature,
     prefire_date_range: list[str],
     postfire_date_range: list[str],
-    stac_manager: STACJSONManager = Depends(get_stac_manager),
-    storage_factory: StorageFactory = Depends(get_storage_factory),
-    index_registry: IndexRegistry = Depends(get_index_registry),
+    stac_manager: STACJSONManager,
+    storage_factory: StorageFactory,
+    index_registry: IndexRegistry,
 ) -> None:
     try:
         # Create command context for fire severity analysis

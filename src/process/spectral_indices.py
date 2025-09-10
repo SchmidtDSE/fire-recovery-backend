@@ -12,81 +12,81 @@ from src.stac.stac_endpoint_handler import StacEndpointHandler
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
 
-async def process_remote_sensing_data(
-    job_id: str,
-    geometry: Polygon | Feature,
-    stac_endpoint_handler: StacEndpointHandler,
-    prefire_date_range: Optional[List[str]],
-    postfire_date_range: Optional[List[str]],
-) -> Dict[str, Any]:
-    # Initialize workspace
-    workspace = initialize_workspace(job_id)
-    output_dir = workspace["output_dir"]
-    status_file = workspace["status_file"]
+# async def process_remote_sensing_data(
+#     job_id: str,
+#     geometry: Polygon | Feature,
+#     stac_endpoint_handler: StacEndpointHandler,
+#     prefire_date_range: Optional[List[str]],
+#     postfire_date_range: Optional[List[str]],
+# ) -> Dict[str, Any]:
+#     # Initialize workspace
+#     workspace = initialize_workspace(job_id)
+#     output_dir = workspace["output_dir"]
+#     status_file = workspace["status_file"]
 
-    try:
-        # Validate input date ranges
-        if not prefire_date_range or not postfire_date_range:
-            raise ValueError("Both prefire and postfire date ranges are required")
+#     try:
+#         # Validate input date ranges
+#         if not prefire_date_range or not postfire_date_range:
+#             raise ValueError("Both prefire and postfire date ranges are required")
 
-        # Calculate the full date range for a single query
-        full_date_range = [prefire_date_range[0], postfire_date_range[1]]
+#         # Calculate the full date range for a single query
+#         full_date_range = [prefire_date_range[0], postfire_date_range[1]]
 
-        # Fetch all data using the endpoint handler
-        items, endpoint_config = await stac_endpoint_handler.search_items(
-            geometry=geometry,
-            date_range=full_date_range,
-            collections=["sentinel-2-l2a"],
-        )
+#         # Fetch all data using the endpoint handler
+#         items, endpoint_config = await stac_endpoint_handler.search_items(
+#             geometry=geometry,
+#             date_range=full_date_range,
+#             collections=["sentinel-2-l2a"],
+#         )
 
-        # Get the band names and EPSG code for this endpoint
-        nir_band, swir_band = stac_endpoint_handler.get_band_names(endpoint_config)
-        epsg_code = stac_endpoint_handler.get_epsg_code(endpoint_config)
+#         # Get the band names and EPSG code for this endpoint
+#         nir_band, swir_band = stac_endpoint_handler.get_band_names(endpoint_config)
+#         epsg_code = stac_endpoint_handler.get_epsg_code(endpoint_config)
 
-        # Fetch data using these parameters
-        stacked_data = stackstac.stack(
-            items,
-            epsg=epsg_code,
-            assets=[swir_band, nir_band],
-            bounds=get_buffered_bounds(geometry, 100),
-            chunksize=(-1, 1, 512, 512),
-        )
+#         # Fetch data using these parameters
+#         stacked_data = stackstac.stack(
+#             items,
+#             epsg=epsg_code,
+#             assets=[swir_band, nir_band],
+#             bounds=get_buffered_bounds(geometry, 100),
+#             chunksize=(-1, 1, 512, 512),
+#         )
 
-        # Split into pre and post fire datasets
-        prefire_data = subset_data_by_date_range(stacked_data, prefire_date_range)
-        postfire_data = subset_data_by_date_range(stacked_data, postfire_date_range)
+#         # Split into pre and post fire datasets
+#         prefire_data = subset_data_by_date_range(stacked_data, prefire_date_range)
+#         postfire_data = subset_data_by_date_range(stacked_data, postfire_date_range)
 
-        print(f"Prefire shape: {prefire_data.shape}, dims: {prefire_data.dims}")
-        print(f"Postfire shape: {postfire_data.shape}, dims: {postfire_data.dims}")
+#         print(f"Prefire shape: {prefire_data.shape}, dims: {prefire_data.dims}")
+#         print(f"Postfire shape: {postfire_data.shape}, dims: {postfire_data.dims}")
 
-        # Calculate burn indices
-        indices = calculate_burn_indices(
-            prefire_data, postfire_data, nir_band, swir_band
-        )
+#         # Calculate burn indices
+#         indices = calculate_burn_indices(
+#             prefire_data, postfire_data, nir_band, swir_band
+#         )
 
-        # Create COGs for each metric
-        cog_results = {}
-        for name, data in indices.items():
-            cog_path = f"{output_dir}/{name}.tif"
-            cog_results[name] = create_cog(data, cog_path)
+#         # Create COGs for each metric
+#         cog_results = {}
+#         for name, data in indices.items():
+#             cog_path = f"{output_dir}/{name}.tif"
+#             cog_results[name] = create_cog(data, cog_path)
 
-        # Update status
-        all_valid = all(result["is_valid"] for result in cog_results.values())
-        with open(status_file, "w") as f:
-            f.write("completed" if all_valid else "failed_validation")
+#         # Update status
+#         all_valid = all(result["is_valid"] for result in cog_results.values())
+#         with open(status_file, "w") as f:
+#             f.write("completed" if all_valid else "failed_validation")
 
-        return {
-            "status": "completed" if all_valid else "failed_validation",
-            "output_files": {
-                name: result["path"] for name, result in cog_results.items()
-            },
-        }
+#         return {
+#             "status": "completed" if all_valid else "failed_validation",
+#             "output_files": {
+#                 name: result["path"] for name, result in cog_results.items()
+#             },
+#         }
 
-    except Exception as e:
-        # Update status on error
-        with open(status_file, "w") as f:
-            f.write(f"error: {str(e)}")
-        return {"status": f"error: {str(e)}"}
+#     except Exception as e:
+#         # Update status on error
+#         with open(status_file, "w") as f:
+#             f.write(f"error: {str(e)}")
+#         return {"status": f"error: {str(e)}"}
 
 
 def subset_data_by_date_range(

@@ -276,7 +276,6 @@ class FireSeverityAnalysisCommand(Command):
         context: CommandContext,
         stac_data: STACDataPayload,
         requested_indices: List[str],
-        band_mapping: Dict[str, str] = {"nir": "B08", "swir": "B12"},
     ) -> Dict[str, xr.DataArray]:
         """Calculate burn indices using the strategy pattern"""
         logger.info(f"Calculating burn indices: {requested_indices}")
@@ -284,8 +283,8 @@ class FireSeverityAnalysisCommand(Command):
         try:
             prefire_data = stac_data["prefire_data"]
             postfire_data = stac_data["postfire_data"]
-            nir_band = band_mapping["nir"]
-            swir_band = band_mapping["swir"]
+            nir_band = stac_data["nir_band"]
+            swir_band = stac_data["swir_band"]
 
             # Prepare context for index calculators
             calc_context = {

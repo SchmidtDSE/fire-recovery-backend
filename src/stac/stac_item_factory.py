@@ -34,7 +34,7 @@ class STACItemFactory:
             item.validate()
 
     def item_to_dict(
-        self, item: pystac.Item, skip_validation: bool = False
+        self, item: pystac.Item, skip_transform_hrefs: bool = False
     ) -> Dict[str, Any]:
         """
         Convert a pystac Item to a dictionary, thinly wrapping the to_dict method.
@@ -43,11 +43,12 @@ class STACItemFactory:
 
         Args:
             item: The pystac Item to convert
+            skip_transform_hrefs: If True, skip href transformation (useful for testing with fake URLs)
 
         Returns:
             Dictionary representation of the STAC item
         """
-        if not skip_validation:
+        if not skip_transform_hrefs:
             return item.to_dict()
         else:
             return item.to_dict(transform_hrefs=False)
@@ -88,12 +89,14 @@ class STACItemFactory:
 
         # Geometry is already GeoJSONGeometry (dict format)
         # Cast required: PySTAC expects dict[str, Any] but doesn't recognize TypedDict structural compatibility
-        geometry_dict = cast(dict[str, Any], geometry)
-        
+        # geometry_dict = cast(dict[str, Any], geometry)
+
+        geometry_geojson = geometry.__geo_interface__
+
         # Create pystac Item
         item = pystac.Item(
             id=item_id,
-            geometry=geometry_dict,
+            geometry=geometry_geojson,
             bbox=bbox,
             datetime=dt,
             properties={
@@ -311,7 +314,7 @@ class STACItemFactory:
 
         # Cast required: PySTAC expects dict[str, Any] but doesn't recognize TypedDict structural compatibility
         geometry_dict = cast(dict[str, Any], geometry)
-        
+
         # Create pystac Item
         item = pystac.Item(
             id=item_id,
