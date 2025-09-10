@@ -186,7 +186,11 @@ async def root() -> Dict[str, str]:
 
 
 @router.get("/healthz", response_model=HealthCheckResponse, tags=["Health"])
-async def health_check() -> HealthCheckResponse:
+async def health_check(
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> HealthCheckResponse:
     """
     Health check endpoint using command pattern.
 

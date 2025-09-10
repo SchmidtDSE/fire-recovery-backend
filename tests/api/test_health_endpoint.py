@@ -27,17 +27,23 @@ class TestHealthEndpoint:
             "rbr",
         ]
 
-        # Patch the router dependencies
-        with (
-            patch("src.routers.fire_recovery.storage_factory") as mock_storage_factory,
-            patch("src.routers.fire_recovery.stac_manager", mock_stac_manager),
-            patch("src.routers.fire_recovery.index_registry", mock_index_registry),
-        ):
-            mock_storage_factory.get_temp_storage.return_value = mock_storage
+        # Import app and router dependency functions
+        from src.app import app
+        from src.routers.fire_recovery import get_stac_manager, get_storage_factory, get_index_registry
+        
+        # Create mock storage factory
+        mock_storage_factory = MagicMock()
+        mock_storage_factory.get_temp_storage.return_value = mock_storage
 
-            # Import app after patching to avoid initialization issues
-            from src.app import app
+        # Override dependencies with mocks
+        async def mock_get_stac_manager():
+            return mock_stac_manager
+            
+        app.dependency_overrides[get_stac_manager] = mock_get_stac_manager
+        app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory  
+        app.dependency_overrides[get_index_registry] = lambda: mock_index_registry
 
+        try:
             client = TestClient(app)
 
             # Make the request
@@ -82,6 +88,9 @@ class TestHealthEndpoint:
 
             # Verify index registry was called
             mock_index_registry.get_available_indices.assert_called_once()
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
 
     @patch("src.config.storage.get_storage")
     def test_health_check_with_unhealthy_component(
@@ -102,17 +111,23 @@ class TestHealthEndpoint:
             "Calculator registry failed"
         )
 
-        # Patch the router dependencies
-        with (
-            patch("src.routers.fire_recovery.storage_factory") as mock_storage_factory,
-            patch("src.routers.fire_recovery.stac_manager", mock_stac_manager),
-            patch("src.routers.fire_recovery.index_registry", mock_index_registry),
-        ):
-            mock_storage_factory.get_temp_storage.return_value = mock_storage
+        # Import app and router dependency functions
+        from src.app import app
+        from src.routers.fire_recovery import get_stac_manager, get_storage_factory, get_index_registry
+        
+        # Create mock storage factory
+        mock_storage_factory = MagicMock()
+        mock_storage_factory.get_temp_storage.return_value = mock_storage
 
-            # Import app after patching
-            from src.app import app
+        # Override dependencies with mocks
+        async def mock_get_stac_manager():
+            return mock_stac_manager
+            
+        app.dependency_overrides[get_stac_manager] = mock_get_stac_manager
+        app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory
+        app.dependency_overrides[get_index_registry] = lambda: mock_index_registry
 
+        try:
             client = TestClient(app)
 
             # Make the request
@@ -130,6 +145,9 @@ class TestHealthEndpoint:
             # Check that index_registry is marked as unhealthy
             assert data["checks"]["index_registry"]["status"] == "unhealthy"
             assert "error" in data["checks"]["index_registry"]
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
 
     @patch("src.config.storage.get_storage")
     def test_health_check_command_failure(self, mock_get_storage: MagicMock) -> None:
@@ -145,15 +163,23 @@ class TestHealthEndpoint:
             "Storage initialization failed"
         )
 
-        # Patch the router dependencies
-        with (
-            patch("src.routers.fire_recovery.storage_factory", mock_storage_factory),
-            patch("src.routers.fire_recovery.stac_manager") as __mock_stac_manager,
-            patch("src.routers.fire_recovery.index_registry") as __mock_index_registry,
-        ):
-            # Import app after patching
-            from src.app import app
+        # Import app and router dependency functions
+        from src.app import app
+        from src.routers.fire_recovery import get_stac_manager, get_storage_factory, get_index_registry
+        
+        # Create mock STAC manager and index registry
+        mock_stac_manager = MagicMock()
+        mock_index_registry = MagicMock()
 
+        # Override dependencies with mocks
+        async def mock_get_stac_manager():
+            return mock_stac_manager
+            
+        app.dependency_overrides[get_stac_manager] = mock_get_stac_manager
+        app.dependency_overrides[get_storage_factory] = lambda: mock_storage_factory
+        app.dependency_overrides[get_index_registry] = lambda: mock_index_registry
+
+        try:
             client = TestClient(app)
 
             # Make the request
@@ -164,6 +190,9 @@ class TestHealthEndpoint:
             data = response.json()
             assert "detail" in data
             assert "Health check error" in data["detail"]
+        finally:
+            # Clean up dependency overrides
+            app.dependency_overrides.clear()
 
     def test_health_check_response_model_validation(self) -> None:
         """Test that response model validation works correctly"""
