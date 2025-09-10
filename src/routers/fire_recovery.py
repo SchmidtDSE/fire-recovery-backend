@@ -52,7 +52,6 @@ from src.models.responses import (
     HealthCheckResponse,
 )
 from src.config.storage import get_temp_storage
-from typing import Any
 
 
 def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | Feature:

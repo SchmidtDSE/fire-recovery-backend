@@ -93,8 +93,17 @@ class FireSeverityAnalysisCommand(Command):
             collection = context.get_computation_config("collection", "sentinel-2-l2a")
             buffer_meters = context.get_computation_config("buffer_meters", 100)
             indices = context.get_computation_config(
-                "indices", ["nbr", "dnbr", "rdnbr", "rbr"]
+                "indices",
+                ["dnbr", "rdnbr", "rbr"],  # NBR computed internally by dependencies
             )
+
+            # TODO: Implement NBR result caching to eliminate redundant calculations
+            # Currently NBR gets computed ~6 times when calculating dependent indices:
+            # - dNBR calls NBR for prefire (1x) + postfire (1x) = 2 times
+            # - RdNBR calls NBR for prefire (1x) + calls dNBR which computes NBR 2x = 3 times total
+            # - RBR calls NBR for prefire (1x) + calls dNBR which computes NBR 2x = 3 times total
+            # Performance optimization: Add memoization decorator to NBRCalculator.calculate method
+            # or implement context-based caching within single fire severity analysis session
 
             logger.info(
                 f"Configuration - Prefire: {prefire_date_range}, "
@@ -205,7 +214,7 @@ class FireSeverityAnalysisCommand(Command):
 
             # Calculate buffered bounds
             # Convert geometry to dict format for shapely processing
-            if hasattr(context.geometry, 'model_dump'):
+            if hasattr(context.geometry, "model_dump"):
                 geometry_dict: Dict[str, Any] = context.geometry.model_dump()
             else:
                 geometry_dict: Dict[str, Any] = context.geometry  # type: ignore
@@ -261,8 +270,7 @@ class FireSeverityAnalysisCommand(Command):
 
             # Prepare context for index calculators
             calc_context = {
-                "nir_band_name": nir_band,
-                "swir_band_name": swir_band,
+                "band_mapping": {"nir": nir_band, "swir": swir_band},
                 "job_id": context.job_id,
                 "geometry": context.geometry,
             }

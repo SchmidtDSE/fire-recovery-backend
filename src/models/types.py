@@ -16,7 +16,7 @@ Design Principles:
 from typing import Any, Union
 from typing_extensions import TypedDict, Literal, NotRequired
 import xarray as xr
-from geojson_pydantic import Polygon, Feature, FeatureCollection
+from geojson_pydantic import Polygon, Feature
 
 
 # =============================================================================
