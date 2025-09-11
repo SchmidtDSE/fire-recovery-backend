@@ -2,7 +2,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import (
@@ -340,9 +340,7 @@ async def process_fire_severity(
         )
 
         # Create a STAC item for the coarse boundary
-        datetime_str = datetime.now(datetime.timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        datetime_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,

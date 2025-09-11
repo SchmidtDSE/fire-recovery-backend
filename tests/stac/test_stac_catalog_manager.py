@@ -1,5 +1,6 @@
 import pytest
-from typing import Dict, Any, AsyncGenerator
+from typing import AsyncGenerator
+from geojson_pydantic import Polygon
 
 from src.stac.stac_catalog_manager import STACCatalogManager
 from src.core.storage.interface import StorageInterface
@@ -19,21 +20,6 @@ class TestSTACCatalogManager:
         # Cleanup after test
         await minio_storage.cleanup(max_age_seconds=0)  # Remove all files
 
-    @pytest.fixture
-    def sample_geometry(self) -> Dict[str, Any]:
-        """Sample geometry for testing"""
-        return {
-            "type": "Polygon",
-            "coordinates": [
-                [
-                    [-120.5, 35.5],
-                    [-120.0, 35.5],
-                    [-120.0, 36.0],
-                    [-120.5, 36.0],
-                    [-120.5, 35.5],
-                ]
-            ],
-        }
 
     @pytest.mark.asyncio
     async def test_initialize_catalog(
@@ -56,7 +42,7 @@ class TestSTACCatalogManager:
 
     @pytest.mark.asyncio
     async def test_add_fire_severity_item(
-        self, catalog_manager: STACCatalogManager, sample_geometry: Dict[str, Any]
+        self, catalog_manager: STACCatalogManager, sample_geometry: Polygon
     ) -> None:
         """Test adding a fire severity item to the catalog"""
         # Initialize catalog first
@@ -106,7 +92,7 @@ class TestSTACCatalogManager:
 
     @pytest.mark.asyncio
     async def test_add_veg_matrix_item(
-        self, catalog_manager: STACCatalogManager, sample_geometry: Dict[str, Any]
+        self, catalog_manager: STACCatalogManager, sample_geometry: Polygon
     ) -> None:
         """Test adding a vegetation matrix item to the catalog"""
         await catalog_manager.initialize_catalog()
@@ -153,7 +139,7 @@ class TestSTACCatalogManager:
 
     @pytest.mark.asyncio
     async def test_proper_catalog_links(
-        self, catalog_manager: STACCatalogManager, sample_geometry: Dict[str, Any]
+        self, catalog_manager: STACCatalogManager, sample_geometry: Polygon
     ) -> None:
         """Test that items have proper catalog links"""
         await catalog_manager.initialize_catalog()
@@ -182,7 +168,7 @@ class TestSTACCatalogManager:
 
     @pytest.mark.asyncio
     async def test_multiple_items_same_collection(
-        self, catalog_manager: STACCatalogManager, sample_geometry: Dict[str, Any]
+        self, catalog_manager: STACCatalogManager, sample_geometry: Polygon
     ) -> None:
         """Test adding multiple items to the same collection"""
         await catalog_manager.initialize_catalog()

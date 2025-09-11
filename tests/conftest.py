@@ -1,6 +1,7 @@
 import os
 import uuid
 import pytest
+from geojson_pydantic import Polygon
 from src.core.storage.memory import MemoryStorage
 from src.core.storage.interface import StorageInterface
 
@@ -77,3 +78,21 @@ STAC_TEST_ASSETS = {
 def unique_parquet_path(unique_test_id: str) -> str:
     """Generate a unique parquet path for test isolation"""
     return f"stac/test_{unique_test_id}_fire_recovery_stac.parquet"
+
+
+@pytest.fixture
+def sample_geometry() -> Polygon:
+    """Sample geometry for testing - shared across all STAC tests"""
+    test_polygon = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [-120.5, 35.5],
+                [-120.0, 35.5],
+                [-120.0, 36.0],
+                [-120.5, 36.0],
+                [-120.5, 35.5],
+            ]
+        ],
+    }
+    return Polygon.model_validate(test_polygon)

@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, cast
+from typing import Dict, List, Any
 from shapely.geometry import shape
 import pystac
 from datetime import datetime
@@ -312,13 +312,13 @@ class STACItemFactory:
         # Parse datetime
         dt = datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
 
-        # Cast required: PySTAC expects dict[str, Any] but doesn't recognize TypedDict structural compatibility
-        geometry_dict = cast(dict[str, Any], geometry)
+        # Geometry is a geojson_pydantic object with __geo_interface__
+        geometry_geojson = geometry.__geo_interface__
 
         # Create pystac Item
         item = pystac.Item(
             id=item_id,
-            geometry=geometry_dict,
+            geometry=geometry_geojson,
             bbox=bbox,
             datetime=dt,
             properties={

@@ -1,6 +1,6 @@
 import pytest
-from typing import Dict, Any
 import pystac
+from geojson_pydantic import Polygon
 
 from src.stac.stac_item_factory import STACItemFactory
 
@@ -13,24 +13,9 @@ class TestSTACItemFactory:
         """Create a STACItemFactory instance for testing"""
         return STACItemFactory(base_url="https://test.example.com")
 
-    @pytest.fixture
-    def sample_geometry(self) -> Dict[str, Any]:
-        """Sample geometry for testing"""
-        return {
-            "type": "Polygon",
-            "coordinates": [
-                [
-                    [-120.5, 35.5],
-                    [-120.0, 35.5],
-                    [-120.0, 36.0],
-                    [-120.5, 36.0],
-                    [-120.5, 35.5],
-                ]
-            ],
-        }
 
     def test_create_fire_severity_item_complete(
-        self, factory: STACItemFactory, sample_geometry: Dict[str, Any]
+        self, factory: STACItemFactory, sample_geometry: Polygon
     ) -> None:
         """Test creating a fire severity item with all COG URLs"""
         cog_urls = {
@@ -58,7 +43,7 @@ class TestSTACItemFactory:
         assert "rdnbr" in stac_item["assets"]
 
     def test_create_fire_severity_item_partial_cogs(
-        self, factory: STACItemFactory, sample_geometry: Dict[str, Any]
+        self, factory: STACItemFactory, sample_geometry: Polygon
     ) -> None:
         """Test creating a fire severity item with only some COG URLs"""
         cog_urls = {
@@ -101,7 +86,7 @@ class TestSTACItemFactory:
         assert stac_item["assets"]["refined_boundary"]["type"] == "application/geo+json"
 
     def test_create_veg_matrix_item(
-        self, factory: STACItemFactory, sample_geometry: Dict[str, Any]
+        self, factory: STACItemFactory, sample_geometry: Polygon
     ) -> None:
         """Test creating a vegetation matrix item"""
         bbox = [-120.5, 35.5, -120.0, 36.0]
@@ -127,7 +112,7 @@ class TestSTACItemFactory:
         assert "fire_veg_matrix_json" in stac_item["assets"]
 
     def test_validate_stac_item_valid(
-        self, factory: STACItemFactory, sample_geometry: Dict[str, Any]
+        self, factory: STACItemFactory, sample_geometry: Polygon
     ) -> None:
         """Test validating a valid STAC item"""
         stac_item_dict = factory.create_fire_severity_item(
@@ -146,7 +131,7 @@ class TestSTACItemFactory:
         factory.validate_stac_item(stac_item, skip_validation=True)
 
     def test_stac_item_has_required_links(
-        self, factory: STACItemFactory, sample_geometry: Dict[str, Any]
+        self, factory: STACItemFactory, sample_geometry: Polygon
     ) -> None:
         """Test that created STAC items have required links"""
         stac_item = factory.create_fire_severity_item(
@@ -196,7 +181,7 @@ class TestSTACItemFactory:
 
     def test_fire_severity_bbox_calculation(self, factory: STACItemFactory) -> None:
         """Test that fire severity items calculate bbox from geometry correctly"""
-        geometry = {
+        geometry_dict = {
             "type": "Polygon",
             "coordinates": [
                 [
@@ -208,6 +193,7 @@ class TestSTACItemFactory:
                 ]
             ],
         }
+        geometry = Polygon.model_validate(geometry_dict)
 
         stac_item = factory.create_fire_severity_item(
             fire_event_name="test_fire",
