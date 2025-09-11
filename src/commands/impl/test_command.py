@@ -31,12 +31,12 @@ class TestCommand(Command):
             for field in required_fields:
                 if not hasattr(context, field) or getattr(context, field) is None:
                     self.logger.error(f"Context missing required field: {field}")
-                    return False
+                    return (False, f"Missing required field: {field}")
 
-            return True, ""
+            return (True, "")
         except Exception as e:
             self.logger.error(f"Context validation failed: {e}")
-            return False, e
+            return (False, f"Context validation failed: {e}")
 
     async def execute(self, context: CommandContext) -> CommandResult:
         """Execute test command with mock operations"""

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 # Initialize cache with in-memory backend at app startup
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any, Any]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
     # Load environment variables at startup
     env_path = os.path.join(os.path.dirname(__file__), "..", ".devcontainer", ".env")
     if os.path.exists(env_path):
