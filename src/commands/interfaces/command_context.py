@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from src.core.storage.interface import StorageInterface
+from src.core.storage.storage_factory import StorageFactory
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
 from geojson_pydantic import Polygon, Feature
@@ -25,6 +26,7 @@ class CommandContext:
 
     # Dependencies (injected by command registry)
     storage: StorageInterface
+    storage_factory: StorageFactory
     stac_manager: STACJSONManager
     index_registry: IndexRegistry
 
@@ -47,6 +49,8 @@ class CommandContext:
             raise ValueError("geometry is required")
         if not self.storage:
             raise ValueError("storage interface is required")
+        if not self.storage_factory:
+            raise ValueError("storage_factory is required")
         if not self.stac_manager:
             raise ValueError("stac_manager is required")
         if not self.index_registry:

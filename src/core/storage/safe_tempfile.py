@@ -3,12 +3,14 @@ from typing import AsyncGenerator, Optional
 import uuid
 import os
 
-from src.config.storage import get_temp_storage
+from src.core.storage.interface import StorageInterface
 
 
 @asynccontextmanager
 async def safe_tempfile(
-    suffix: str = "", content: Optional[bytes] = None
+    storage: StorageInterface,
+    suffix: str = "", 
+    content: Optional[bytes] = None
 ) -> AsyncGenerator[str, None]:
     """Context manager for temporary files using storage provider"""
     path = None
@@ -19,10 +21,7 @@ async def safe_tempfile(
 
         # Store content if provided
         if content:
-            temp_storage_provider = get_temp_storage()
-            if temp_storage_provider is None:
-                raise RuntimeError("No temporary storage provider configured.")
-            await temp_storage_provider.save_bytes(content, path, temporary=True)
+            await storage.save_bytes(content, path, temporary=True)
 
         yield path
     finally:

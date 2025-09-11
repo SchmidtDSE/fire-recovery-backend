@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
@@ -32,12 +32,13 @@ class HealthCheckCommand(Command):
     def get_required_permissions(self) -> List[str]:
         return []  # Public endpoint
 
-    def validate_context(self, context: CommandContext) -> bool:
+    def validate_context(self, context: CommandContext) -> Tuple[bool, str]:
         """Validate context - healthz needs minimal validation"""
         if not context.job_id:
-            logger.error("job_id is required for health check")
-            return False
-        return True
+            error_msg = "job_id is required for health check"
+            logger.error(error_msg)
+            return False, error_msg
+        return True, "Context validation passed"
 
     async def execute(self, context: CommandContext) -> CommandResult:
         """Execute health check workflow"""

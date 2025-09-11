@@ -6,11 +6,21 @@ from typing import Any
 from .routers import fire_recovery
 from contextlib import asynccontextmanager
 import time
+import os
+from dotenv import load_dotenv
 
 
 # Initialize cache with in-memory backend at app startup
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> None:
+    # Load environment variables at startup
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".devcontainer", ".env")
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"Loaded environment from {env_path}")
+    else:
+        print(f"No .env file found at {env_path}, using system environment variables")
+    
     # Startup: initialize FastAPICache
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     yield

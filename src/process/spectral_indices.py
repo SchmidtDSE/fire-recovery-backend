@@ -1,13 +1,9 @@
 import xarray as xr
-import stackstac
 import numpy as np
-from rio_cogeo.cogeo import cog_validate, cog_translate
-from rio_cogeo.profiles import cog_profiles
 import os
-from typing import List, Dict, Optional, Any
+from typing import List, Dict
 from geojson_pydantic import Polygon, Feature
 from shapely.geometry import shape
-from src.stac.stac_endpoint_handler import StacEndpointHandler
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 

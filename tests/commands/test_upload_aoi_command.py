@@ -34,6 +34,16 @@ def mock_index_registry() -> MagicMock:
 
 
 @pytest.fixture
+def mock_storage_factory(mock_storage: AsyncMock) -> MagicMock:
+    """Create mock storage factory"""
+    from src.core.storage.storage_factory import StorageFactory
+    factory = MagicMock(spec=StorageFactory)
+    factory.get_temp_storage.return_value = mock_storage
+    factory.get_final_storage.return_value = mock_storage
+    return factory
+
+
+@pytest.fixture
 def sample_geojson() -> dict:
     """Sample valid GeoJSON for testing"""
     return {
@@ -83,6 +93,7 @@ def sample_feature_collection() -> dict:
 @pytest.fixture
 def geojson_command_context(
     mock_storage: AsyncMock,
+    mock_storage_factory: MagicMock,
     mock_stac_manager: AsyncMock,
     mock_index_registry: MagicMock,
     sample_geojson: dict,
@@ -93,6 +104,7 @@ def geojson_command_context(
         fire_event_name="test-fire",
         geometry=sample_geojson,
         storage=mock_storage,
+        storage_factory=mock_storage_factory,
         stac_manager=mock_stac_manager,
         index_registry=mock_index_registry,
         metadata={"upload_type": "geojson"},
@@ -112,6 +124,7 @@ def shapefile_upload_file() -> UploadFile:
 @pytest.fixture
 def shapefile_command_context(
     mock_storage: AsyncMock,
+    mock_storage_factory: MagicMock,
     mock_stac_manager: AsyncMock,
     mock_index_registry: MagicMock,
     shapefile_upload_file: UploadFile,
@@ -123,6 +136,7 @@ def shapefile_command_context(
         fire_event_name="test-fire",
         geometry=sample_geojson,  # Provide valid geometry for context validation
         storage=mock_storage,
+        storage_factory=mock_storage_factory,
         stac_manager=mock_stac_manager,
         index_registry=mock_index_registry,
         metadata={"upload_type": "shapefile", "upload_data": shapefile_upload_file},
@@ -147,7 +161,9 @@ class TestUploadAOICommand:
     ) -> None:
         """Test successful context validation"""
         command = UploadAOICommand()
-        assert command.validate_context(geojson_command_context) is True
+        is_valid, message = command.validate_context(geojson_command_context)
+        assert is_valid is True
+        assert "validation passed" in message.lower()
 
     def test_validate_context_missing_job_id(
         self, geojson_command_context: CommandContext
@@ -155,7 +171,9 @@ class TestUploadAOICommand:
         """Test context validation with missing job_id"""
         geojson_command_context.job_id = ""
         command = UploadAOICommand()
-        assert command.validate_context(geojson_command_context) is False
+        is_valid, message = command.validate_context(geojson_command_context)
+        assert is_valid is False
+        assert "job_id" in message.lower()
 
     def test_validate_context_missing_storage(
         self, geojson_command_context: CommandContext
@@ -163,7 +181,9 @@ class TestUploadAOICommand:
         """Test context validation with missing storage"""
         geojson_command_context.storage = None
         command = UploadAOICommand()
-        assert command.validate_context(geojson_command_context) is False
+        is_valid, message = command.validate_context(geojson_command_context)
+        assert is_valid is False
+        assert "storage" in message.lower()
 
     def test_validate_context_missing_geometry_for_geojson(
         self, geojson_command_context: CommandContext
@@ -171,7 +191,9 @@ class TestUploadAOICommand:
         """Test context validation with missing geometry for GeoJSON upload"""
         geojson_command_context.geometry = None
         command = UploadAOICommand()
-        assert command.validate_context(geojson_command_context) is False
+        is_valid, message = command.validate_context(geojson_command_context)
+        assert is_valid is False
+        assert "geometry" in message.lower()
 
     def test_validate_context_missing_upload_data_for_shapefile(
         self, shapefile_command_context: CommandContext
@@ -181,7 +203,9 @@ class TestUploadAOICommand:
             "upload_type": "shapefile"
         }  # Remove upload_data
         command = UploadAOICommand()
-        assert command.validate_context(shapefile_command_context) is False
+        is_valid, message = command.validate_context(shapefile_command_context)
+        assert is_valid is False
+        assert "upload_data" in message.lower()
 
     @pytest.mark.asyncio
     @patch("src.commands.impl.upload_aoi_command.polygon_to_valid_geojson")

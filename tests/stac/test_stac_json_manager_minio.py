@@ -291,22 +291,22 @@ async def test_stac_json_manager_factory_methods(
     base_url = f"https://test.example.com/{test_id}"
 
     # Test testing factory method
-    test_manager = STACJSONManager.for_testing(base_url)
+    test_manager = STACJSONManager.for_testing(base_url, minio_storage)
     assert test_manager.base_url == base_url
     assert test_manager.storage is not None
-    # Testing storage should be MemoryStorage (per config: TEMP_STORAGE_PROVIDER_TYPE = "memory")
-    assert test_manager.storage.__class__.__name__ == "MemoryStorage"
+    # Should use the provided minio storage
+    assert test_manager.storage.__class__.__name__ == "MinioCloudStorage"
 
     # Test production factory method
-    prod_manager = STACJSONManager.for_production(base_url)
+    prod_manager = STACJSONManager.for_production(base_url, minio_storage)
     assert prod_manager.base_url == base_url
     assert prod_manager.storage is not None
     # Production storage should be MinIO (per config: FINAL_STORAGE_PROVIDER_TYPE = "minio")
     assert prod_manager.storage.__class__.__name__ == "MinioCloudStorage"
     assert hasattr(prod_manager.storage, "bucket_name")
 
-    # They should use different storage instances
-    assert test_manager.storage != prod_manager.storage
+    # They should use the same storage instances since we passed the same one
+    assert test_manager.storage == prod_manager.storage
 
 
 @pytest.mark.asyncio

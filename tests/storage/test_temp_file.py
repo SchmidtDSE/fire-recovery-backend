@@ -1,15 +1,17 @@
 import pytest
-from src.config.storage import temp_file, get_temp_storage
+from src.core.storage.safe_tempfile import safe_tempfile
+from src.core.storage.storage_factory import StorageFactory
 
 
 class TestTempFile:
     @pytest.mark.asyncio
     async def test_temp_file_without_content(self) -> None:
         """Test temp_file context manager without initial content"""
-        temp_storage = get_temp_storage()
+        storage_factory = StorageFactory.for_development()
+        temp_storage = storage_factory.get_temp_storage()
 
         # Use the context manager
-        async with temp_file(suffix=".txt") as path:
+        async with safe_tempfile(temp_storage, suffix=".txt") as path:
             # Verify the path was generated
             assert path.endswith(".txt")
 
@@ -32,11 +34,12 @@ class TestTempFile:
     @pytest.mark.asyncio
     async def test_temp_file_with_content(self) -> None:
         """Test temp_file context manager with initial content"""
-        temp_storage = get_temp_storage()
+        storage_factory = StorageFactory.for_development()
+        temp_storage = storage_factory.get_temp_storage()
         initial_content = b"initial content"
 
         # Use the context manager with content
-        async with temp_file(suffix=".bin", content=initial_content) as path:
+        async with safe_tempfile(temp_storage, suffix=".bin", content=initial_content) as path:
             # Verify the path was generated
             assert path.endswith(".bin")
 

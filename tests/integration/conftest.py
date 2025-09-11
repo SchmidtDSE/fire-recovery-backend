@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Tuple
 from unittest.mock import Mock, AsyncMock
 
 from src.core.storage.memory import MemoryStorage
+from src.core.storage.storage_factory import StorageFactory
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
 from src.commands.interfaces.command_context import CommandContext
@@ -293,11 +294,15 @@ def create_integration_context(
         
     geometry = TEST_GEOMETRIES[geometry_name]
     
+    # Create a storage factory for testing
+    storage_factory = StorageFactory.for_development()
+    
     return CommandContext(
         job_id=f"integration-test-{geometry_name}",
         fire_event_name=f"test-fire-{geometry_name}",
         geometry=geometry,
         storage=real_memory_storage,
+        storage_factory=storage_factory,
         stac_manager=mock_stac_manager,
         index_registry=real_index_registry,
         computation_config={

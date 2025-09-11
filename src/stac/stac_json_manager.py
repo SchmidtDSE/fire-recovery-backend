@@ -2,7 +2,6 @@ from typing import Dict, List, Any, Optional
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_repository import STACJSONRepository
 from src.stac.stac_item_factory import STACItemFactory
-from src.config.storage import get_temp_storage, get_final_storage
 from geojson_pydantic import Polygon, Feature
 
 
@@ -27,14 +26,14 @@ class STACJSONManager:
         self._item_factory = STACItemFactory(base_url)
 
     @classmethod
-    def for_testing(cls, base_url: str) -> "STACJSONManager":
+    def for_testing(cls, base_url: str, storage: StorageInterface) -> "STACJSONManager":
         """Create a manager instance configured for testing"""
-        return cls(base_url=base_url, storage=get_temp_storage())
+        return cls(base_url=base_url, storage=storage)
 
     @classmethod
-    def for_production(cls, base_url: str) -> "STACJSONManager":
+    def for_production(cls, base_url: str, storage: StorageInterface) -> "STACJSONManager":
         """Create a manager instance configured for production"""
-        return cls(base_url=base_url, storage=get_final_storage())
+        return cls(base_url=base_url, storage=storage)
 
     async def create_fire_severity_item(
         self,

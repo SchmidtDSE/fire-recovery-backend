@@ -31,8 +31,19 @@ def mock_index_registry() -> MagicMock:
 
 
 @pytest.fixture
+def mock_storage_factory(mock_storage: AsyncMock) -> MagicMock:
+    """Create mock storage factory"""
+    from src.core.storage.storage_factory import StorageFactory
+    factory = MagicMock(spec=StorageFactory)
+    factory.get_temp_storage.return_value = mock_storage
+    factory.get_final_storage.return_value = mock_storage
+    return factory
+
+
+@pytest.fixture
 def health_command_context(
     mock_storage: AsyncMock,
+    mock_storage_factory: MagicMock,
     mock_stac_manager: AsyncMock,
     mock_index_registry: MagicMock,
 ) -> CommandContext:
@@ -46,6 +57,7 @@ def health_command_context(
             "properties": {},
         },
         storage=mock_storage,
+        storage_factory=mock_storage_factory,
         stac_manager=mock_stac_manager,
         index_registry=mock_index_registry,
         metadata={"check_type": "health"},
@@ -70,7 +82,9 @@ class TestHealthCheckCommand:
     ) -> None:
         """Test successful context validation"""
         command = HealthCheckCommand()
-        assert command.validate_context(health_command_context) is True
+        is_valid, message = command.validate_context(health_command_context)
+        assert is_valid is True
+        assert "validation passed" in message.lower()
 
     def test_validate_context_missing_job_id(
         self, health_command_context: CommandContext
@@ -78,7 +92,9 @@ class TestHealthCheckCommand:
         """Test context validation with missing job_id"""
         health_command_context.job_id = ""
         command = HealthCheckCommand()
-        assert command.validate_context(health_command_context) is False
+        is_valid, message = command.validate_context(health_command_context)
+        assert is_valid is False
+        assert "job_id" in message.lower()
 
     @pytest.mark.asyncio
     async def test_execute_all_healthy(

@@ -202,16 +202,16 @@ class TestSTACCatalogManager:
         assert item_ids == expected_ids
 
     @pytest.mark.asyncio
-    async def test_factory_methods(self) -> None:
+    async def test_factory_methods(self, minio_storage: StorageInterface) -> None:
         """Test the factory methods for creating catalog managers"""
         # Test factory methods
-        testing_manager = STACCatalogManager.for_testing(STAC_TEST_BASE_URL)
+        testing_manager = STACCatalogManager.for_testing(STAC_TEST_BASE_URL, minio_storage)
         production_manager = STACCatalogManager.for_production(
-            "https://prod.example.com"
+            "https://prod.example.com", minio_storage
         )
 
         assert testing_manager.base_url == STAC_TEST_BASE_URL
         assert production_manager.base_url == "https://prod.example.com"
 
-        # Different storage instances
-        assert testing_manager.storage != production_manager.storage
+        # Same storage instances since we passed the same one
+        assert testing_manager.storage == production_manager.storage

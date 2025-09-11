@@ -48,33 +48,38 @@ class UploadAOICommand(Command):
     def get_required_permissions(self) -> List[str]:
         return ["storage:write", "stac:write"]
 
-    def validate_context(self, context: CommandContext) -> bool:
+    def validate_context(self, context: CommandContext) -> Tuple[bool, str]:
         """Validate that context has required data for AOI upload"""
         if not context.job_id or not context.fire_event_name:
-            logger.error("job_id and fire_event_name are required")
-            return False
+            error_msg = "job_id and fire_event_name are required"
+            logger.error(error_msg)
+            return False, error_msg
 
         if not context.storage:
-            logger.error("storage interface is required")
-            return False
+            error_msg = "storage interface is required"
+            logger.error(error_msg)
+            return False, error_msg
 
         if not context.stac_manager:
-            logger.error("stac_manager is required")
-            return False
+            error_msg = "stac_manager is required"
+            logger.error(error_msg)
+            return False, error_msg
 
         # Check that either geometry or upload_data is provided
         upload_data = context.get_metadata("upload_data")
         upload_type = context.get_metadata("upload_type", "geojson")
 
         if upload_type == "geojson" and not context.geometry:
-            logger.error("geometry is required for GeoJSON uploads")
-            return False
+            error_msg = "geometry is required for GeoJSON uploads"
+            logger.error(error_msg)
+            return False, error_msg
 
         if upload_type == "shapefile" and not upload_data:
-            logger.error("upload_data is required for shapefile uploads")
-            return False
+            error_msg = "upload_data is required for shapefile uploads"
+            logger.error(error_msg)
+            return False, error_msg
 
-        return True
+        return True, "Context validation passed"
 
     async def execute(self, context: CommandContext) -> CommandResult:
         """Execute AOI upload and processing workflow"""
@@ -212,7 +217,7 @@ class UploadAOICommand(Command):
             zip_blob_name = (
                 f"{context.fire_event_name}/{context.job_id}/original_shapefile.zip"
             )
-            gcs_url = await upload_to_gcs(content, zip_blob_name)
+            gcs_url = await upload_to_gcs(content, zip_blob_name, context.storage_factory)
 
             return {
                 "upload_type": "shapefile",
@@ -263,7 +268,7 @@ class UploadAOICommand(Command):
 
         # Also upload to GCS for backward compatibility
         gcs_blob_name = f"{context.fire_event_name}/{context.job_id}/{filename}.geojson"
-        gcs_url = await upload_to_gcs(geojson_bytes, gcs_blob_name)
+        gcs_url = await upload_to_gcs(geojson_bytes, gcs_blob_name, context.storage_factory)
 
         # Extract bbox from geometry for STAC
         valid_geojson_dict = valid_geojson.model_dump()

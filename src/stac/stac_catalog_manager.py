@@ -2,7 +2,6 @@ from typing import Dict, List, Any, Optional
 import pystac
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_item_factory import STACItemFactory
-from src.config.storage import get_temp_storage, get_final_storage
 from datetime import datetime
 from geojson_pydantic import Polygon, Feature
 
@@ -45,14 +44,14 @@ class STACCatalogManager:
         }
 
     @classmethod
-    def for_testing(cls, base_url: str) -> "STACCatalogManager":
+    def for_testing(cls, base_url: str, storage: StorageInterface) -> "STACCatalogManager":
         """Create a catalog manager instance configured for testing"""
-        return cls(base_url=base_url, storage=get_temp_storage())
+        return cls(base_url=base_url, storage=storage)
 
     @classmethod
-    def for_production(cls, base_url: str) -> "STACCatalogManager":
+    def for_production(cls, base_url: str, storage: StorageInterface) -> "STACCatalogManager":
         """Create a catalog manager instance configured for production"""
-        return cls(base_url=base_url, storage=get_final_storage())
+        return cls(base_url=base_url, storage=storage)
 
     async def initialize_catalog(self) -> pystac.Catalog:
         """

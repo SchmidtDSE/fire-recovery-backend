@@ -78,8 +78,18 @@ def mock_index_registry() -> Mock:
 
 
 @pytest.fixture
+def mock_storage_factory(mock_storage: Mock) -> Mock:
+    """Create mock storage factory"""
+    from src.core.storage.storage_factory import StorageFactory
+    factory = Mock(spec=StorageFactory)
+    factory.get_temp_storage.return_value = mock_storage
+    factory.get_final_storage.return_value = mock_storage
+    return factory
+
+
+@pytest.fixture
 def command_context(
-    mock_storage: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+    mock_storage: Mock, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
 ) -> CommandContext:
     """Create test command context for fire severity analysis"""
     return CommandContext(
@@ -92,6 +102,7 @@ def command_context(
             ],
         },
         storage=mock_storage,
+        storage_factory=mock_storage_factory,
         stac_manager=mock_stac_manager,
         index_registry=mock_index_registry,
         computation_config={
@@ -451,6 +462,7 @@ if __name__ == "__main__":
         from unittest.mock import Mock
 
         storage = Mock()
+        storage_factory = Mock()
         stac_manager = Mock()
         index_registry = Mock()
 
@@ -459,6 +471,7 @@ if __name__ == "__main__":
             fire_event_name="test-fire",
             geometry={"type": "Point", "coordinates": [-120, 35]},
             storage=storage,
+            storage_factory=storage_factory,
             stac_manager=stac_manager,
             index_registry=index_registry,
             computation_config={

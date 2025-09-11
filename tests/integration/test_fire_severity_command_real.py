@@ -17,7 +17,7 @@ from .conftest import (
     create_integration_context,
     get_geometry_bounds,
     PERFORMANCE_EXPECTATIONS,
-    EXPECTED_INDEX_RANGES,
+    # EXPECTED_INDEX_RANGES,  # Would be used for detailed COG validation
 )
 
 
@@ -358,8 +358,7 @@ class TestFireSeverityCommandReal:
             assert len(cog_bytes) > 0
 
             # Validate expected index ranges
-            expected = EXPECTED_INDEX_RANGES[index_name]
-
+            # Note: EXPECTED_INDEX_RANGES validation would require reading the COG
             # For comprehensive validation, we would need to read the COG
             # and check pixel values, but for this test we validate the
             # computation pipeline executed successfully with real math
@@ -537,8 +536,8 @@ class TestFireSeverityCommandReal:
         assert len(storage_files) == 3  # RBR, dNBR, RdNBR
 
         # Validate no temporary files remain (should be cleaned automatically)
-        temp_files = await real_memory_storage.list_files("temp/")
         # Note: temp files might exist from other tests, so we don't assert zero
+        # temp_files = await real_memory_storage.list_files("temp/")
 
         print("✅ Storage and COG validation completed")
 

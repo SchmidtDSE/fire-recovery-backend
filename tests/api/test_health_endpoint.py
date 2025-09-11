@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 import uuid
 
@@ -7,13 +7,8 @@ import uuid
 class TestHealthEndpoint:
     """Integration tests for the /healthz endpoint using command pattern"""
 
-    @patch("src.config.storage.get_storage")
-    def test_health_check_success(self, mock_get_storage: MagicMock) -> None:
+    def test_health_check_success(self) -> None:
         """Test successful health check endpoint"""
-
-        # Setup mock storage
-        mock_storage = AsyncMock()
-        mock_get_storage.return_value = mock_storage
 
         # Create mock STAC manager
         mock_stac_manager = AsyncMock()
@@ -36,6 +31,7 @@ class TestHealthEndpoint:
         )
 
         # Create mock storage factory
+        mock_storage = AsyncMock()
         mock_storage_factory = MagicMock()
         mock_storage_factory.get_temp_storage.return_value = mock_storage
 
@@ -96,15 +92,8 @@ class TestHealthEndpoint:
             # Clean up dependency overrides
             app.dependency_overrides.clear()
 
-    @patch("src.config.storage.get_storage")
-    def test_health_check_with_unhealthy_component(
-        self, mock_get_storage: MagicMock
-    ) -> None:
+    def test_health_check_with_unhealthy_component(self) -> None:
         """Test health check when a component is unhealthy"""
-
-        # Setup mock storage
-        mock_storage = AsyncMock()
-        mock_get_storage.return_value = mock_storage
 
         # Create mock STAC manager
         mock_stac_manager = AsyncMock()
@@ -124,6 +113,7 @@ class TestHealthEndpoint:
         )
 
         # Create mock storage factory
+        mock_storage = AsyncMock()
         mock_storage_factory = MagicMock()
         mock_storage_factory.get_temp_storage.return_value = mock_storage
 
@@ -157,13 +147,8 @@ class TestHealthEndpoint:
             # Clean up dependency overrides
             app.dependency_overrides.clear()
 
-    @patch("src.config.storage.get_storage")
-    def test_health_check_command_failure(self, mock_get_storage: MagicMock) -> None:
+    def test_health_check_command_failure(self) -> None:
         """Test health check when command execution fails"""
-
-        # Setup mock storage that fails
-        mock_storage = AsyncMock()
-        mock_get_storage.return_value = mock_storage
 
         # Mock storage factory to return failing storage
         mock_storage_factory = MagicMock()

@@ -111,8 +111,17 @@ def mock_index_registry() -> Mock:
 
 
 @pytest.fixture
+def mock_storage_factory(mock_storage: MockStorage) -> Mock:
+    """Create mock storage factory"""
+    factory = Mock(spec=StorageFactory)
+    factory.get_temp_storage.return_value = mock_storage
+    factory.get_final_storage.return_value = mock_storage
+    return factory
+
+
+@pytest.fixture
 def command_context(
-    mock_storage: MockStorage, mock_stac_manager: Mock, mock_index_registry: Mock
+    mock_storage: MockStorage, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
 ) -> CommandContext:
     """Create test command context"""
     return CommandContext(
@@ -125,6 +134,7 @@ def command_context(
             ],
         },
         storage=mock_storage,
+        storage_factory=mock_storage_factory,
         stac_manager=mock_stac_manager,
         index_registry=mock_index_registry,
         computation_config={"test_config": True},
@@ -152,6 +162,7 @@ class TestCommandContext:
                 fire_event_name="test",
                 geometry={},
                 storage=Mock(),
+                storage_factory=Mock(),
                 stac_manager=Mock(),
                 index_registry=Mock(),
             )
@@ -270,6 +281,7 @@ class TestCommandImplementation:
             fire_event_name="test",
             geometry={"type": "Point", "coordinates": [0, 0]},
             storage=Mock(),
+            storage_factory=Mock(),
             stac_manager=Mock(),
             index_registry=Mock(),
         )
@@ -429,11 +441,13 @@ if __name__ == "__main__":
         index_registry = Mock(spec=IndexRegistry)
 
         # Create context
+        storage_factory = Mock()
         context = CommandContext(
             job_id="integration-test",
             fire_event_name="test-fire",
             geometry={"type": "Point", "coordinates": [-120, 35]},
             storage=storage,
+            storage_factory=storage_factory,
             stac_manager=stac_manager,
             index_registry=index_registry,
         )

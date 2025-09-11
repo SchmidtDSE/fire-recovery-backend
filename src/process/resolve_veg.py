@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Dict, Iterable, List, Any, Tuple
+from typing import Dict, Generator, List, Any, Tuple
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -15,7 +15,7 @@ PROJECTED_CRS = "EPSG:32611"  # UTM 11N
 
 
 @contextmanager
-def temp_file(suffix: str, content: bytes) -> Iterable[str]:
+def temp_file(suffix: str, content: bytes) -> Generator[str, None, None]:
     """Context manager for temporary files with automatic cleanup"""
     temp_path = None
     try:
