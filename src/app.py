@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
-from typing import Any
+from typing import Any, AsyncGenerator
 from .routers import fire_recovery
 from contextlib import asynccontextmanager
 import time
@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 # Initialize cache with in-memory backend at app startup
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> None:
+async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any, Any]:
     # Load environment variables at startup
     env_path = os.path.join(os.path.dirname(__file__), "..", ".devcontainer", ".env")
     if os.path.exists(env_path):
@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI) -> None:
         print(f"Loaded environment from {env_path}")
     else:
         print(f"No .env file found at {env_path}, using system environment variables")
-    
+
     # Startup: initialize FastAPICache
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     yield
