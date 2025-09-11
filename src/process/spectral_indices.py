@@ -1,102 +1,88 @@
-import coiled
-import dask.distributed
-import rioxarray
 import xarray as xr
-from pystac_client import Client as PystacClient
-import stackstac
 import numpy as np
-from rio_cogeo.cogeo import cog_validate, cog_translate, cog_info
-from rio_cogeo.profiles import cog_profiles
 import os
-from typing import List, Dict, Optional, Any
-from geojson_pydantic import Polygon
+from typing import List, Dict
+from geojson_pydantic import Polygon, Feature
 from shapely.geometry import shape
-import numpy as np
-import planetary_computer
-import hashlib
-import json
-from fastapi_cache.decorator import cache
-import pickle
-from src.stac.stac_endpoint_handler import StacEndpointHandler
 
 RUN_LOCAL = os.getenv("RUN_LOCAL") == "True"
 
 
-async def process_remote_sensing_data(
-    job_id: str,
-    geometry: Polygon,
-    stac_endpoint_handler: StacEndpointHandler,
-    prefire_date_range: Optional[List[str]],
-    postfire_date_range: Optional[List[str]],
-) -> Dict[str, Any]:
-    # Initialize workspace
-    workspace = initialize_workspace(job_id)
-    output_dir = workspace["output_dir"]
-    status_file = workspace["status_file"]
+# async def process_remote_sensing_data(
+#     job_id: str,
+#     geometry: Polygon | Feature,
+#     stac_endpoint_handler: StacEndpointHandler,
+#     prefire_date_range: Optional[List[str]],
+#     postfire_date_range: Optional[List[str]],
+# ) -> Dict[str, Any]:
+#     # Initialize workspace
+#     workspace = initialize_workspace(job_id)
+#     output_dir = workspace["output_dir"]
+#     status_file = workspace["status_file"]
 
-    try:
-        # Validate input date ranges
-        if not prefire_date_range or not postfire_date_range:
-            raise ValueError("Both prefire and postfire date ranges are required")
+#     try:
+#         # Validate input date ranges
+#         if not prefire_date_range or not postfire_date_range:
+#             raise ValueError("Both prefire and postfire date ranges are required")
 
-        # Calculate the full date range for a single query
-        full_date_range = [prefire_date_range[0], postfire_date_range[1]]
+#         # Calculate the full date range for a single query
+#         full_date_range = [prefire_date_range[0], postfire_date_range[1]]
 
-        # Fetch all data using the endpoint handler
-        items, endpoint_config = await stac_endpoint_handler.search_items(
-            geometry=geometry,
-            date_range=full_date_range,
-            collections=["sentinel-2-l2a"],
-        )
+#         # Fetch all data using the endpoint handler
+#         items, endpoint_config = await stac_endpoint_handler.search_items(
+#             geometry=geometry,
+#             date_range=full_date_range,
+#             collections=["sentinel-2-l2a"],
+#         )
 
-        # Get the band names and EPSG code for this endpoint
-        nir_band, swir_band = stac_endpoint_handler.get_band_names(endpoint_config)
-        epsg_code = stac_endpoint_handler.get_epsg_code(endpoint_config)
+#         # Get the band names and EPSG code for this endpoint
+#         nir_band, swir_band = stac_endpoint_handler.get_band_names(endpoint_config)
+#         epsg_code = stac_endpoint_handler.get_epsg_code(endpoint_config)
 
-        # Fetch data using these parameters
-        stacked_data = stackstac.stack(
-            items,
-            epsg=epsg_code,
-            assets=[swir_band, nir_band],
-            bounds=get_buffered_bounds(geometry, 100),
-            chunksize=(-1, 1, 512, 512),
-        )
+#         # Fetch data using these parameters
+#         stacked_data = stackstac.stack(
+#             items,
+#             epsg=epsg_code,
+#             assets=[swir_band, nir_band],
+#             bounds=get_buffered_bounds(geometry, 100),
+#             chunksize=(-1, 1, 512, 512),
+#         )
 
-        # Split into pre and post fire datasets
-        prefire_data = subset_data_by_date_range(stacked_data, prefire_date_range)
-        postfire_data = subset_data_by_date_range(stacked_data, postfire_date_range)
+#         # Split into pre and post fire datasets
+#         prefire_data = subset_data_by_date_range(stacked_data, prefire_date_range)
+#         postfire_data = subset_data_by_date_range(stacked_data, postfire_date_range)
 
-        print(f"Prefire shape: {prefire_data.shape}, dims: {prefire_data.dims}")
-        print(f"Postfire shape: {postfire_data.shape}, dims: {postfire_data.dims}")
+#         print(f"Prefire shape: {prefire_data.shape}, dims: {prefire_data.dims}")
+#         print(f"Postfire shape: {postfire_data.shape}, dims: {postfire_data.dims}")
 
-        # Calculate burn indices
-        indices = calculate_burn_indices(
-            prefire_data, postfire_data, nir_band, swir_band
-        )
+#         # Calculate burn indices
+#         indices = calculate_burn_indices(
+#             prefire_data, postfire_data, nir_band, swir_band
+#         )
 
-        # Create COGs for each metric
-        cog_results = {}
-        for name, data in indices.items():
-            cog_path = f"{output_dir}/{name}.tif"
-            cog_results[name] = create_cog(data, cog_path)
+#         # Create COGs for each metric
+#         cog_results = {}
+#         for name, data in indices.items():
+#             cog_path = f"{output_dir}/{name}.tif"
+#             cog_results[name] = create_cog(data, cog_path)
 
-        # Update status
-        all_valid = all(result["is_valid"] for result in cog_results.values())
-        with open(status_file, "w") as f:
-            f.write("completed" if all_valid else "failed_validation")
+#         # Update status
+#         all_valid = all(result["is_valid"] for result in cog_results.values())
+#         with open(status_file, "w") as f:
+#             f.write("completed" if all_valid else "failed_validation")
 
-        return {
-            "status": "completed" if all_valid else "failed_validation",
-            "output_files": {
-                name: result["path"] for name, result in cog_results.items()
-            },
-        }
+#         return {
+#             "status": "completed" if all_valid else "failed_validation",
+#             "output_files": {
+#                 name: result["path"] for name, result in cog_results.items()
+#             },
+#         }
 
-    except Exception as e:
-        # Update status on error
-        with open(status_file, "w") as f:
-            f.write(f"error: {str(e)}")
-        return {"status": f"error: {str(e)}"}
+#     except Exception as e:
+#         # Update status on error
+#         with open(status_file, "w") as f:
+#             f.write(f"error: {str(e)}")
+#         return {"status": f"error: {str(e)}"}
 
 
 def subset_data_by_date_range(
@@ -134,9 +120,20 @@ def initialize_workspace(job_id: str) -> Dict[str, str]:
     return {"output_dir": output_dir, "status_file": status_file}
 
 
-def get_buffered_bounds(geometry: Polygon, buffer: float):
+def get_buffered_bounds(
+    geometry: Polygon | Feature, buffer: float
+) -> tuple[float, float, float, float]:
     # Extract the bounding box from the geometry
-    geom_shape = shape(geometry)
+    # Convert pydantic object to dict for shapely
+    if hasattr(geometry, "model_dump"):
+        geom_dict = geometry.model_dump()
+        # If it's a Feature, extract the geometry part
+        if geom_dict.get("type") == "Feature":
+            geom_shape = shape(geom_dict["geometry"])
+        else:
+            geom_shape = shape(geom_dict)
+    else:
+        geom_shape = shape(geometry)
     minx, miny, maxx, maxy = geom_shape.bounds
 
     # Calculate width and height in degrees
@@ -171,40 +168,6 @@ def calculate_nbr(
     return (nir - swir) / (nir + swir)
 
 
-# def attempt_read_from_cache(cache_key):
-#     # Create cache directory if it doesn't exist
-#     cache_dir = "tmp/cache"
-#     os.makedirs(cache_dir, exist_ok=True)
-
-#     cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-#     # Check if cached result exists
-#     if os.path.exists(cache_file):
-#         try:
-#             print(f"Loading cached result from {cache_file}")
-#             with open(cache_file, "rb") as f:
-#                 return pickle.loads(f.read())
-#         except Exception as e:
-#             print(f"Error loading cached result: {e}")
-
-
-# def write_to_cache(cache_key, result):
-#     # Create cache directory if it doesn't exist
-#     cache_dir = "tmp/cache"
-#     os.makedirs(cache_dir, exist_ok=True)
-
-#     cache_file = f"{cache_dir}/{cache_key}.pkl"
-
-#     try:
-#         print(f"Saving result to cache: {cache_file}")
-#         with open(cache_file, "wb") as f:
-#             f.write(
-#                 pickle.dumps(result, protocol=-1)
-#             )  # Use highest protocol for efficiency
-#     except Exception as e:
-#         print(f"Error caching result: {e}")
-
-
 # @coiled.function(
 #     name="calculate-burn-indices",
 #     container="ghcr.io/schmidtdse/fire-coiled-runner:latest",
@@ -214,22 +177,13 @@ def calculate_nbr(
 #     keepalive="6 hours",
 #     local=False,
 # )
-# @cache(
-#     key_builder=burn_indices_key_builder,
-#     namespace="burn_indices",
-#     expire=60 * 60 * 24 * 7,  # Cache for 7 days
-# )
-def calculate_burn_indices(prefire_data, postfire_data, nir_band_name, swir_band_name):
+def calculate_burn_indices(
+    prefire_data: xr.DataArray,
+    postfire_data: xr.DataArray,
+    nir_band_name: str,
+    swir_band_name: str,
+) -> Dict[str, xr.DataArray]:
     """Calculate various burn indices from pre and post fire data"""
-
-    # First, check local cache to see if we have this pickled
-    # prefire_hash = hashlib.md5(str(prefire_data).encode()).hexdigest()
-    # postfire_hash = hashlib.md5(str(postfire_data).encode()).hexdigest()
-    # cache_key = f"burn_indices:{prefire_hash}:{postfire_hash}"
-
-    # cached_data = attempt_read_from_cache(cache_key=cache_key)
-    # if cached_data:
-    #     return cached_data
 
     # Calculate NBR for both periods
     prefire_nbr = calculate_nbr(prefire_data, nir_band_name, swir_band_name)
@@ -264,51 +218,46 @@ def calculate_burn_indices(prefire_data, postfire_data, nir_band_name, swir_band
         "rbr": rbr,
     }
 
-    # Write to cache
-    # write_to_cache(cache_key=cache_key, result=result)
-
     return result
 
 
-def create_cog(data, output_path: str) -> Dict[str, Any]:
-    """Create a Cloud Optimized GeoTIFF from xarray data"""
+# def create_cog(data: xr.DataArray, output_path: str) -> Dict[str, Any]:
+#     """Create a Cloud Optimized GeoTIFF from xarray data"""
 
-    naive_tiff = output_path.replace(".tif", "_raw.tif")
+#     naive_tiff = output_path.replace(".tif", "_raw.tif")
 
-    # Dask arrays are lazy - this is where dask-distributed will
-    # actually compute the burn metrics from the various href'd COGs
-    computed = data.compute()
+#     # Dask arrays are lazy - this is where dask-distributed will
+#     # actually compute the burn metrics from the various href'd COGs
+#     computed = data.compute()
 
-    # Ensure data is float32 and has proper nodata value
-    computed = computed.astype("float32")
+#     # Ensure data is float32 and has proper nodata value
+#     computed = computed.astype("float32")
 
-    # Set nodata value for NaN values
-    nodata = -9999.0
-    computed = computed.rio.write_nodata(nodata)
-    computed.rio.set_crs("EPSG:4326", inplace=True)
+#     # Set nodata value for NaN values
+#     nodata = -9999.0
+#     computed = computed.rio.write_nodata(nodata)
+#     computed.rio.set_crs("EPSG:4326", inplace=True)
 
-    # Write the naive GeoTIFF
-    computed.rio.to_raster(naive_tiff, driver="GTiff", dtype="float32")
+#     # Write the naive GeoTIFF
+#     computed.rio.to_raster(naive_tiff, driver="GTiff", dtype="float32")
 
-    cog_profile = cog_profiles.get("deflate")
-    # Update the profile to include nodata value
-    cog_profile.update(dtype="float32", nodata=nodata)
+#     cog_profile = cog_profiles.get("deflate")
+#     # Update the profile to include nodata value
+#     cog_profile.update(dtype="float32", nodata=nodata)
 
-    cog_translate(
-        naive_tiff,
-        output_path,
-        cog_profile,
-        add_mask=True,
-        overview_resampling="average",
-        forward_band_tags=True,
-        use_cog_driver=True,
-    )
+#     cog_translate(
+#         naive_tiff,
+#         output_path,
+#         cog_profile,
+#         add_mask=True,
+#         overview_resampling="average",
+#         forward_band_tags=True,
+#         use_cog_driver=True,
+#     )
 
-    __info = cog_info(output_path)
+#     is_valid, __errors, __warnings = cog_validate(output_path)
 
-    is_valid, __errors, __warnings = cog_validate(output_path)
+#     # Clean up intermediate naive file
+#     os.remove(naive_tiff)
 
-    # Clean up intermediate naive file
-    os.remove(naive_tiff)
-
-    return {"path": output_path, "is_valid": is_valid}
+#     return {"path": output_path, "is_valid": is_valid}

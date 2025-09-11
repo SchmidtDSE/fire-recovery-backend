@@ -1,20 +1,26 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
-from fastapi_cache.decorator import cache
-from src.util.api_cache import request_key_builder
-import hashlib
-import json
-from .routers import stac_server, fire_recovery
+from typing import Any
+from .routers import fire_recovery
 from contextlib import asynccontextmanager
 import time
+import os
+from dotenv import load_dotenv
 
 
 # Initialize cache with in-memory backend at app startup
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> None:
+    # Load environment variables at startup
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".devcontainer", ".env")
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"Loaded environment from {env_path}")
+    else:
+        print(f"No .env file found at {env_path}, using system environment variables")
+    
     # Startup: initialize FastAPICache
     FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
     yield
@@ -40,16 +46,10 @@ app.add_middleware(
 
 # Include routers
 app.include_router(fire_recovery.router)
-app.include_router(stac_server.router)
 
 
 @app.get("/")
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60 * 6,  # Cache for 6 hour
-)
-async def root():
+async def root() -> dict[str, Any]:
     return {
         "message": "Welcome to the Fire Recovery Backend API",
         "docs_url": "/docs",
@@ -58,11 +58,6 @@ async def root():
 
 
 @app.get("/cache_test")
-@cache(
-    key_builder=request_key_builder,
-    namespace="root",
-    expire=60 * 60,  # Cache for 1 hour
-)
-async def cache_test():
+async def cache_test() -> dict[str, str]:
     time.sleep(10)
     return {"ping": "pong"}

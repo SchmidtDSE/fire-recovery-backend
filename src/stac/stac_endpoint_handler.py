@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from pystac import ItemCollection
 from pystac_client import Client as PystacClient
 import planetary_computer
@@ -6,6 +6,7 @@ from enum import Enum
 from pydantic import BaseModel
 import json
 import logging
+from geojson_pydantic import Polygon, Feature
 
 
 class StacProvider(Enum):
@@ -106,9 +107,9 @@ class StacEndpointHandler:
 
     async def search_items(
         self,
-        geometry: Dict,
+        geometry: Polygon | Feature | Dict[str, Any],
         date_range: List[str],
-        collections: List[str] = None,
+        collections: Optional[List[str]] = None,
         provider_index: Optional[int] = None,
     ) -> Tuple[ItemCollection, StacMapping]:
         """
@@ -126,7 +127,7 @@ class StacEndpointHandler:
         Raises:
             RuntimeError: If no items found at any provider
         """
-        search_params = {
+        search_params: Dict[str, Any] = {
             "intersects": geometry,
             "datetime": "/".join(date_range),
         }

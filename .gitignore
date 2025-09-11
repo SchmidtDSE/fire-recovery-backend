@@ -14,9 +14,13 @@ src/__pycache__/
 
 # dotenv
 .devcontainer/.env
+.devcontainer/test.env
 
 # Github actions key
 github-actions-key.json
 
 # Pycache pyc files__pycache__
 __pycache__/
+
+# Claude
+.claude

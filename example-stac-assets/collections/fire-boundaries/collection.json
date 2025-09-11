@@ -1,0 +1,38 @@
+{
+  "type": "Collection",
+  "id": "fire-boundaries",
+  "title": "Fire Boundaries",
+  "description": "Fire perimeter boundaries from severity analysis",
+  "keywords": ["fire", "boundary", "perimeter", "geojson"],
+  "stac_version": "1.0.0",
+  "extent": {
+    "spatial": {
+      "bbox": [[-180, -90, 180, 90]]
+    },
+    "temporal": {
+      "interval": [["2000-01-01T00:00:00Z", null]]
+    }
+  },
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/fire-boundaries/collection.json",
+      "title": "Fire Boundaries Collection"
+    },
+    {
+      "rel": "parent",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json",
+      "title": "Fire Recovery STAC Catalog"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json",
+      "title": "Fire Recovery Root Catalog"
+    }
+  ],
+  "stac_extensions": [],
+  "license": "ISC"
+}
