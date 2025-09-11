@@ -272,7 +272,9 @@ class TestCommandImplementation:
         command = TestCommand()
 
         # Valid context should pass
-        assert command.validate_context(command_context) is True
+        is_valid, error_message = command.validate_context(command_context)
+        assert is_valid is True
+        assert error_message == ""
 
         # Invalid context should fail - we can't create invalid context due to __post_init__ validation
         # So we'll test by setting attributes to None after creation
@@ -287,7 +289,9 @@ class TestCommandImplementation:
         )
         # Make storage None to trigger validation failure
         invalid_context.storage = None
-        assert command.validate_context(invalid_context) is False
+        is_valid, error_message = command.validate_context(invalid_context)
+        assert is_valid is False
+        assert len(error_message) > 0
 
     @pytest.mark.asyncio
     async def test_test_command_execution_success(

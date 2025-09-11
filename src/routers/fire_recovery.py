@@ -1,10 +1,9 @@
-import json
 import logging
 import os
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import (
     APIRouter,
@@ -16,22 +15,17 @@ from fastapi import (
     UploadFile,
 )
 from geojson_pydantic import Polygon, Feature
-from shapely.geometry import shape
 
 from src.config.constants import FINAL_BUCKET_NAME
 from src.process.resolve_veg import process_veg_map
 from src.stac.stac_json_manager import STACJSONManager
 from src.stac.stac_catalog_manager import STACCatalogManager
-from src.util.cog_ops import (
-    create_cog_bytes,
-    crop_cog_with_geometry,
-    download_cog_to_temp,
-)
-from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
+from src.util.boundary_utils import process_and_upload_geojson
 from src.commands.impl.upload_aoi_command import UploadAOICommand
 from src.commands.impl.health_check_command import HealthCheckCommand
 from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
+from src.commands.impl.boundary_refinement_command import BoundaryRefinementCommand
 from src.commands.interfaces.command_context import CommandContext
 from src.core.storage.storage_factory import StorageFactory
 from src.computation.registry.index_registry import IndexRegistry
@@ -59,89 +53,6 @@ def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | Feature:
         return Feature.model_validate(geometry)
     else:
         return Polygon.model_validate(geometry)
-
-
-async def process_and_upload_geojson(
-    geometry: Polygon | Feature | dict,
-    fire_event_name: str,
-    job_id: str,
-    filename: str,
-    storage_factory: StorageFactory,
-) -> Tuple[str, Dict[str, Any], List[float]]:
-    """
-    Validate, save and upload a GeoJSON boundary
-
-    Args:
-        geometry: The geometry or GeoJSON to process
-        fire_event_name: Name of the fire event
-        job_id: Job ID for the processing task
-        filename: Base filename for the GeoJSON (without extension)
-        storage_factory: Storage factory instance for getting storage providers
-
-    Returns:
-        Tuple containing:
-        - URL to the uploaded GeoJSON
-        - Validated GeoJSON object
-        - Bounding box coordinates [minx, miny, maxx, maxy]
-    """
-    # Convert the Polygon/geometry to a valid GeoJSON object
-    valid_geojson = polygon_to_valid_geojson(geometry)
-
-    # Save directly to temp storage and upload
-    temp_storage = storage_factory.get_temp_storage()
-    geojson_bytes = json.dumps(valid_geojson.model_dump()).encode("utf-8")
-
-    # Generate temp path for intermediate storage
-    temp_path = f"{job_id}/{filename}.geojson"
-    await temp_storage.save_bytes(geojson_bytes, temp_path, temporary=True)
-
-    # Upload to GCS
-    blob_name = f"{fire_event_name}/{job_id}/{filename}.geojson"
-    geojson_url = await upload_to_gcs(geojson_bytes, blob_name, storage_factory)
-
-    # Extract bbox from geometry for STAC
-    valid_geojson_dict = valid_geojson.model_dump()
-    geom_shape = shape(valid_geojson_dict["features"][0]["geometry"])
-    bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
-
-    return geojson_url, valid_geojson_dict, list(bbox)
-
-
-async def process_cog_with_boundary(
-    original_cog_url: str,
-    valid_geojson: Dict[str, Any],
-    fire_event_name: str,
-    job_id: str,
-    output_filename: str,
-    storage_factory: StorageFactory,
-) -> str:
-    """
-    Process a COG with a boundary: download, crop, create new COG, and upload
-
-    Args:
-        original_cog_url: URL to the original COG
-        valid_geojson: The validated GeoJSON to crop with
-        fire_event_name: Name of the fire event
-        job_id: Job ID for the processing task
-        output_filename: Filename for the output COG (without extension)
-
-    Returns:
-        URL to the uploaded processed COG
-    """
-    # Download the original COG to a temporary file
-    tmp_cog_path = await download_cog_to_temp(original_cog_url)
-
-    # Crop the COG with the refined boundary
-    cropped_data = crop_cog_with_geometry(tmp_cog_path, valid_geojson)
-
-    # Create a new COG from the cropped data as bytes
-    cog_bytes = await create_cog_bytes(cropped_data)
-
-    # Upload the refined COG to GCS
-    cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
-    cog_url = await upload_to_gcs(cog_bytes, cog_blob_name, storage_factory)
-
-    return cog_url
 
 
 # Dictionary to track when job requests were first received
@@ -450,6 +361,8 @@ async def refine_fire_boundary(
     request: RefineRequest,
     background_tasks: BackgroundTasks,
     storage_factory: StorageFactory = Depends(get_storage_factory),
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> Dict[str, Any]:
     """
     Refine the fire boundary to the provided GeoJSON.
@@ -462,6 +375,8 @@ async def refine_fire_boundary(
         fire_event_name=request.fire_event_name,
         refine_geojson=request.refine_geojson,
         storage_factory=storage_factory,
+        stac_manager=stac_manager,
+        index_registry=index_registry,
     )
 
     return {
@@ -476,71 +391,46 @@ async def process_boundary_refinement(
     fire_event_name: str,
     refine_geojson: dict,
     storage_factory: StorageFactory,
-    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    stac_manager: STACJSONManager,
+    index_registry: IndexRegistry,
 ) -> None:
     """
-    Process boundary refinement, upload results, and create STAC assets
+    Process boundary refinement using command pattern.
     """
     try:
-        # 1. Process and upload the boundary GeoJSON
-        geojson_url, valid_geojson, bbox = await process_and_upload_geojson(
-            geometry=refine_geojson,
-            fire_event_name=fire_event_name,
+        # Create command context for boundary refinement
+        context = CommandContext(
             job_id=job_id,
-            filename="refined_boundary",
+            fire_event_name=fire_event_name,
+            geometry=convert_geometry_to_pydantic(refine_geojson),
+            storage=storage_factory.get_final_storage(),
             storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={"operation": "boundary_refinement"},
         )
 
-        # 2. Get the original/coarse fire severity COG URL
-        stac_id = f"{fire_event_name}-severity-{job_id}"
-        original_cog_item = await stac_manager.get_item_by_id(stac_id)
-        if not original_cog_item:
+        # Execute boundary refinement command
+        command = BoundaryRefinementCommand()
+        result = await command.execute(context)
+
+        if result.is_failure():
             raise HTTPException(
-                status_code=404,
-                detail=f"Original COG not found for job ID {job_id}",
+                status_code=500,
+                detail=f"Error processing boundary refinement: {result.error_message}",
             )
 
-        refined_cog_urls = {}
-        for metric, cog_url in original_cog_item["assets"].items():
-            coarse_cog_url = cog_url["href"]
-            # 3. Process the COG with the refined boundary
-            cog_url = await process_cog_with_boundary(
-                original_cog_url=coarse_cog_url,
-                valid_geojson=valid_geojson,
-                fire_event_name=fire_event_name,
-                job_id=job_id,
-                output_filename=f"refined_{metric}",
-                storage_factory=storage_factory,
-            )
-            refined_cog_urls[metric] = cog_url
-
-        # 4. Create the STAC item for this cropped COG
-        polygon_json = valid_geojson["features"][0]["geometry"]
-        await stac_manager.create_fire_severity_item(
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            cog_urls=refined_cog_urls,
-            geometry=polygon_json,
-            datetime_str=original_cog_item["properties"]["datetime"],
-            boundary_type="refined",
-        )
-
-        # 5. Create the STAC item for the refined boundary
-        datetime_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        await stac_manager.create_boundary_item(
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            boundary_geojson_url=geojson_url,
-            bbox=bbox,
-            datetime_str=datetime_str,
-            boundary_type="refined",
-        )
-
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
         # Log error with proper logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error processing boundary refinement: {str(e)}")
-        raise e
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error during boundary refinement: {str(e)}",
+        )
 
 
 @router.get(
