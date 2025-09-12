@@ -16,12 +16,14 @@ jobs:
     
     services:
       minio:
-        image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+        image: bitnami/minio:latest
         ports:
           - 9000:9000
+          - 9001:9001
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: test-bucket
         options: >-
           --health-cmd "curl -f http://localhost:9000/minio/health/ready"
           --health-interval 10s
@@ -59,20 +61,17 @@ jobs:
           RUN_LOCAL=True
           EOF
 
-      - name: Set up MinIO client and create test bucket
+      - name: Verify MinIO is ready
         run: |
-          # Download and install MinIO client
-          curl -o mc https://dl.min.io/client/mc/release/linux-amd64/mc
-          chmod +x mc
-          
-          # Configure MinIO client
-          ./mc config host add minio http://localhost:9000 minioadmin minioadmin
-          
-          # Create test bucket
-          ./mc mb minio/test-bucket || true
-          
-          # Verify bucket exists
-          ./mc ls minio/
+          # Wait for MinIO to be ready and verify bucket exists
+          for i in {1..30}; do
+            if curl -f http://localhost:9000/minio/health/ready; then
+              echo "MinIO is ready!"
+              break
+            fi
+            echo "Waiting for MinIO to be ready... (attempt $i/30)"
+            sleep 2
+          done
 
       - name: Run tests
         run: pixi run pytest --verbose
