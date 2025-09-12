@@ -21,11 +21,15 @@ jobs:
           - 9000:9000
           - 9001:9001
         env:
+          # Bitnami MinIO uses these environment variables
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
           MINIO_DEFAULT_BUCKETS: test-bucket
+          # Bitnami-specific settings
+          MINIO_SCHEME: http
+          BITNAMI_DEBUG: false
         options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/ready"
+          --health-cmd "curl -f http://localhost:9000/minio/health/ready || curl -f http://localhost:9000/minio/health/live"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
