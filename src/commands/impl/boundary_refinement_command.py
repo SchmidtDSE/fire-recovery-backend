@@ -176,12 +176,12 @@ class BoundaryRefinementCommand(Command):
             # Step 4: Create STAC metadata for refined assets
             try:
                 # Create the STAC item for refined COGs
-                polygon_json = valid_geojson["features"][0]["geometry"]
+                # Use the original pydantic geometry object which has __geo_interface__
                 await context.stac_manager.create_fire_severity_item(
                     fire_event_name=context.fire_event_name,
                     job_id=context.job_id,
                     cog_urls=refined_cog_urls,
-                    geometry=polygon_json,
+                    geometry=context.geometry,
                     datetime_str=original_cog_item["properties"]["datetime"],
                     boundary_type="refined",
                 )

@@ -70,7 +70,7 @@ router = APIRouter(
 def get_storage_factory() -> StorageFactory:
     """Get storage factory instance with lifecycle-based configuration"""
     from src.config.constants import FINAL_BUCKET_NAME
-    
+
     # Get MinIO credentials for persistent storage
     access_key = os.environ.get("GCP_ACCESS_KEY_ID")
     secret_key = os.environ.get("GCP_SECRET_ACCESS_KEY")
@@ -81,7 +81,7 @@ def get_storage_factory() -> StorageFactory:
         )
 
     # Configure storage based on lifecycle semantics:
-    # - temp_storage: Memory for ephemeral processing files (fast, auto-cleanup)  
+    # - temp_storage: Memory for ephemeral processing files (fast, auto-cleanup)
     # - final_storage: MinIO for persistent assets that outlive the request
     return StorageFactory(
         temp_storage_type="memory",
@@ -89,13 +89,13 @@ def get_storage_factory() -> StorageFactory:
         final_storage_type="minio",
         final_storage_config={
             "bucket_name": FINAL_BUCKET_NAME,
-            "endpoint": "storage.googleapis.com", 
+            "endpoint": "storage.googleapis.com",
             "access_key": access_key,
             "secret_key": secret_key,
             "region": "auto",
             "secure": True,
             "base_url": f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}",
-        }
+        },
     )
 
 
@@ -228,7 +228,7 @@ async def analyze_fire_severity(
         process_fire_severity,
         job_id=job_id,
         fire_event_name=request.fire_event_name,
-        geometry=convert_geometry_to_pydantic(request.geometry),
+        geometry=request.coarse_geojson,
         prefire_date_range=request.prefire_date_range,
         postfire_date_range=request.postfire_date_range,
         stac_manager=stac_manager,
@@ -373,7 +373,7 @@ async def refine_fire_boundary(
         process_boundary_refinement,
         job_id=request.job_id,
         fire_event_name=request.fire_event_name,
-        refine_geojson=request.refine_geojson,
+        refined_geojson=request.refined_geojson,
         storage_factory=storage_factory,
         stac_manager=stac_manager,
         index_registry=index_registry,
@@ -389,7 +389,7 @@ async def refine_fire_boundary(
 async def process_boundary_refinement(
     job_id: str,
     fire_event_name: str,
-    refine_geojson: dict,
+    refined_geojson: Polygon | Feature,
     storage_factory: StorageFactory,
     stac_manager: STACJSONManager,
     index_registry: IndexRegistry,
@@ -402,7 +402,7 @@ async def process_boundary_refinement(
         context = CommandContext(
             job_id=job_id,
             fire_event_name=fire_event_name,
-            geometry=convert_geometry_to_pydantic(refine_geojson),
+            geometry=refined_geojson,
             storage=storage_factory.get_final_storage(),
             storage_factory=storage_factory,
             stac_manager=stac_manager,
@@ -521,7 +521,7 @@ async def upload_geojson(
         context = CommandContext(
             job_id=job_id,
             fire_event_name=request.fire_event_name,
-            geometry=convert_geometry_to_pydantic(request.geojson),
+            geometry=request.geojson,
             storage=storage_factory.get_temp_storage(),
             storage_factory=storage_factory,
             stac_manager=stac_manager,
