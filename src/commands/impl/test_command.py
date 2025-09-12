@@ -1,5 +1,5 @@
 import asyncio
-from typing import List
+from typing import List, Tuple
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult
@@ -16,7 +16,7 @@ class TestCommand(Command):
     def get_command_name(self) -> str:
         return "test_command"
 
-    def validate_context(self, context: CommandContext) -> bool:
+    def validate_context(self, context: CommandContext) -> Tuple[bool, str]:
         """Validate that context has required fields"""
         try:
             # Check required fields
@@ -31,12 +31,12 @@ class TestCommand(Command):
             for field in required_fields:
                 if not hasattr(context, field) or getattr(context, field) is None:
                     self.logger.error(f"Context missing required field: {field}")
-                    return False
+                    return (False, f"Missing required field: {field}")
 
-            return True
+            return (True, "")
         except Exception as e:
             self.logger.error(f"Context validation failed: {e}")
-            return False
+            return (False, f"Context validation failed: {e}")
 
     async def execute(self, context: CommandContext) -> CommandResult:
         """Execute test command with mock operations"""
