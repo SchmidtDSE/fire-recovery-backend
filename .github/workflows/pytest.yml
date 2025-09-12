@@ -1,0 +1,59 @@
+name: Pytest Testing
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+
+      - name: Create environment files
+        run: |
+          mkdir -p .devcontainer
+          
+          # Create test.env with mock values for CI
+          cat > .devcontainer/test.env << EOF
+          MINIO_ENDPOINT=localhost:9000
+          MINIO_ACCESS_KEY=minioadmin
+          MINIO_SECRET_KEY=minioadmin
+          MINIO_SECURE=False
+          MINIO_TEST_BUCKET=test-bucket
+          EOF
+          
+          # Create .env with mock values for CI
+          cat > .devcontainer/.env << EOF
+          GCP_ACCESS_KEY_ID=mock-access-key
+          GCP_SECRET_ACCESS_KEY=mock-secret-key
+          RUN_LOCAL=True
+          EOF
+
+      - name: Run tests
+        run: pixi run pytest --verbose
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results
+          path: |
+            .pytest_cache/
+            **/*.log
+          retention-days: 7

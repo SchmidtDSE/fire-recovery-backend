@@ -16,8 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Run mypy
-        uses: jpetrucciani/mypy-check@master
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
         with:
-          mypy_flags: '--config-file mypy.ini'
-          path: "src/core" # To be updated when we continue to mypy other modules
+          cache: true
+      
+      - name: Run mypy
+        run: pixi run mypy --config-file mypy.ini src/
