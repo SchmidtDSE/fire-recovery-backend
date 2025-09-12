@@ -13,7 +13,6 @@ class TestSTACItemFactory:
         """Create a STACItemFactory instance for testing"""
         return STACItemFactory(base_url="https://test.example.com")
 
-
     def test_create_fire_severity_item_complete(
         self, factory: STACItemFactory, sample_geometry: Polygon
     ) -> None:

@@ -532,7 +532,9 @@ class TestFireSeverityCommandReal:
             assert result.asset_urls[index_name] == expected_url
 
         # Validate storage metadata
-        storage_files = await real_memory_storage.list_files("assets/integration-test-small/")
+        storage_files = await real_memory_storage.list_files(
+            "assets/integration-test-small/"
+        )
         assert len(storage_files) == 3  # RBR, dNBR, RdNBR
 
         # Validate no temporary files remain (should be cleaned automatically)

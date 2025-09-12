@@ -226,7 +226,20 @@ async def test_stac_json_manager_multiple_items_and_search(
             fire_event_name=fire_event_1,
             job_id=job_id,
             cog_urls={"rbr": "https://example.com/rbr1.tif"},
-            geometry=Polygon.model_validate({"type": "Polygon", "coordinates": [[[-120.0, 35.0], [-119.9, 35.0], [-119.9, 35.1], [-120.0, 35.1], [-120.0, 35.0]]]}),
+            geometry=Polygon.model_validate(
+                {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-120.0, 35.0],
+                            [-119.9, 35.0],
+                            [-119.9, 35.1],
+                            [-120.0, 35.1],
+                            [-120.0, 35.0],
+                        ]
+                    ],
+                }
+            ),
             datetime_str="2023-08-15T12:00:00Z",
             skip_validation=True,
         )
@@ -245,7 +258,20 @@ async def test_stac_json_manager_multiple_items_and_search(
             fire_event_name=fire_event_2,
             job_id=job_id,
             cog_urls={"dnbr": "https://example.com/dnbr2.tif"},
-            geometry=Polygon.model_validate({"type": "Polygon", "coordinates": [[[-121.0, 36.0], [-120.9, 36.0], [-120.9, 36.1], [-121.0, 36.1], [-121.0, 36.0]]]}),
+            geometry=Polygon.model_validate(
+                {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-121.0, 36.0],
+                            [-120.9, 36.0],
+                            [-120.9, 36.1],
+                            [-121.0, 36.1],
+                            [-121.0, 36.0],
+                        ]
+                    ],
+                }
+            ),
             datetime_str="2023-08-16T12:00:00Z",
             skip_validation=True,
         )
@@ -356,7 +382,20 @@ async def test_stac_json_manager_individual_file_storage(
             fire_event_name=fire_event_name,
             job_id=job_id,
             cog_urls={"rbr": "https://example.com/rbr.tif"},
-            geometry=Polygon.model_validate({"type": "Polygon", "coordinates": [[[-120.0, 35.0], [-119.9, 35.0], [-119.9, 35.1], [-120.0, 35.1], [-120.0, 35.0]]]}),
+            geometry=Polygon.model_validate(
+                {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [-120.0, 35.0],
+                            [-119.9, 35.0],
+                            [-119.9, 35.1],
+                            [-120.0, 35.1],
+                            [-120.0, 35.0],
+                        ]
+                    ],
+                }
+            ),
             datetime_str="2023-08-15T12:00:00Z",
             skip_validation=True,
         )

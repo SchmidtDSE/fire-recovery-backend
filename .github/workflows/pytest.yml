@@ -1,0 +1,91 @@
+name: Pytest Testing
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      minio:
+        image: bitnami/minio:latest
+        ports:
+          - 9000:9000
+          - 9001:9001
+        env:
+          # Bitnami MinIO uses these environment variables
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: test-bucket
+          # Bitnami-specific settings
+          MINIO_SCHEME: http
+          BITNAMI_DEBUG: false
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/ready || curl -f http://localhost:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+
+      - name: Create environment files
+        run: |
+          mkdir -p .devcontainer
+          
+          # Create test.env with mock values for CI
+          cat > .devcontainer/test.env << EOF
+          MINIO_ENDPOINT=localhost:9000
+          MINIO_ACCESS_KEY=minioadmin
+          MINIO_SECRET_KEY=minioadmin
+          MINIO_SECURE=False
+          MINIO_TEST_BUCKET=test-bucket
+          EOF
+          
+          # Create .env with mock values for CI
+          cat > .devcontainer/.env << EOF
+          GCP_ACCESS_KEY_ID=minioadmin
+          GCP_SECRET_ACCESS_KEY=minioadmin
+          RUN_LOCAL=True
+          EOF
+
+      - name: Verify MinIO is ready
+        run: |
+          # Wait for MinIO to be ready and verify bucket exists
+          for i in {1..30}; do
+            if curl -f http://localhost:9000/minio/health/ready; then
+              echo "MinIO is ready!"
+              break
+            fi
+            echo "Waiting for MinIO to be ready... (attempt $i/30)"
+            sleep 2
+          done
+
+      - name: Run tests
+        run: pixi run pytest --verbose
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results
+          path: |
+            .pytest_cache/
+            **/*.log
+          retention-days: 7

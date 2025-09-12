@@ -10,6 +10,7 @@ from shapely.geometry import shape
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult
+
 # GeoJSONGeometry type removed - using Dict[str, Any] for dictionary-based geometry data
 from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
@@ -143,7 +144,7 @@ class UploadAOICommand(Command):
         try:
             # Get geometry from context and convert to dict format for processing
             geometry_obj = context.geometry
-            if hasattr(geometry_obj, 'model_dump'):
+            if hasattr(geometry_obj, "model_dump"):
                 # Handle pydantic models - convert to dict
                 geojson_dict: Dict[str, Any] = geometry_obj.model_dump()
             else:
@@ -217,7 +218,9 @@ class UploadAOICommand(Command):
             zip_blob_name = (
                 f"{context.fire_event_name}/{context.job_id}/original_shapefile.zip"
             )
-            gcs_url = await upload_to_gcs(content, zip_blob_name, context.storage_factory)
+            gcs_url = await upload_to_gcs(
+                content, zip_blob_name, context.storage_factory
+            )
 
             return {
                 "upload_type": "shapefile",
@@ -268,7 +271,9 @@ class UploadAOICommand(Command):
 
         # Also upload to GCS for backward compatibility
         gcs_blob_name = f"{context.fire_event_name}/{context.job_id}/{filename}.geojson"
-        gcs_url = await upload_to_gcs(geojson_bytes, gcs_blob_name, context.storage_factory)
+        gcs_url = await upload_to_gcs(
+            geojson_bytes, gcs_blob_name, context.storage_factory
+        )
 
         # Extract bbox from geometry for STAC
         valid_geojson_dict = valid_geojson.model_dump()

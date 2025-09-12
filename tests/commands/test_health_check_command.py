@@ -34,6 +34,7 @@ def mock_index_registry() -> MagicMock:
 def mock_storage_factory(mock_storage: AsyncMock) -> MagicMock:
     """Create mock storage factory"""
     from src.core.storage.storage_factory import StorageFactory
+
     factory = MagicMock(spec=StorageFactory)
     factory.get_temp_storage.return_value = mock_storage
     factory.get_final_storage.return_value = mock_storage

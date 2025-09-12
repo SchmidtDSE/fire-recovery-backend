@@ -135,10 +135,10 @@ async def create_cog_bytes(data: xr.DataArray) -> bytes:
     # Use local temporary files for COG processing
     with tempfile.NamedTemporaryFile(suffix="_raw.tif", delete=False) as naive_temp:
         naive_tiff_path = naive_temp.name
-    
+
     with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as output_temp:
         output_path = output_temp.name
-    
+
     try:
         # Write the naive GeoTIFF to temp file
         computed.rio.to_raster(naive_tiff_path, driver="GTiff", dtype="float32")
@@ -166,7 +166,7 @@ async def create_cog_bytes(data: xr.DataArray) -> bytes:
         # Read the COG as bytes
         with open(output_path, "rb") as f:
             cog_bytes = f.read()
-            
+
     finally:
         # Clean up temporary files
         for temp_path in [naive_tiff_path, output_path]:
@@ -175,5 +175,5 @@ async def create_cog_bytes(data: xr.DataArray) -> bytes:
                     os.unlink(temp_path)
                 except OSError:
                     pass  # Ignore cleanup errors
-    
+
     return cog_bytes

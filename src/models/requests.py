@@ -5,7 +5,9 @@ from geojson_pydantic import Polygon, Feature
 
 class ProcessingRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    coarse_geojson: Union[Polygon, Feature] = Field(..., description="GeoJSON of bounding box AOI")
+    coarse_geojson: Union[Polygon, Feature] = Field(
+        ..., description="GeoJSON of bounding box AOI"
+    )
     prefire_date_range: list[str] = Field(
         ...,
         description="Date range for prefire imagery (e.g. ['2023-01-01', '2023-12-31'])",
@@ -18,7 +20,9 @@ class ProcessingRequest(BaseModel):
 
 class RefineRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    refined_geojson: Union[Polygon, Feature] = Field(..., description="GeoJSON of refined AOI")
+    refined_geojson: Union[Polygon, Feature] = Field(
+        ..., description="GeoJSON of refined AOI"
+    )
     job_id: str = Field(
         ..., description="Job ID of the original fire severity analysis"
     )

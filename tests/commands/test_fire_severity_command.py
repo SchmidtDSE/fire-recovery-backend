@@ -81,6 +81,7 @@ def mock_index_registry() -> Mock:
 def mock_storage_factory(mock_storage: Mock) -> Mock:
     """Create mock storage factory"""
     from src.core.storage.storage_factory import StorageFactory
+
     factory = Mock(spec=StorageFactory)
     factory.get_temp_storage.return_value = mock_storage
     factory.get_final_storage.return_value = mock_storage
@@ -89,7 +90,10 @@ def mock_storage_factory(mock_storage: Mock) -> Mock:
 
 @pytest.fixture
 def command_context(
-    mock_storage: Mock, mock_storage_factory: Mock, mock_stac_manager: Mock, mock_index_registry: Mock
+    mock_storage: Mock,
+    mock_storage_factory: Mock,
+    mock_stac_manager: Mock,
+    mock_index_registry: Mock,
 ) -> CommandContext:
     """Create test command context for fire severity analysis"""
     return CommandContext(

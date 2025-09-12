@@ -44,12 +44,16 @@ class STACCatalogManager:
         }
 
     @classmethod
-    def for_testing(cls, base_url: str, storage: StorageInterface) -> "STACCatalogManager":
+    def for_testing(
+        cls, base_url: str, storage: StorageInterface
+    ) -> "STACCatalogManager":
         """Create a catalog manager instance configured for testing"""
         return cls(base_url=base_url, storage=storage)
 
     @classmethod
-    def for_production(cls, base_url: str, storage: StorageInterface) -> "STACCatalogManager":
+    def for_production(
+        cls, base_url: str, storage: StorageInterface
+    ) -> "STACCatalogManager":
         """Create a catalog manager instance configured for production"""
         return cls(base_url=base_url, storage=storage)
 
