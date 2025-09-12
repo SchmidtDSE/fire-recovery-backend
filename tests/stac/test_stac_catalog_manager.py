@@ -20,7 +20,6 @@ class TestSTACCatalogManager:
         # Cleanup after test
         await minio_storage.cleanup(max_age_seconds=0)  # Remove all files
 
-
     @pytest.mark.asyncio
     async def test_initialize_catalog(
         self, catalog_manager: STACCatalogManager
@@ -205,7 +204,9 @@ class TestSTACCatalogManager:
     async def test_factory_methods(self, minio_storage: StorageInterface) -> None:
         """Test the factory methods for creating catalog managers"""
         # Test factory methods
-        testing_manager = STACCatalogManager.for_testing(STAC_TEST_BASE_URL, minio_storage)
+        testing_manager = STACCatalogManager.for_testing(
+            STAC_TEST_BASE_URL, minio_storage
+        )
         production_manager = STACCatalogManager.for_production(
             "https://prod.example.com", minio_storage
         )

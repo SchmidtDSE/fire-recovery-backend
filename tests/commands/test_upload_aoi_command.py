@@ -37,6 +37,7 @@ def mock_index_registry() -> MagicMock:
 def mock_storage_factory(mock_storage: AsyncMock) -> MagicMock:
     """Create mock storage factory"""
     from src.core.storage.storage_factory import StorageFactory
+
     factory = MagicMock(spec=StorageFactory)
     factory.get_temp_storage.return_value = mock_storage
     factory.get_final_storage.return_value = mock_storage
@@ -228,17 +229,19 @@ class TestUploadAOICommand:
                     type="Feature",
                     geometry=Polygon(
                         type="Polygon",
-                        coordinates=[[
-                            (-120.0, 35.0),
-                            (-119.0, 35.0),
-                            (-119.0, 36.0),
-                            (-120.0, 36.0),
-                            (-120.0, 35.0),
-                        ]]
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
                     ),
-                    properties={}
+                    properties={},
                 )
-            ]
+            ],
         )
         mock_upload_to_gcs.return_value = "https://gcs.example.com/test.geojson"
 
@@ -379,17 +382,19 @@ class TestUploadAOICommand:
                     type="Feature",
                     geometry=Polygon(
                         type="Polygon",
-                        coordinates=[[
-                            (-120.0, 35.0),
-                            (-119.0, 35.0),
-                            (-119.0, 36.0),
-                            (-120.0, 36.0),
-                            (-120.0, 35.0),
-                        ]]
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
                     ),
-                    properties={}
+                    properties={},
                 )
-            ]
+            ],
         )
 
         # Make storage fail
@@ -428,17 +433,19 @@ class TestUploadAOICommand:
                         type="Feature",
                         geometry=Polygon(
                             type="Polygon",
-                            coordinates=[[
-                                [-120.0, 35.0],
-                                [-119.0, 35.0],
-                                [-119.0, 36.0],
-                                [-120.0, 36.0],
-                                [-120.0, 35.0],
-                            ]]
+                            coordinates=[
+                                [
+                                    [-120.0, 35.0],
+                                    [-119.0, 35.0],
+                                    [-119.0, 36.0],
+                                    [-120.0, 36.0],
+                                    [-120.0, 35.0],
+                                ]
+                            ],
                         ),
-                        properties={}
+                        properties={},
                     )
-                ]
+                ],
             )
             mock_upload.return_value = "https://gcs.example.com/test.geojson"
 

@@ -116,9 +116,7 @@ class HealthCheckCommand(Command):
         if context.index_registry:
             try:
                 # Simple check - get available calculators
-                available_calculators = (
-                    context.index_registry.get_available_indices()
-                )
+                available_calculators = context.index_registry.get_available_indices()
                 checks["index_registry"] = {
                     "status": "healthy",
                     "available_calculators": len(available_calculators),

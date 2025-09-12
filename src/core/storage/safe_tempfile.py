@@ -8,9 +8,7 @@ from src.core.storage.interface import StorageInterface
 
 @asynccontextmanager
 async def safe_tempfile(
-    storage: StorageInterface,
-    suffix: str = "", 
-    content: Optional[bytes] = None
+    storage: StorageInterface, suffix: str = "", content: Optional[bytes] = None
 ) -> AsyncGenerator[str, None]:
     """Context manager for temporary files using storage provider"""
     path = None

@@ -31,7 +31,9 @@ class STACJSONManager:
         return cls(base_url=base_url, storage=storage)
 
     @classmethod
-    def for_production(cls, base_url: str, storage: StorageInterface) -> "STACJSONManager":
+    def for_production(
+        cls, base_url: str, storage: StorageInterface
+    ) -> "STACJSONManager":
         """Create a manager instance configured for production"""
         return cls(base_url=base_url, storage=storage)
 
@@ -71,7 +73,9 @@ class STACJSONManager:
         )
 
         # Store the item and return the storage URL
-        stac_item_url = await self._repository.add_item(stac_item, skip_validation=skip_validation)
+        stac_item_url = await self._repository.add_item(
+            stac_item, skip_validation=skip_validation
+        )
 
         return stac_item_url
 

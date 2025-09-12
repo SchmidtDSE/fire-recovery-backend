@@ -24,7 +24,7 @@ from geojson_pydantic import Polygon, Feature
 # =============================================================================
 # Custom GeoJSON types have been replaced with geojson-pydantic imports:
 # - Polygon: Raw polygon geometry
-# - Feature: GeoJSON Feature with geometry and properties  
+# - Feature: GeoJSON Feature with geometry and properties
 # - FeatureCollection: GeoJSON FeatureCollection with multiple features
 
 

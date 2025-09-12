@@ -2,9 +2,9 @@ from src.core.storage.storage_factory import StorageFactory
 
 
 async def upload_to_gcs(
-    source_path_or_bytes: str | bytes, 
+    source_path_or_bytes: str | bytes,
     destination_blob_name: str,
-    storage_factory: StorageFactory
+    storage_factory: StorageFactory,
 ) -> str:
     """
     Upload a file or bytes to GCS using the storage provider

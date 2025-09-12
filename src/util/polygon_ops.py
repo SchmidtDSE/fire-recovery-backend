@@ -8,7 +8,9 @@ from shapely import from_geojson, to_geojson
 from geojson_pydantic import Polygon, Feature
 
 
-def validate_polygon(polygon_data: Union[Polygon, Feature, Dict[str, Any]]) -> ShapelyPolygon:
+def validate_polygon(
+    polygon_data: Union[Polygon, Feature, Dict[str, Any]],
+) -> ShapelyPolygon:
     """
     Validates a GeoJSON polygon using shapely.
 
@@ -23,7 +25,7 @@ def validate_polygon(polygon_data: Union[Polygon, Feature, Dict[str, Any]]) -> S
     """
     try:
         polygon_json: str
-        
+
         # Handle geojson-pydantic Feature objects
         if isinstance(polygon_data, Feature):
             if polygon_data.geometry is None:
@@ -33,11 +35,11 @@ def validate_polygon(polygon_data: Union[Polygon, Feature, Dict[str, Any]]) -> S
                     f"Expected Polygon geometry in Feature, got {polygon_data.geometry.type}"
                 )
             polygon_json = polygon_data.geometry.model_dump_json()
-        
-        # Handle geojson-pydantic Polygon objects  
+
+        # Handle geojson-pydantic Polygon objects
         elif isinstance(polygon_data, Polygon):
             polygon_json = polygon_data.model_dump_json()
-        
+
         # Handle dictionary inputs (for backward compatibility)
         elif isinstance(polygon_data, dict):
             # If we have a nested geometry
@@ -67,9 +69,7 @@ def validate_polygon(polygon_data: Union[Polygon, Feature, Dict[str, Any]]) -> S
 
         # Verify it's a polygon
         if shapely_geom.geom_type != "Polygon":
-            raise ValueError(
-                f"Expected Polygon geometry, got {shapely_geom.geom_type}"
-            )
+            raise ValueError(f"Expected Polygon geometry, got {shapely_geom.geom_type}")
 
         return shapely_geom
     except Exception as e:
@@ -140,7 +140,7 @@ def polygon_to_valid_geojson(
                 feature_dict = {
                     "type": "Feature",
                     "geometry": polygon_data.geometry.model_dump(),
-                    "properties": merged_properties
+                    "properties": merged_properties,
                 }
             else:
                 feature_dict = polygon_data.model_dump()
@@ -151,8 +151,8 @@ def polygon_to_valid_geojson(
 
         # Step 2: Create FeatureCollection
         feature_collection_dict = {
-            "type": "FeatureCollection", 
-            "features": [feature_dict]
+            "type": "FeatureCollection",
+            "features": [feature_dict],
         }
 
         # Step 3: Add collection properties if provided

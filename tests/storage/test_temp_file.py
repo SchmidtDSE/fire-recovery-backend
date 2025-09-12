@@ -39,7 +39,9 @@ class TestTempFile:
         initial_content = b"initial content"
 
         # Use the context manager with content
-        async with safe_tempfile(temp_storage, suffix=".bin", content=initial_content) as path:
+        async with safe_tempfile(
+            temp_storage, suffix=".bin", content=initial_content
+        ) as path:
             # Verify the path was generated
             assert path.endswith(".bin")
 

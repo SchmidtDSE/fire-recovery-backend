@@ -12,7 +12,11 @@ from geojson_pydantic import Polygon, Feature
 from shapely.geometry import shape
 
 from src.core.storage.storage_factory import StorageFactory
-from src.util.cog_ops import create_cog_bytes, crop_cog_with_geometry, download_cog_to_temp
+from src.util.cog_ops import (
+    create_cog_bytes,
+    crop_cog_with_geometry,
+    download_cog_to_temp,
+)
 from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
 
