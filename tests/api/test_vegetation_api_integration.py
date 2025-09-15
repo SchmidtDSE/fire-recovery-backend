@@ -5,7 +5,7 @@ Tests the API endpoints that handle park_unit_id parameter for vegetation analys
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.app import app

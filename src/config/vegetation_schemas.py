@@ -75,7 +75,6 @@ def detect_vegetation_schema(gdf: "gpd.GeoDataFrame", park_code: Optional[str] =
     Returns:
         Appropriate VegetationSchema configuration
     """
-    import geopandas as gpd
     
     # If park code provided and known, use it
     if park_code and park_code in VEGETATION_SCHEMAS:
