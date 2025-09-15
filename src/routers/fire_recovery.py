@@ -660,6 +660,7 @@ async def resolve_against_veg_map(
         fire_cog_url=request.fire_cog_url,
         severity_breaks=request.severity_breaks,
         geojson_url=request.geojson_url,
+        park_unit_id=request.park_unit_id,
         storage_factory=storage_factory,
         stac_manager=stac_manager,
         index_registry=index_registry,
@@ -679,6 +680,7 @@ async def execute_vegetation_resolution_command(
     fire_cog_url: str,
     severity_breaks: List[float],
     geojson_url: str,
+    park_unit_id: Optional[str],
     storage_factory: StorageFactory,
     stac_manager: STACJSONManager,
     index_registry: IndexRegistry,
@@ -715,6 +717,7 @@ async def execute_vegetation_resolution_command(
                 "veg_gpkg_url": veg_gpkg_url,
                 "fire_cog_url": fire_cog_url,
                 "geojson_url": geojson_url,
+                "park_unit_id": park_unit_id,
             },
         )
         
