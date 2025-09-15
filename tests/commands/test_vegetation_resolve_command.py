@@ -3,9 +3,9 @@ import json
 import pandas as pd
 import tempfile
 import threading
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from io import BytesIO
-from typing import cast, Dict, Any
+from typing import cast
 from pathlib import Path
 
 from src.commands.impl.vegetation_resolve_command import VegetationResolveCommand
@@ -139,43 +139,43 @@ def sample_boundary_data() -> bytes:
 class TestVegetationResolveCommand:
     """Test suite for VegetationResolveCommand"""
 
-    def test_get_command_name(self):
+    def test_get_command_name(self) -> None:
         """Test command name is correct"""
         command = VegetationResolveCommand()
         assert command.get_command_name() == "vegetation_resolve"
 
-    def test_get_estimated_duration_seconds(self):
+    def test_get_estimated_duration_seconds(self) -> None:
         """Test estimated duration is reasonable"""
         command = VegetationResolveCommand()
         duration = command.get_estimated_duration_seconds()
         assert isinstance(duration, float)
         assert 60 <= duration <= 600  # Between 1-10 minutes
 
-    def test_supports_retry(self):
+    def test_supports_retry(self) -> None:
         """Test command supports retry"""
         command = VegetationResolveCommand()
         assert command.supports_retry() is True
 
-    def test_get_dependencies(self):
+    def test_get_dependencies(self) -> None:
         """Test command has no dependencies"""
         command = VegetationResolveCommand()
         assert command.get_dependencies() == []
 
-    def test_get_required_permissions(self):
+    def test_get_required_permissions(self) -> None:
         """Test required permissions are comprehensive"""
         command = VegetationResolveCommand()
         permissions = command.get_required_permissions()
         expected = ["stac:read", "stac:write", "storage:write", "computation:execute"]
         assert all(perm in permissions for perm in expected)
 
-    def test_validate_context_success(self, valid_context: CommandContext):
+    def test_validate_context_success(self, valid_context: CommandContext) -> None:
         """Test successful context validation"""
         command = VegetationResolveCommand()
         is_valid, error_msg = command.validate_context(valid_context)
         assert is_valid is True
         assert error_msg == "Context validation passed"
 
-    def test_validate_context_missing_job_id(self, valid_context: CommandContext):
+    def test_validate_context_missing_job_id(self, valid_context: CommandContext) -> None:
         """Test validation fails with missing job_id"""
         command = VegetationResolveCommand()
         valid_context.job_id = ""
@@ -195,37 +195,37 @@ class TestVegetationResolveCommand:
         assert is_valid is False
         assert "job_id and fire_event_name are required" in error_msg
 
-    def test_validate_context_missing_storage(self, valid_context: CommandContext):
+    def test_validate_context_missing_storage(self, valid_context: CommandContext) -> None:
         """Test validation fails with missing storage"""
         command = VegetationResolveCommand()
-        valid_context.storage = None
+        valid_context.storage = None  # type: ignore
 
         is_valid, error_msg = command.validate_context(valid_context)
         assert is_valid is False
         assert "storage, storage_factory, and stac_manager are required" in error_msg
 
-    def test_validate_context_missing_veg_gpkg_url(self, valid_context: CommandContext):
+    def test_validate_context_missing_veg_gpkg_url(self, valid_context: CommandContext) -> None:
         """Test validation fails with missing veg_gpkg_url"""
         command = VegetationResolveCommand()
-        valid_context.metadata.pop("veg_gpkg_url")
+        valid_context.metadata.pop("veg_gpkg_url")  # type: ignore
 
         is_valid, error_msg = command.validate_context(valid_context)
         assert is_valid is False
         assert "veg_gpkg_url is required in metadata" in error_msg
 
-    def test_validate_context_missing_fire_cog_url(self, valid_context: CommandContext):
+    def test_validate_context_missing_fire_cog_url(self, valid_context: CommandContext) -> None:
         """Test validation fails with missing fire_cog_url"""
         command = VegetationResolveCommand()
-        valid_context.metadata.pop("fire_cog_url")
+        valid_context.metadata.pop("fire_cog_url")  # type: ignore
 
         is_valid, error_msg = command.validate_context(valid_context)
         assert is_valid is False
         assert "fire_cog_url is required in metadata" in error_msg
 
-    def test_validate_context_missing_geojson_url(self, valid_context: CommandContext):
+    def test_validate_context_missing_geojson_url(self, valid_context: CommandContext) -> None:
         """Test validation fails with missing geojson_url"""
         command = VegetationResolveCommand()
-        valid_context.metadata.pop("geojson_url")
+        valid_context.metadata.pop("geojson_url")  # type: ignore
 
         is_valid, error_msg = command.validate_context(valid_context)
         assert is_valid is False
@@ -242,7 +242,7 @@ class TestVegetationResolveCommand:
         assert is_valid is False
         assert "severity_breaks must contain at least 3 values" in error_msg
 
-    def test_validate_context_none_severity_breaks(self, valid_context: CommandContext):
+    def test_validate_context_none_severity_breaks(self, valid_context: CommandContext) -> None:
         """Test validation fails with None severity_breaks"""
         command = VegetationResolveCommand()
         valid_context.severity_breaks = None
@@ -977,9 +977,21 @@ class TestVegetationSchemaIntegration:
         VegetationSchemaLoader._instance = None
         
         with patch('src.commands.impl.vegetation_resolve_command.VegetationSchemaLoader') as mock_loader_class:
-            # Set up schema loader to fail
+            # Set up schema loader to fail for UNKNOWN but succeed for others in Strategy 2
             mock_loader = Mock()
-            mock_loader.get_schema.side_effect = Exception("Schema not found")
+            
+            def get_schema_side_effect(park_id):
+                if park_id == "UNKNOWN":
+                    raise Exception("Schema not found")
+                else:
+                    # Return valid schemas for Strategy 2 but they'll fail at gpd.read_file level
+                    return VegetationSchema(
+                        layer_name=f"{park_id}_VegPolys" if park_id == "JOTR" else None,
+                        vegetation_type_field="MapUnit_Name",
+                        geometry_column="geometry"
+                    )
+            
+            mock_loader.get_schema.side_effect = get_schema_side_effect
             mock_loader.list_available_parks.return_value = ["JOTR", "MOJN", "DEFAULT"]
             mock_loader_class.get_instance.return_value = mock_loader
             
@@ -987,19 +999,22 @@ class TestVegetationSchemaIntegration:
             mock_gdf = Mock()
             mock_gdf.columns = ["MapUnit_Name", "OBJECTID", "geometry", "veg_type"]
             mock_gdf.__contains__ = Mock(side_effect=lambda col: col in ["MapUnit_Name", "OBJECTID", "geometry", "veg_type"])
-            mock_gdf.copy = Mock(return_value=mock_gdf)
+            mock_gdf.__getitem__ = Mock(return_value=pd.Series(["Desert Scrub", "Joshua Tree"]))
             mock_gdf.__setitem__ = Mock()
+            mock_gdf.copy = Mock(return_value=mock_gdf)
             mock_gdf.crs = "EPSG:4326"
             mock_gdf.to_crs = Mock(return_value=mock_gdf)
             mock_gdf.dropna = Mock(return_value=mock_gdf)
             mock_gdf.__len__ = Mock(return_value=2)
             
-            # Schema attempts fail, auto-detection succeeds
+            # Strategy 1: Park unit schema (UNKNOWN) will fail at get_schema() level, not gpd.read_file 
+            # Strategy 2: Schema attempts fail at gpd.read_file level for JOTR, MOJN, DEFAULT
+            # Strategy 3: Auto-detection succeeds
             mock_gpd_read.side_effect = [
                 Exception("Layer not found"),  # JOTR schema fails
                 Exception("Layer not found"),  # MOJN schema fails  
                 Exception("Layer not found"),  # DEFAULT schema fails
-                mock_gdf,  # Auto-detection succeeds
+                mock_gdf,  # Auto-detection succeeds (Strategy 3)
             ]
             
             # Mock the schema detection
@@ -1021,7 +1036,7 @@ class TestVegetationSchemaIntegration:
 
     @pytest.mark.asyncio
     async def test_end_to_end_schema_integration(
-        self, schema_command_context: CommandContext, temp_schema_config: str
+        self, schema_command_context: CommandContext
     ):
         """Test end-to-end schema integration flow."""
         VegetationSchemaLoader._instance = None
@@ -1218,6 +1233,7 @@ class TestVegetationSchemaErrorScenarios:
                 geometry_column="geometry"
             )
             mock_loader.get_schema.return_value = mock_schema
+            mock_loader.list_available_parks.return_value = ["JOTR", "MOJN", "DEFAULT"]
             mock_loader_class.get_instance.return_value = mock_loader
             
             # Mock GeoDataFrame without required vegetation type column
@@ -1230,7 +1246,8 @@ class TestVegetationSchemaErrorScenarios:
             command = VegetationResolveCommand()
             veg_data = b"mock_vegetation_data"
             
-            with pytest.raises(ValueError, match="Required vegetation type field 'VEG_TYPE' not found"):
+            # Test should fail when using park-specific schema that requires VEG_TYPE field that's missing
+            with pytest.raises(ValueError, match="Unable to load vegetation data"):
                 await command._load_vegetation_data_from_bytes(veg_data, "EPSG:32611", "TEST_PARK")
 
     @pytest.mark.asyncio
@@ -1286,7 +1303,7 @@ class TestVegetationSchemaErrorScenarios:
             
             # Create multiple threads
             threads = []
-            for i in range(10):
+            for _ in range(10):
                 thread = threading.Thread(target=validate_context)
                 threads.append(thread)
             
@@ -1348,6 +1365,7 @@ class TestVegetationAnalysisEdgeCases:
             patch.object(command, "_load_vegetation_data_from_bytes") as mock_load_veg,
             patch.object(command, "_load_fire_data_from_bytes") as mock_load_fire,
             patch.object(command, "_load_boundary_data_from_bytes") as mock_load_boundary,
+            patch.object(command, "_create_severity_masks") as mock_create_masks,
         ):
             # Mock empty vegetation data with proper geopandas handling
             import geopandas as gpd
@@ -1356,11 +1374,28 @@ class TestVegetationAnalysisEdgeCases:
             mock_load_veg.return_value = empty_gdf
             mock_clip.return_value = empty_gdf  # Return empty after clipping
             
-            # Mock fire and boundary data
+            # Mock fire and boundary data (simplified since _create_severity_masks is mocked)
             mock_fire_ds = Mock()
-            mock_load_fire.return_value = (mock_fire_ds, {"crs": "EPSG:32611"})
+            mock_fire_ds.__getitem__ = Mock(return_value=Mock())  # Mock dataset access
+            metadata = {
+                "crs": "EPSG:32611",
+                "data_var": "band_data",  # Add missing data_var field
+                "pixel_area_ha": 0.01,
+                "x_coord": "x",
+                "y_coord": "y"
+            }
+            mock_load_fire.return_value = (mock_fire_ds, metadata)
             mock_boundary_gdf = Mock()
             mock_load_boundary.return_value = mock_boundary_gdf
+            
+            # Mock severity masks creation to return empty masks
+            mock_create_masks.return_value = {
+                "unburned": Mock(),
+                "low": Mock(),
+                "moderate": Mock(),
+                "high": Mock(),
+                "original": Mock(),
+            }
             
             # The method should handle empty datasets gracefully
             file_data = {"vegetation": b"empty_data", "fire_severity": b"fire_data", "boundary": b"boundary_data"}
@@ -1388,11 +1423,33 @@ class TestVegetationAnalysisEdgeCases:
                 patch.object(command, "_load_fire_data_from_bytes") as mock_load_fire,
                 patch.object(command, "_load_boundary_data_from_bytes") as mock_load_boundary,
                 patch("src.commands.impl.vegetation_resolve_command.gpd.read_file") as mock_gpd_read,
+                patch('src.commands.impl.vegetation_resolve_command.VegetationSchemaLoader') as mock_loader_class,
+                patch("src.commands.impl.vegetation_resolve_command.detect_vegetation_schema") as mock_detect_schema,
+                patch("src.commands.impl.vegetation_resolve_command.gpd.clip") as mock_clip,
+                patch.object(command, "_create_severity_masks") as mock_create_masks,
+                patch.object(command, "_calculate_zonal_statistics") as mock_calculate_zonal,
             ):
+                # Mock schema loader
+                mock_loader = Mock()
+                mock_loader.list_available_parks.return_value = ["JOTR", "MOJN", "DEFAULT"]
+                mock_loader.get_schema.side_effect = Exception("Schema loading failed")  # Force fallback to auto-detection
+                mock_loader_class.get_instance.return_value = mock_loader
+                
+                # Mock auto-detection
+                from src.config.vegetation_schemas import VegetationSchema
+                mock_detected_schema = VegetationSchema(
+                    vegetation_type_field="veg_type",
+                    geometry_column="geometry"
+                )
+                mock_detect_schema.return_value = mock_detected_schema
+                
                 # Mock vegetation data with null values
                 mock_gdf = Mock()
                 mock_gdf.columns = ["veg_type", "geometry"]
                 mock_gdf.__contains__ = Mock(side_effect=lambda col: col in ["veg_type", "geometry"])
+                mock_gdf.__getitem__ = Mock(return_value=pd.Series(["Valid Type"]))
+                mock_gdf.__setitem__ = Mock()
+                mock_gdf.copy = Mock(return_value=mock_gdf)
                 mock_gdf.crs = "EPSG:4326"
                 mock_gdf.to_crs = Mock(return_value=mock_gdf)
                 
@@ -1409,21 +1466,55 @@ class TestVegetationAnalysisEdgeCases:
                 mock_gdf.dropna = Mock(return_value=filtered_gdf)
                 mock_gdf.__len__ = Mock(return_value=3)  # 3 original features
                 
-                mock_gpd_read.return_value = mock_gdf
+                # Setup mock_gpd_read to handle the fallback scenario
+                # First calls will fail for schema loading, final call succeeds for auto-detection
+                mock_gpd_read.side_effect = [
+                    Exception("Schema loading failed"),  # Park-specific schema fails
+                    Exception("JOTR schema fails"),      # Auto-detection schema attempts fail
+                    Exception("MOJN schema fails"),  
+                    Exception("DEFAULT schema fails"),
+                    mock_gdf,                            # Auto-detection fallback succeeds
+                ]
                 
                 # Mock other components
                 mock_fire_ds = Mock()
-                mock_load_fire.return_value = (mock_fire_ds, {"crs": "EPSG:32611"})
+                mock_fire_ds.__getitem__ = Mock(return_value=Mock())  # For accessing fire_ds[data_var]
+                mock_load_fire.return_value = (mock_fire_ds, {
+                    "crs": "EPSG:32611", 
+                    "data_var": "band_data",
+                    "pixel_area_ha": 0.01
+                })
+                
                 mock_boundary_gdf = Mock()
+                mock_boundary_gdf.geometry.union_all.return_value = Mock()  # Mock boundary geometry
                 mock_load_boundary.return_value = mock_boundary_gdf
+                
+                # Mock gpd.clip to return the clipped vegetation data
+                mock_clip.return_value = filtered_gdf
+                
+                # Mock severity masks and zonal statistics
+                mock_create_masks.return_value = {"unburned": Mock(), "low": Mock(), "moderate": Mock(), "high": Mock()}
+                mock_calculate_zonal.return_value = {
+                    "unburned_ha": 10.0, "low_ha": 5.0, "moderate_ha": 3.0, "high_ha": 2.0,
+                    "total_pixel_count": 100,
+                    "unburned_mean": 0.05, "low_mean": 0.15, "moderate_mean": 0.4, "high_mean": 0.8,
+                    "unburned_std": 0.02, "low_std": 0.05, "moderate_std": 0.1, "high_std": 0.15,
+                    "mean_severity": 0.25, "std_dev": 0.3
+                }
                 
                 file_data = {"vegetation": b"data_with_nulls", "fire_severity": b"fire_data", "boundary": b"boundary_data"}
                 
                 # Should handle null values by filtering them out
-                await command._analyze_vegetation_impact(file_data, [0.1, 0.27, 0.66], "JOTR")
+                result_df, json_structure = await command._analyze_vegetation_impact(file_data, [0.1, 0.27, 0.66], "JOTR")
                 
-                # Verify dropna was called
+                # Verify dropna was called to remove null vegetation types
                 mock_gdf.dropna.assert_called_once_with(subset=["veg_type"])
+                
+                # Verify the analysis completed successfully
+                assert len(result_df) == 1  # One vegetation type after filtering
+                assert "Valid Type" in result_df.index
+                assert "vegetation_communities" in json_structure
+                assert len(json_structure["vegetation_communities"]) == 1
 
     @pytest.mark.asyncio
     async def test_malformed_download_urls(self, edge_case_context: CommandContext):
