@@ -114,3 +114,12 @@ GCP_ACCESS_KEY_ID=[MINIO ACCESS KEY]
 GCP_SECRET_ACCESS_KEY=[MINIO SECRET]  
 RUN_LOCAL=True
 ```
+
+For testing, we also expect a `test.env`
+```dotenv
+MINIO_ENDPOINT=storage.googleapis.com
+MINIO_ACCESS_KEY=[MINIO ACCESS KEY]
+MINIO_SECRET_KEY=[MINIO SECRET KEY]
+MINIO_SECURE=True
+MINIO_TEST_BUCKET=fire-recovery-temp
+```
