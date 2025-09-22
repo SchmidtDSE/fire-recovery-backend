@@ -14,10 +14,10 @@
                 "8000",
                 "--reload"
             ],
+            "python": "${workspaceFolder}/.pixi/envs/default/bin/python",
             "justMyCode": false,
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/.pixi/envs/default/bin/python", // Use pixi environment
-                "PYTHONARGS": "-Xfrozen_modules=off" // For dask debugging 
+                "PYTHONARGS": "-Xfrozen_modules=off" // For dask debugging
             },
             "envFile": "${workspaceFolder}/.devcontainer/.env"
         },
@@ -28,9 +28,7 @@
             "program": "${workspaceFolder}/rustac_obstore_reproduction.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/.pixi/envs/default/bin/python"
-            },
+            "python": "${workspaceFolder}/.pixi/envs/default/bin/python",
             "envFile": "${workspaceFolder}/.devcontainer/test.env"
         }
     ]
