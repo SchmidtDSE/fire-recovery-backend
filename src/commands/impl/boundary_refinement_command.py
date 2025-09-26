@@ -185,20 +185,31 @@ class BoundaryRefinementCommand(Command):
 
             # Step 4: Create STAC metadata for refined assets
             try:
+                logger.info("Creating STAC metadata for refined assets")
+
                 # Create the STAC item for refined COGs
-                # Use the original pydantic geometry object which has __geo_interface__
-                await context.stac_manager.create_fire_severity_item(
-                    fire_event_name=context.fire_event_name,
-                    job_id=context.job_id,
-                    cog_urls=refined_cog_urls,
-                    geometry=context.geometry,
-                    datetime_str=original_cog_item["properties"]["datetime"],
-                    boundary_type="refined",
+                logger.info(
+                    f"Creating fire severity item with boundary_type='refined' for job {context.job_id}"
                 )
+                # Use the original pydantic geometry object which has __geo_interface__
+                severity_item_url = (
+                    await context.stac_manager.create_fire_severity_item(
+                        fire_event_name=context.fire_event_name,
+                        job_id=context.job_id,
+                        cog_urls=refined_cog_urls,
+                        geometry=context.geometry,
+                        datetime_str=original_cog_item["properties"]["datetime"],
+                        boundary_type="refined",
+                    )
+                )
+                logger.info(f"✓ Fire severity item created: {severity_item_url}")
 
                 # Create the STAC item for the refined boundary
                 datetime_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                await context.stac_manager.create_boundary_item(
+                logger.info(
+                    f"Creating boundary item with boundary_type='refined' for job {context.job_id}"
+                )
+                boundary_item_result = await context.stac_manager.create_boundary_item(
                     fire_event_name=context.fire_event_name,
                     job_id=context.job_id,
                     boundary_geojson_url=geojson_url,
@@ -206,6 +217,7 @@ class BoundaryRefinementCommand(Command):
                     datetime_str=datetime_str,
                     boundary_type="refined",
                 )
+                logger.info(f"✓ Boundary item created: {boundary_item_result}")
 
                 logger.info("STAC metadata created successfully")
 

@@ -650,6 +650,9 @@ async def resolve_against_veg_map(
     """
     Resolve fire severity against vegetation map to create a matrix of affected areas.
     """
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Received resolve_against_veg_map request for job {request.job_id}")
+    logger.debug(f"Request details: {request}")
 
     # Start processing in background using command pattern
     background_tasks.add_task(
@@ -687,12 +690,15 @@ async def execute_vegetation_resolution_command(
 ) -> None:
     """
     Execute vegetation resolution using command pattern with complete storage abstraction.
-    
+
     This replaces the previous process_veg_map_resolution function and eliminates
     all filesystem dependencies by using the VegetationResolveCommand.
     """
     logger = logging.getLogger(__name__)
-    
+    logger.debug(f"Starting execute_vegetation_resolution_command for job {job_id}")
+    logger.debug(f"Parameters: veg_gpkg_url={veg_gpkg_url}, fire_cog_url={fire_cog_url}")
+    logger.debug(f"severity_breaks={severity_breaks}, geojson_url={geojson_url}, park_unit_id={park_unit_id}")
+
     try:
         # Create placeholder geometry (actual boundary comes from geojson_url)
         from typing import cast
@@ -704,6 +710,7 @@ async def execute_vegetation_resolution_command(
         )
         
         # Create command context with vegetation resolution parameters
+        logger.debug("Creating CommandContext for vegetation resolution")
         context = CommandContext(
             job_id=job_id,
             fire_event_name=fire_event_name,
@@ -720,10 +727,13 @@ async def execute_vegetation_resolution_command(
                 "park_unit_id": park_unit_id,
             },
         )
-        
+
         # Execute vegetation resolution command
+        logger.debug("Creating VegetationResolveCommand instance")
         command = VegetationResolveCommand()
+        logger.debug("Executing vegetation resolution command")
         result = await command.execute(context)
+        logger.debug(f"Command execution completed with status: success={result.is_success()}, failure={result.is_failure()}")
         
         if result.is_success():
             result_data = result.data or {}

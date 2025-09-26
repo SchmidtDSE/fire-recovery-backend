@@ -100,7 +100,10 @@ class VegetationResolveCommand(Command):
         park_unit_id = context.get_metadata("park_unit_id")
         if park_unit_id and not self._schema_loader.has_schema(park_unit_id):
             available_parks = self._schema_loader.list_available_parks()
-            return False, f"Unknown park unit '{park_unit_id}'. Available: {', '.join(available_parks)}"
+            return (
+                False,
+                f"Unknown park unit '{park_unit_id}'. Available: {', '.join(available_parks)}",
+            )
 
         severity_breaks = context.severity_breaks
         if not severity_breaks or len(severity_breaks) < 3:
@@ -127,12 +130,18 @@ class VegetationResolveCommand(Command):
         Returns:
             CommandResult with execution status and asset URLs
         """
+        logger.debug(
+            f"VegetationResolveCommand.execute() called for job {context.job_id}"
+        )
+        logger.debug(f"Logger name: {logger.name}, Level: {logger.level}")
         start_time = time.time()
 
         try:
+            logger.debug("Validating context...")
             # Validate context
             is_valid, error_msg = self.validate_context(context)
             if not is_valid:
+                logger.error(f"Context validation failed: {error_msg}")
                 execution_time_ms = (time.time() - start_time) * 1000
                 return CommandResult.failure(
                     job_id=context.job_id,
@@ -143,12 +152,15 @@ class VegetationResolveCommand(Command):
                 )
 
             logger.info(f"Starting vegetation impact analysis for job {context.job_id}")
+            logger.debug(f"Context validated successfully for job {context.job_id}")
 
             # Extract required URLs and parameters
             veg_gpkg_url = context.get_metadata("veg_gpkg_url")
             fire_cog_url = context.get_metadata("fire_cog_url")
             geojson_url = context.get_metadata("geojson_url")
-            park_unit_id = context.get_metadata("park_unit_id")  # Optional park unit hint
+            park_unit_id = context.get_metadata(
+                "park_unit_id"
+            )  # Optional park unit hint
             severity_breaks = context.severity_breaks
 
             # Type narrowing: we've already validated that severity_breaks is not None
@@ -157,8 +169,6 @@ class VegetationResolveCommand(Command):
                 raise ValueError(
                     "severity_breaks is required but was None after validation"
                 )
-
-            # Mypy now understands severity_breaks is not None
 
             logger.info(
                 f"Processing vegetation analysis - "
@@ -169,13 +179,21 @@ class VegetationResolveCommand(Command):
             )
 
             # Step 1: Download files via storage abstraction (zero filesystem usage)
+            logger.debug(f"Starting download of input files for job {context.job_id}")
             file_data = await self._download_input_files(
                 context, veg_gpkg_url, fire_cog_url, geojson_url
             )
+            logger.debug(f"Downloaded input files for job {context.job_id}")
 
             # Step 2: Perform vegetation impact analysis
+            logger.debug(
+                f"Starting vegetation impact analysis for job {context.job_id}"
+            )
             result_df, json_structure = await self._analyze_vegetation_impact(
                 file_data, severity_breaks, park_unit_id
+            )
+            logger.debug(
+                f"Completed vegetation impact analysis for job {context.job_id}"
             )
 
             # Step 3: Generate and save reports (memory-only processing)
@@ -258,13 +276,13 @@ class VegetationResolveCommand(Command):
         urls_to_validate = {
             "vegetation GPKG": veg_gpkg_url,
             "fire severity COG": fire_cog_url,
-            "boundary GeoJSON": geojson_url
+            "boundary GeoJSON": geojson_url,
         }
-        
+
         for file_type, url in urls_to_validate.items():
             if not url or not isinstance(url, str) or len(url.strip()) == 0:
                 raise ValueError(f"Invalid {file_type} URL: {url}")
-            if not url.startswith(('http://', 'https://', 'gs://', 's3://')):
+            if not url.startswith(("http://", "https://", "gs://", "s3://")):
                 raise ValueError(f"Unsupported {file_type} URL scheme: {url}")
 
         try:
@@ -274,31 +292,41 @@ class VegetationResolveCommand(Command):
             temp_geojson_path = f"temp/{context.job_id}/boundary.geojson"
 
             # Downloads will happen sequentially below
-            
+
             # Download files directly to storage (no filesystem temp files)
             try:
                 await context.storage.copy_from_url(
                     veg_gpkg_url, temp_veg_path, temporary=True
                 )
-                logger.debug(f"Successfully downloaded vegetation GPKG from {veg_gpkg_url}")
+                logger.debug(
+                    f"Successfully downloaded vegetation GPKG from {veg_gpkg_url}"
+                )
             except Exception as e:
-                raise ValueError(f"Failed to download vegetation GPKG from {veg_gpkg_url}: {str(e)}")
-                
+                raise ValueError(
+                    f"Failed to download vegetation GPKG from {veg_gpkg_url}: {str(e)}"
+                )
+
             try:
                 await context.storage.copy_from_url(
                     fire_cog_url, temp_fire_path, temporary=True
                 )
                 logger.debug(f"Successfully downloaded fire COG from {fire_cog_url}")
             except Exception as e:
-                raise ValueError(f"Failed to download fire COG from {fire_cog_url}: {str(e)}")
-                
+                raise ValueError(
+                    f"Failed to download fire COG from {fire_cog_url}: {str(e)}"
+                )
+
             try:
                 await context.storage.copy_from_url(
                     geojson_url, temp_geojson_path, temporary=True
                 )
-                logger.debug(f"Successfully downloaded boundary GeoJSON from {geojson_url}")
+                logger.debug(
+                    f"Successfully downloaded boundary GeoJSON from {geojson_url}"
+                )
             except Exception as e:
-                raise ValueError(f"Failed to download boundary GeoJSON from {geojson_url}: {str(e)}")
+                raise ValueError(
+                    f"Failed to download boundary GeoJSON from {geojson_url}: {str(e)}"
+                )
 
             # Retrieve file contents as bytes for in-memory processing
             try:
@@ -307,14 +335,14 @@ class VegetationResolveCommand(Command):
                     raise ValueError("Vegetation GPKG file is empty")
             except Exception as e:
                 raise ValueError(f"Failed to retrieve vegetation GPKG data: {str(e)}")
-                
+
             try:
                 fire_data = await context.storage.get_bytes(temp_fire_path)
                 if not fire_data or len(fire_data) == 0:
                     raise ValueError("Fire severity COG file is empty")
             except Exception as e:
                 raise ValueError(f"Failed to retrieve fire COG data: {str(e)}")
-                
+
             try:
                 geojson_data = await context.storage.get_bytes(temp_geojson_path)
                 if not geojson_data or len(geojson_data) == 0:
@@ -395,23 +423,35 @@ class VegetationResolveCommand(Command):
 
             # Initialize results DataFrame
             veg_types = veg_gdf["veg_type"].unique()
-            
+
             # Validate that we have vegetation types to process
             if len(veg_types) == 0:
                 logger.warning("No vegetation types found in the data")
                 # Return empty results with proper structure
-                empty_df = pd.DataFrame(columns=[
-                    "unburned_ha", "low_ha", "moderate_ha", "high_ha", "total_ha",
-                    "unburned_percent", "low_percent", "moderate_percent", "high_percent", "total_percent"
-                ])
+                empty_df = pd.DataFrame(
+                    columns=[
+                        "unburned_ha",
+                        "low_ha",
+                        "moderate_ha",
+                        "high_ha",
+                        "total_ha",
+                        "unburned_percent",
+                        "low_percent",
+                        "moderate_percent",
+                        "high_percent",
+                        "total_percent",
+                    ]
+                )
                 empty_json: Dict[str, Any] = {"vegetation_communities": []}
                 return empty_df, empty_json
-                
-            logger.info(f"Processing {len(veg_types)} unique vegetation types: {list(veg_types)}")
-            
+
+            logger.info(
+                f"Processing {len(veg_types)} unique vegetation types: {list(veg_types)}"
+            )
+
             severity_columns = [
                 "unburned_ha",
-                "low_ha", 
+                "low_ha",
                 "moderate_ha",
                 "high_ha",
                 "total_ha",
@@ -475,56 +515,72 @@ class VegetationResolveCommand(Command):
         """Load fire severity data from bytes using BytesIO buffer with validation"""
         if not fire_data or len(fire_data) == 0:
             raise ValueError("Fire severity data is empty")
-            
+
         fire_buffer = BytesIO(fire_data)
         fire_buffer.name = "fire_severity.tif"
 
         try:
             # Load as xarray dataset
             fire_ds = xr.open_dataset(fire_buffer, engine="rasterio")
-            
+
             # Validate dataset
             if len(fire_ds.data_vars) == 0:
                 raise ValueError("Fire severity dataset contains no data variables")
-                
+
             # Extract main data variable
             data_var = list(fire_ds.data_vars)[0]
             data_array = fire_ds[data_var]
-            
+
             # Validate data array
             if data_array.size == 0:
                 raise ValueError("Fire severity data array is empty")
-                
+
             # Check if data is completely NaN
             if np.isnan(data_array.values).all():
                 logger.warning("Fire severity data contains only NaN values")
 
             # Validate CRS
             if fire_ds.rio.crs is None:
-                logger.warning("Fire severity data has no CRS information, assuming WGS84")
+                logger.warning(
+                    "Fire severity data has no CRS information, assuming WGS84"
+                )
                 fire_ds = fire_ds.rio.write_crs("EPSG:4326")
 
             # Project to UTM if needed
             if fire_ds.rio.crs != PROJECTED_CRS:
-                logger.info(f"Reprojecting fire data from {fire_ds.rio.crs} to {PROJECTED_CRS}")
+                logger.info(
+                    f"Reprojecting fire data from {fire_ds.rio.crs} to {PROJECTED_CRS}"
+                )
                 fire_ds = fire_ds.rio.reproject(PROJECTED_CRS)
 
             # Calculate pixel area from projected dataset
             projected_transform = fire_ds.rio.transform()
             pixel_width = abs(projected_transform[0])
             pixel_height = abs(projected_transform[4])
-            
+
             if pixel_width <= 0 or pixel_height <= 0:
-                raise ValueError(f"Invalid pixel dimensions: width={pixel_width}, height={pixel_height}")
-                
+                raise ValueError(
+                    f"Invalid pixel dimensions: width={pixel_width}, height={pixel_height}"
+                )
+
             pixel_area_ha = (pixel_width * pixel_height) / 10000  # m² to ha
 
             # Determine coordinate names
-            x_coord = "x" if "x" in fire_ds.coords else ("longitude" if "longitude" in fire_ds.coords else None)
-            y_coord = "y" if "y" in fire_ds.coords else ("latitude" if "latitude" in fire_ds.coords else None)
-            
+            x_coord = (
+                "x"
+                if "x" in fire_ds.coords
+                else ("longitude" if "longitude" in fire_ds.coords else None)
+            )
+            y_coord = (
+                "y"
+                if "y" in fire_ds.coords
+                else ("latitude" if "latitude" in fire_ds.coords else None)
+            )
+
             if not x_coord or not y_coord:
-                raise ValueError(f"Cannot identify coordinate dimensions in fire data. Available coords: {list(fire_ds.coords.keys())}")
+                raise ValueError(
+                    f"Cannot identify coordinate dimensions in fire data. Available coords: {list(fire_ds.coords.keys())}"
+                )
 
             metadata = {
                 "crs": PROJECTED_CRS,
@@ -536,10 +592,12 @@ class VegetationResolveCommand(Command):
                 "width": data_array.sizes[x_coord],
                 "height": data_array.sizes[y_coord],
             }
-            
-            logger.info(f"Successfully loaded fire data: {metadata['width']}x{metadata['height']} pixels, {pixel_area_ha:.6f} ha/pixel")
+
+            logger.info(
+                f"Successfully loaded fire data: {metadata['width']}x{metadata['height']} pixels, {pixel_area_ha:.6f} ha/pixel"
+            )
             return fire_ds, metadata
-            
+
         except Exception as e:
             logger.error(f"Failed to load fire severity data: {str(e)}", exc_info=True)
             raise ValueError(f"Invalid fire severity data format: {str(e)}")
@@ -549,42 +607,50 @@ class VegetationResolveCommand(Command):
     ) -> gpd.GeoDataFrame:
         """
         Load vegetation data from bytes using BytesIO buffer with configurable schema support.
-        
+
         Uses the VegetationSchemaLoader to determine the appropriate schema based on the
         park_unit_id or auto-detection from the data structure.
-        
+
         Args:
             veg_data: Vegetation geopackage data as bytes
             crs: Target CRS for reprojection
             park_unit_id: Optional park unit ID hint for schema selection
-            
+
         Returns:
             GeoDataFrame with standardized vegetation type column
         """
         if not veg_data or len(veg_data) == 0:
             raise ValueError("Vegetation data is empty")
-            
+
         veg_buffer = BytesIO(veg_data)
         veg_buffer.name = "vegetation.gpkg"
 
         # Suppress GPKG format warnings from GeoPandas/pyogrio
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*GPKG.*")
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message=".*GPKG.*"
+            )
             warnings.filterwarnings("ignore", category=UserWarning, message=".*GPKG.*")
-            warnings.filterwarnings("ignore", message=".*non conformant file extension.*")
-            
+            warnings.filterwarnings(
+                "ignore", message=".*non conformant file extension.*"
+            )
+
             gdf = None
-            
+
             # Strategy 1: Try using specific park unit schema if provided
             if park_unit_id:
                 try:
                     schema = self._schema_loader.get_schema(park_unit_id)
-                    logger.info(f"Using configured schema for park unit: {park_unit_id}")
+                    logger.info(
+                        f"Using configured schema for park unit: {park_unit_id}"
+                    )
                     gdf = self._load_with_schema(veg_buffer, schema)
                 except Exception as e:
-                    logger.warning(f"Failed to load with park unit schema '{park_unit_id}': {str(e)}")
+                    logger.warning(
+                        f"Failed to load with park unit schema '{park_unit_id}': {str(e)}"
+                    )
                     veg_buffer.seek(0)  # Reset buffer for next attempt
-            
+
             # Strategy 2: Try auto-detection with all available schemas if park-specific loading failed
             if gdf is None:
                 logger.info("Attempting auto-detection of vegetation schema")
@@ -594,45 +660,57 @@ class VegetationResolveCommand(Command):
                         schema = self._schema_loader.get_schema(schema_id)
                         logger.debug(f"Trying schema: {schema_id}")
                         gdf = self._load_with_schema(veg_buffer, schema)
-                        logger.info(f"Successfully loaded vegetation data using {schema_id} schema with {len(gdf)} features")
+                        logger.info(
+                            f"Successfully loaded vegetation data using {schema_id} schema with {len(gdf)} features"
+                        )
                         break
                     except Exception as e:
                         logger.debug(f"Schema {schema_id} failed: {str(e)}")
                         veg_buffer.seek(0)  # Reset buffer for next attempt
-            
+
             # Strategy 3: Fallback to auto-detection using existing logic
             if gdf is None:
                 logger.info("Schema-based loading failed, attempting auto-detection")
                 try:
                     # Load data first to analyze structure
                     temp_gdf = gpd.read_file(veg_buffer)
-                    
+
                     # Use existing auto-detection logic
                     detected_schema = detect_vegetation_schema(temp_gdf, park_unit_id)
-                    logger.info(f"Auto-detected schema: vegetation_type_field='{detected_schema.vegetation_type_field}'")
-                    
+                    logger.info(
+                        f"Auto-detected schema: vegetation_type_field='{detected_schema.vegetation_type_field}'"
+                    )
+
                     # Apply the detected schema
                     gdf = temp_gdf.copy()
                     if detected_schema.vegetation_type_field in gdf.columns:
                         gdf["veg_type"] = gdf[detected_schema.vegetation_type_field]
                     else:
-                        raise ValueError(f"Auto-detected field '{detected_schema.vegetation_type_field}' not found in data")
-                    
-                    logger.info(f"Successfully loaded vegetation data using auto-detection with {len(gdf)} features")
-                    
+                        raise ValueError(
+                            f"Auto-detected field '{detected_schema.vegetation_type_field}' not found in data"
+                        )
+
+                    logger.info(
+                        f"Successfully loaded vegetation data using auto-detection with {len(gdf)} features"
+                    )
+
                 except Exception as e:
                     logger.error(f"All vegetation loading strategies failed: {str(e)}")
                     raise ValueError(f"Unable to load vegetation data: {str(e)}")
 
         # Validate that we have the required veg_type column
         if "veg_type" not in gdf.columns:
-            raise ValueError("Vegetation data must contain vegetation type information after schema application")
+            raise ValueError(
+                "Vegetation data must contain vegetation type information after schema application"
+            )
 
         # Remove any rows with null vegetation types
         initial_count = len(gdf)
         gdf = gdf.dropna(subset=["veg_type"])
         if len(gdf) != initial_count:
-            logger.warning(f"Removed {initial_count - len(gdf)} vegetation features with null veg_type")
+            logger.warning(
+                f"Removed {initial_count - len(gdf)} vegetation features with null veg_type"
+            )
 
         # Reproject to match fire data CRS
         if gdf.crs != crs:
@@ -641,17 +719,19 @@ class VegetationResolveCommand(Command):
 
         return gdf
 
-    def _load_with_schema(self, buffer: BytesIO, schema: VegetationSchema) -> gpd.GeoDataFrame:
+    def _load_with_schema(
+        self, buffer: BytesIO, schema: VegetationSchema
+    ) -> gpd.GeoDataFrame:
         """
         Load vegetation data using a specific schema configuration.
-        
+
         Args:
             buffer: BytesIO buffer containing vegetation data
             schema: VegetationSchema configuration to use
-            
+
         Returns:
             GeoDataFrame with standardized vegetation type column
-            
+
         Raises:
             Exception: If loading fails with the given schema
         """
@@ -662,7 +742,7 @@ class VegetationResolveCommand(Command):
         else:
             gdf = gpd.read_file(buffer)
             logger.debug("Loaded data from default layer")
-        
+
         # Validate that the required vegetation type field exists
         if schema.vegetation_type_field not in gdf.columns:
             available_cols = list(gdf.columns)
@@ -670,17 +750,21 @@ class VegetationResolveCommand(Command):
                 f"Required vegetation type field '{schema.vegetation_type_field}' not found. "
                 f"Available columns: {available_cols}"
             )
-        
+
         # Apply schema mapping to create standardized veg_type column
         gdf["veg_type"] = gdf[schema.vegetation_type_field]
-        
+
         # Preserve additional fields if specified
         if schema.preserve_fields:
             for field in schema.preserve_fields:
                 if field not in gdf.columns:
-                    logger.warning(f"Preserve field '{field}' not found in data, skipping")
-        
-        logger.debug(f"Successfully applied schema with vegetation type field: {schema.vegetation_type_field}")
+                    logger.warning(
+                        f"Preserve field '{field}' not found in data, skipping"
+                    )
+
+        logger.debug(
+            f"Successfully applied schema with vegetation type field: {schema.vegetation_type_field}"
+        )
         return gdf
 
     async def _load_boundary_data_from_bytes(
@@ -694,10 +778,12 @@ class VegetationResolveCommand(Command):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
             warnings.filterwarnings("ignore", category=UserWarning)
-            
+
             boundary_gdf = gpd.read_file(boundary_buffer).to_crs(PROJECTED_CRS)
-            logger.info(f"Successfully loaded boundary data with {len(boundary_gdf)} features")
-            
+            logger.info(
+                f"Successfully loaded boundary data with {len(boundary_gdf)} features"
+            )
+
         return boundary_gdf
 
     async def _create_severity_masks(
@@ -741,9 +827,24 @@ class VegetationResolveCommand(Command):
         veg_subset: gpd.GeoDataFrame,
         metadata: Dict,
     ) -> Dict[str, float]:
-        """Calculate zonal statistics for vegetation subset using xvec"""
+        """Calculate zonal statistics for vegetation subset using xvec with robust error handling"""
         results = {}
-        
+
+        # Pre-validate vegetation polygons to avoid statistical warnings
+        if len(veg_subset) == 0:
+            logger.warning("Empty vegetation subset, returning zero statistics")
+            return self._get_empty_statistics()
+
+        # Check polygon areas to identify potentially problematic small polygons
+        total_area = veg_subset.geometry.area.sum()
+        if (
+            total_area < 1e-6
+        ):  # Very small total area (< 1 square meter in projected units)
+            logger.warning(
+                f"Very small vegetation area ({total_area:.2e} square units), using fallback statistics"
+            )
+            return self._get_fallback_statistics(veg_subset, metadata)
+
         # Calculate statistics for each severity class
         severity_pixel_counts = {}
         severity_classes = ["unburned", "low", "moderate", "high"]
@@ -751,19 +852,104 @@ class VegetationResolveCommand(Command):
         for severity in severity_classes:
             mask_data = masks[severity]
             try:
-                # Use xvec for zonal statistics
-                # xvec.zonal_stats expects the geometries to be passed directly
-                stats = mask_data.xvec.zonal_stats(
-                    veg_subset.geometry,
-                    stats=["count", "mean", "std"],
-                    all_touched=True
-                )
-                
-                # Extract statistics from result
-                # The result is a DataArray with statistics for each geometry
-                pixel_count = float(stats["count"].sum()) if "count" in stats else 0.0
-                mean_val = float(stats["mean"].mean()) if "mean" in stats and not np.isnan(stats["mean"].mean()) else 0.0
-                std_val = float(stats["std"].mean()) if "std" in stats and not np.isnan(stats["std"].mean()) else 0.0
+                # Use xvec for zonal statistics with warning suppression for degrees of freedom issues
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=RuntimeWarning,
+                        message=".*degrees of freedom.*",
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=RuntimeWarning,
+                        message=".*invalid value encountered.*",
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=RuntimeWarning,
+                        message=".*Degrees of freedom <= 0.*",
+                    )
+
+                    # Try exactextract method first (for consistency with old implementation)
+                    # Fall back to default method if exactextract is not available
+                    try:
+                        stats = mask_data.xvec.zonal_stats(
+                            veg_subset.geometry,
+                            metadata["x_coord"],
+                            metadata["y_coord"],
+                            stats=["count", "mean", "std"],
+                            all_touched=True,
+                            method="exactextract",
+                        )
+                    except Exception as exactextract_error:
+                        logger.debug(
+                            f"exactextract method failed for {severity}, using default: {exactextract_error}"
+                        )
+                        stats = mask_data.xvec.zonal_stats(
+                            veg_subset.geometry,
+                            metadata["x_coord"],
+                            metadata["y_coord"],
+                            stats=["count", "mean", "std"],
+                            all_touched=True,
+                        )
+
+                # Extract statistics from result with robust handling
+                # FIX: Handle both possible return formats from xvec.zonal_stats
+                if stats is not None and not np.isnan(stats.values).all():
+                    # Try new approach first (with zonal_statistics dimension)
+                    if hasattr(stats, "isel") and "zonal_statistics" in stats.dims:
+                        # stats.isel returns array with shape (n_geometries,)
+                        # We need to sum all pixel counts across geometries
+                        count_values = stats.isel(zonal_statistics=0).values
+                        pixel_count = float(np.sum(count_values))
+
+                        # For mean and std, we take the average across geometries
+                        mean_values = stats.isel(zonal_statistics=1).values
+                        mean_val = (
+                            float(np.nanmean(mean_values))
+                            if not np.isnan(mean_values).all()
+                            else 0.0
+                        )
+
+                        std_values = stats.isel(zonal_statistics=2).values
+                        std_val = (
+                            float(np.nanmean(std_values))
+                            if not np.isnan(std_values).all()
+                            else 0.0
+                        )
+                    # Try old approach (with named variables)
+                    elif "count" in stats:
+                        pixel_count = float(stats["count"].sum())
+                        mean_vals = (
+                            stats.get("mean", stats).values
+                            if "mean" in stats
+                            else [0.0]
+                        )
+                        mean_val = (
+                            float(np.nanmean(mean_vals))
+                            if not np.isnan(mean_vals).all()
+                            else 0.0
+                        )
+                        std_vals = (
+                            stats.get("std", stats).values if "std" in stats else [0.0]
+                        )
+                        std_val = (
+                            float(np.nanmean(std_vals))
+                            if not np.isnan(std_vals).all()
+                            else 0.0
+                        )
+                    else:
+                        # Fallback for unknown format
+                        logger.warning(
+                            f"Unknown zonal_stats return format for {severity}, using fallback"
+                        )
+                        pixel_count = 0.0
+                        mean_val = 0.0
+                        std_val = 0.0
+                else:
+                    pixel_count = 0.0
+                    mean_val = 0.0
+                    std_val = 0.0
 
                 severity_pixel_counts[severity] = pixel_count
                 results[f"{severity}_ha"] = pixel_count * metadata["pixel_area_ha"]
@@ -780,26 +966,160 @@ class VegetationResolveCommand(Command):
         # Calculate totals
         results["total_pixel_count"] = sum(severity_pixel_counts.values())
 
-        # Calculate overall statistics from original data
+        # Calculate totals
+        results["total_pixel_count"] = sum(severity_pixel_counts.values())
+
+        # Calculate overall statistics from original data with warning suppression
         try:
             original_data = masks["original"]
-            
-            # Calculate overall statistics using xvec
-            overall_stats = original_data.xvec.zonal_stats(
-                veg_subset.geometry,
-                stats=["mean", "std"],
-                all_touched=True
-            )
-            
-            results["mean_severity"] = float(overall_stats["mean"].mean()) if "mean" in overall_stats and not np.isnan(overall_stats["mean"].mean()) else 0.0
-            results["std_dev"] = float(overall_stats["std"].mean()) if "std" in overall_stats and not np.isnan(overall_stats["std"].mean()) else 0.0
-                
+
+            # Calculate overall statistics using xvec with warning suppression
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=RuntimeWarning, message=".*degrees of freedom.*"
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=RuntimeWarning,
+                    message=".*invalid value encountered.*",
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=RuntimeWarning,
+                    message=".*Degrees of freedom <= 0.*",
+                )
+
+                # Try exactextract method first, fall back to default
+                try:
+                    overall_stats = original_data.xvec.zonal_stats(
+                        veg_subset.geometry,
+                        metadata["x_coord"],
+                        metadata["y_coord"],
+                        stats=["mean", "std"],
+                        all_touched=True,
+                        method="exactextract",
+                    )
+                except Exception as exactextract_error:
+                    logger.debug(
+                        f"exactextract method failed for overall stats, using default: {exactextract_error}"
+                    )
+                    overall_stats = original_data.xvec.zonal_stats(
+                        veg_subset.geometry,
+                        metadata["x_coord"],
+                        metadata["y_coord"],
+                        stats=["mean", "std"],
+                        all_touched=True,
+                    )
+
+            # Handle overall statistics with robust NaN handling
+            # FIX: Handle both possible return formats from xvec.zonal_stats
+            if overall_stats is not None and not np.isnan(overall_stats.values).all():
+                # Try new approach first (with zonal_statistics dimension)
+                if (
+                    hasattr(overall_stats, "isel")
+                    and "zonal_statistics" in overall_stats.dims
+                ):
+                    # overall_stats.isel returns array with shape (n_geometries,)
+                    # Take the average across all geometries
+                    mean_values = overall_stats.isel(zonal_statistics=0).values
+                    results["mean_severity"] = (
+                        float(np.nanmean(mean_values))
+                        if not np.isnan(mean_values).all()
+                        else 0.0
+                    )
+
+                    std_values = overall_stats.isel(zonal_statistics=1).values
+                    results["std_dev"] = (
+                        float(np.nanmean(std_values))
+                        if not np.isnan(std_values).all()
+                        else 0.0
+                    )
+                # Try old approach (with named variables)
+                elif "mean" in overall_stats:
+                    mean_vals = overall_stats["mean"].values
+                    results["mean_severity"] = (
+                        float(np.nanmean(mean_vals))
+                        if not np.isnan(mean_vals).all()
+                        else 0.0
+                    )
+                    if "std" in overall_stats:
+                        std_vals = overall_stats["std"].values
+                        results["std_dev"] = (
+                            float(np.nanmean(std_vals))
+                            if not np.isnan(std_vals).all()
+                            else 0.0
+                        )
+                    else:
+                        results["std_dev"] = 0.0
+                else:
+                    # Fallback for unknown format
+                    logger.warning(
+                        "Unknown overall_stats return format, using fallback"
+                    )
+                    results["mean_severity"] = 0.0
+                    results["std_dev"] = 0.0
+            else:
+                results["mean_severity"] = 0.0
+                results["std_dev"] = 0.0
+
         except Exception as e:
             logger.warning(f"Error calculating overall stats: {str(e)}")
             results["mean_severity"] = 0.0
             results["std_dev"] = 0.0
 
         return results
+
+    def _get_empty_statistics(self) -> Dict[str, float]:
+        """Return empty statistics structure for empty vegetation subsets"""
+        return {
+            "unburned_ha": 0.0,
+            "low_ha": 0.0,
+            "moderate_ha": 0.0,
+            "high_ha": 0.0,
+            "total_pixel_count": 0.0,
+            "unburned_mean": 0.0,
+            "low_mean": 0.0,
+            "moderate_mean": 0.0,
+            "high_mean": 0.0,
+            "unburned_std": 0.0,
+            "low_std": 0.0,
+            "moderate_std": 0.0,
+            "high_std": 0.0,
+            "mean_severity": 0.0,
+            "std_dev": 0.0,
+        }
+
+    def _get_fallback_statistics(
+        self, veg_subset: gpd.GeoDataFrame, metadata: Dict
+    ) -> Dict[str, float]:
+        """Return fallback statistics for very small vegetation polygons"""
+        # For very small polygons, estimate area based on geometry
+        total_area_m2 = veg_subset.geometry.area.sum()
+        estimated_pixels = max(
+            1, int(total_area_m2 / (metadata["pixel_area_ha"] * 10000))
+        )
+
+        logger.info(
+            f"Using fallback statistics for small polygon: {total_area_m2:.2e} m², ~{estimated_pixels} pixels"
+        )
+
+        return {
+            "unburned_ha": total_area_m2 / 10000,  # Convert m² to ha
+            "low_ha": 0.0,
+            "moderate_ha": 0.0,
+            "high_ha": 0.0,
+            "total_pixel_count": float(estimated_pixels),
+            "unburned_mean": 0.0,  # Assume unburned for very small areas
+            "low_mean": 0.0,
+            "moderate_mean": 0.0,
+            "high_mean": 0.0,
+            "unburned_std": 0.0,
+            "low_std": 0.0,
+            "moderate_std": 0.0,
+            "high_std": 0.0,
+            "mean_severity": 0.0,
+            "std_dev": 0.0,
+        }
 
     def _add_percentage_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add percentage columns to results DataFrame with safe division"""
@@ -808,51 +1128,63 @@ class VegetationResolveCommand(Command):
             # Safe division: handle zero/NaN denominators
             severity_ha = df[f"{severity}_ha"].fillna(0)
             total_ha = df["total_ha"].fillna(0)
-            
+
             # Use numpy.where for safe division
             df[f"{severity}_percent"] = np.where(
-                total_ha > 0,
-                (severity_ha / total_ha * 100).round(2),
-                0.0
+                total_ha > 0, (severity_ha / total_ha * 100).round(2), 0.0
             )
 
         # Add percentage of total area for each vegetation type
         total_study_area = df["total_ha"].sum()
-        
+
         # Safe division for total percentages
         if total_study_area > 0 and not np.isnan(total_study_area):
-            df["total_percent"] = (df["total_ha"].fillna(0) / total_study_area * 100).round(2)
+            df["total_percent"] = (
+                df["total_ha"].fillna(0) / total_study_area * 100
+            ).round(2)
         else:
-            logger.warning("Total study area is zero or NaN, setting total_percent to 0")
+            logger.warning(
+                "Total study area is zero or NaN, setting total_percent to 0"
+            )
             df["total_percent"] = 0.0
 
         # Ensure all percentage columns are numeric and handle any remaining NaN values
-        percentage_columns = [f"{s}_percent" for s in ["unburned", "low", "moderate", "high"]] + ["total_percent"]
+        percentage_columns = [
+            f"{s}_percent" for s in ["unburned", "low", "moderate", "high"]
+        ] + ["total_percent"]
         for col in percentage_columns:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
         return df
 
     def _create_json_structure(self, result_df: pd.DataFrame) -> Dict[str, Any]:
         """Create JSON structure for frontend visualization with safe division"""
+        # Calculate total park area with NaN handling
         total_park_area = result_df["total_ha"].sum()
+        if np.isnan(total_park_area):
+            # If sum contains NaN, calculate sum of non-NaN values
+            total_park_area = result_df["total_ha"].fillna(0).sum()
+
         vegetation_communities = []
 
         for veg_type in result_df.index:
             row = result_df.loc[veg_type]
             color = "#" + format(hash(str(veg_type)) % 0xFFFFFF, "06x")
 
-            # Safe division for percent_of_park
-            if total_park_area > 0 and not np.isnan(total_park_area):
-                percent_of_park = round((row["total_ha"] / total_park_area) * 100, 2)
+            # Safe division for percent_of_park with NaN handling for individual row
+            row_total_ha = row["total_ha"] if not np.isnan(row["total_ha"]) else 0.0
+            if total_park_area > 0:
+                percent_of_park = round((row_total_ha / total_park_area) * 100, 2)
             else:
                 percent_of_park = 0.0
 
             community_data = {
                 "name": str(veg_type),
                 "color": color,
-                "total_hectares": round(row["total_ha"], 2) if not np.isnan(row["total_ha"]) else 0.0,
+                "total_hectares": round(row["total_ha"], 2)
+                if not np.isnan(row["total_ha"])
+                else 0.0,
                 "percent_of_park": percent_of_park,
                 "severity_breakdown": {},
             }
@@ -903,15 +1235,16 @@ class VegetationResolveCommand(Command):
             # Generate JSON in memory
             json_data = json.dumps(json_structure, indent=2).encode("utf-8")
 
-            # Save CSV to storage
+            # Save CSV to final storage (minio)
             csv_path = f"assets/{context.job_id}/vegetation/veg_fire_matrix.csv"
-            csv_url = await context.storage.save_bytes(
+            final_storage = context.storage_factory.get_final_storage()
+            csv_url = await final_storage.save_bytes(
                 data=csv_data, path=csv_path, temporary=False
             )
 
-            # Save JSON to storage
+            # Save JSON to final storage (minio)
             json_path = f"assets/{context.job_id}/vegetation/veg_fire_matrix.json"
-            json_url = await context.storage.save_bytes(
+            json_url = await final_storage.save_bytes(
                 data=json_data, path=json_path, temporary=False
             )
 
@@ -941,7 +1274,9 @@ class VegetationResolveCommand(Command):
 
             if not fire_stac_item:
                 # Fallback: create minimal STAC item using provided geometry
-                logger.warning(f"Fire severity STAC item not found for job ID {context.job_id}, using fallback geometry")
+                logger.warning(
+                    f"Fire severity STAC item not found for job ID {context.job_id}, using fallback geometry"
+                )
                 geometry, bbox, datetime_str = self._create_fallback_metadata(context)
             else:
                 geometry = fire_stac_item["geometry"]
@@ -976,7 +1311,7 @@ class VegetationResolveCommand(Command):
         except Exception as e:
             logger.error(f"STAC metadata creation failed: {str(e)}", exc_info=True)
             raise
-            
+
     async def _find_fire_stac_item(self, context: CommandContext) -> Optional[Dict]:
         """Try multiple strategies to find the fire severity STAC item"""
         stac_id_patterns = [
@@ -984,58 +1319,72 @@ class VegetationResolveCommand(Command):
             f"{context.fire_event_name}-{context.job_id}",  # Alternative pattern
             f"severity-{context.job_id}",  # Simple pattern
         ]
-        
+
         coarseness_levels = ["refined", "coarse", None]
-        
+
         for stac_id in stac_id_patterns:
             for coarseness in coarseness_levels:
                 try:
                     if coarseness:
-                        fire_stac_item = await context.stac_manager.get_items_by_id_and_coarseness(
-                            stac_id, coarseness
+                        fire_stac_item = (
+                            await context.stac_manager.get_items_by_id_and_coarseness(
+                                stac_id, coarseness
+                            )
                         )
                     else:
                         # Try without coarseness filter
-                        fire_stac_item = await context.stac_manager.get_item_by_id(stac_id)
-                    
+                        fire_stac_item = await context.stac_manager.get_item_by_id(
+                            stac_id
+                        )
+
                     if fire_stac_item:
-                        logger.info(f"Found fire STAC item with ID: {stac_id}, coarseness: {coarseness}")
+                        logger.info(
+                            f"Found fire STAC item with ID: {stac_id}, coarseness: {coarseness}"
+                        )
                         return fire_stac_item
-                        
+
                 except Exception as e:
-                    logger.debug(f"Failed to find STAC item {stac_id} with coarseness {coarseness}: {str(e)}")
+                    logger.debug(
+                        f"Failed to find STAC item {stac_id} with coarseness {coarseness}: {str(e)}"
+                    )
                     continue
-        
+
         logger.warning(f"No fire severity STAC item found for job {context.job_id}")
         return None
-        
-    def _create_fallback_metadata(self, context: CommandContext) -> Tuple[Dict, List[float], str]:
+
+    def _create_fallback_metadata(
+        self, context: CommandContext
+    ) -> Tuple[Dict, List[float], str]:
         """Create fallback metadata when STAC item is not found"""
         # Use the geometry from context, or create a minimal bounding box
-        if hasattr(context.geometry, 'coordinates'):
+        if hasattr(context.geometry, "coordinates"):
             # Extract bounding box from geometry
-            coords = context.geometry.coordinates[0] if context.geometry.coordinates else []
+            coords = (
+                context.geometry.coordinates[0] if context.geometry.coordinates else []
+            )
             if coords:
                 lons = [c[0] for c in coords]
                 lats = [c[1] for c in coords]
                 bbox = [min(lons), min(lats), max(lons), max(lats)]
             else:
                 bbox = [-180, -90, 180, 90]  # Global fallback
-            
+
             geometry = {
                 "type": context.geometry.type,
-                "coordinates": context.geometry.coordinates
+                "coordinates": context.geometry.coordinates,
             }
         else:
             # Minimal fallback geometry
             bbox = [-180, -90, 180, 90]
             geometry = {
                 "type": "Polygon",
-                "coordinates": [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]]
+                "coordinates": [
+                    [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
+                ],
             }
-        
+
         # Use current datetime as fallback
         datetime_str = datetime.now(timezone.utc).isoformat() + "Z"
-        
+
         logger.info(f"Created fallback metadata with bbox: {bbox}")
         return geometry, bbox, datetime_str

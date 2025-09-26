@@ -295,6 +295,67 @@ class VegetationSchemaLoader:
         """
         if park_unit_id and self.has_schema(park_unit_id):
             return self.get_schema(park_unit_id)
-        
+
         logger.info(f"No specific schema found for '{park_unit_id}', using default schema")
         return self.get_default_schema()
+
+    def validate_schema_against_data(self, schema: VegetationSchema, data_columns: set) -> None:
+        """
+        Validate that a schema's required fields exist in the data and log warnings for missing preserve_fields.
+
+        Args:
+            schema: VegetationSchema to validate
+            data_columns: Set of column names available in the data
+
+        Raises:
+            ValueError: If required fields are missing from the data
+        """
+        missing_required = []
+
+        # Check required fields
+        if schema.vegetation_type_field not in data_columns:
+            missing_required.append(schema.vegetation_type_field)
+
+        if schema.geometry_column not in data_columns:
+            missing_required.append(schema.geometry_column)
+
+        if schema.description_field and schema.description_field not in data_columns:
+            missing_required.append(schema.description_field)
+
+        if schema.color_field and schema.color_field not in data_columns:
+            missing_required.append(schema.color_field)
+
+        if missing_required:
+            logger.error(f"Required fields missing from data: {missing_required}")
+            raise ValueError(f"Required fields missing from data: {', '.join(missing_required)}")
+
+        # Check preserve_fields and log warnings for missing ones
+        if schema.preserve_fields:
+            missing_preserve = [field for field in schema.preserve_fields if field not in data_columns]
+            if missing_preserve:
+                logger.warning(
+                    f"Preserve fields not found in data (will be skipped): {missing_preserve}. "
+                    f"Available columns: {sorted(data_columns)}"
+                )
+            else:
+                logger.debug(f"All preserve fields found in data: {schema.preserve_fields}")
+
+        logger.info(f"Schema validation completed successfully for vegetation_type_field='{schema.vegetation_type_field}'")
+
+    def get_validated_schema(self, park_unit_id: str, data_columns: set) -> VegetationSchema:
+        """
+        Get schema for park unit and validate it against actual data columns.
+
+        Args:
+            park_unit_id: ID of the park unit
+            data_columns: Set of column names available in the data
+
+        Returns:
+            Validated VegetationSchema configuration
+
+        Raises:
+            ValueError: If park_unit_id is not found or required fields are missing
+        """
+        schema = self.get_schema(park_unit_id)
+        self.validate_schema_against_data(schema, data_columns)
+        return schema
