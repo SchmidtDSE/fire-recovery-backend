@@ -7,7 +7,7 @@
       "vegetation_type_field": "MapUnit_Name",
       "description_field": "MapUnit_Name",
       "geometry_column": "geometry",
-      "preserve_fields": ["OBJECTID", "Shape_Area", "Shape_Length"]
+      "preserve_fields": ["Poly_ID", "SHAPE_Area", "SHAPE_Length"]
     },
     {
       "id": "MOJN",
