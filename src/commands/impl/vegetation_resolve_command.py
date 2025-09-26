@@ -821,251 +821,127 @@ class VegetationResolveCommand(Command):
 
         return masks
 
+    def _calculate_severity_pixels(
+        self, mask_data: xr.DataArray, veg_subset: gpd.GeoDataFrame, metadata: Dict
+    ) -> float:
+        """Calculate total pixel count for a severity class across all vegetation polygons."""
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+                stats = mask_data.xvec.zonal_stats(
+                    veg_subset.geometry,
+                    metadata["x_coord"],
+                    metadata["y_coord"],
+                    stats=["count"],
+                    all_touched=True,
+                    method="exactextract",
+                )
+
+            if (
+                stats is not None
+                and hasattr(stats, "isel")
+                and "zonal_statistics" in stats.dims
+            ):
+                count_values = stats.isel(zonal_statistics=0).values
+                return float(np.sum(count_values))
+            else:
+                logger.warning("Unexpected zonal_stats format, returning 0")
+                return 0.0
+
+        except Exception as e:
+            logger.warning(f"Error calculating severity pixels: {str(e)}")
+            return 0.0
+
+    def _calculate_overall_severity(
+        self, original_data: xr.DataArray, veg_subset: gpd.GeoDataFrame, metadata: Dict
+    ) -> Tuple[float, float]:
+        """Calculate pixel-weighted mean and std of severity across all vegetation polygons."""
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+                stats = original_data.xvec.zonal_stats(
+                    veg_subset.geometry,
+                    metadata["x_coord"],
+                    metadata["y_coord"],
+                    stats=["count", "mean", "std"],
+                    all_touched=True,
+                    method="exactextract",
+                )
+
+            if (
+                stats is not None
+                and hasattr(stats, "isel")
+                and "zonal_statistics" in stats.dims
+            ):
+                count_values = stats.isel(zonal_statistics=0).values
+                mean_values = stats.isel(zonal_statistics=1).values
+                std_values = stats.isel(zonal_statistics=2).values
+
+                # Pixel-weighted mean across all polygons
+                total_pixels = np.sum(count_values)
+                if total_pixels > 0:
+                    weighted_mean = float(
+                        np.sum(count_values * mean_values) / total_pixels
+                    )
+                    # For std, take simple mean (std doesn't weight well)
+                    weighted_std = float(np.nanmean(std_values))
+                    return weighted_mean, weighted_std
+
+            return 0.0, 0.0
+
+        except Exception as e:
+            logger.warning(f"Error calculating overall severity: {str(e)}")
+            return 0.0, 0.0
+
     async def _calculate_zonal_statistics(
         self,
         masks: Dict[str, xr.DataArray],
         veg_subset: gpd.GeoDataFrame,
         metadata: Dict,
     ) -> Dict[str, float]:
-        """Calculate zonal statistics for vegetation subset using xvec with robust error handling"""
-        results = {}
-
-        # Pre-validate vegetation polygons to avoid statistical warnings
+        """Calculate zonal statistics for all polygons of a vegetation type."""
+        # Early validation
         if len(veg_subset) == 0:
             logger.warning("Empty vegetation subset, returning zero statistics")
             return self._get_empty_statistics()
 
-        # Check polygon areas to identify potentially problematic small polygons
+        # Check for very small polygons
         total_area = veg_subset.geometry.area.sum()
-        if (
-            total_area < 1e-6
-        ):  # Very small total area (< 1 square meter in projected units)
+        if total_area < 1e-6:  # < 1 square meter
             logger.warning(
-                f"Very small vegetation area ({total_area:.2e} square units), using fallback statistics"
+                f"Very small vegetation area ({total_area:.2e} units), using fallback"
             )
             return self._get_fallback_statistics(veg_subset, metadata)
 
-        # Calculate statistics for each severity class
-        severity_pixel_counts = {}
+        results = {}
         severity_classes = ["unburned", "low", "moderate", "high"]
 
+        # Calculate pixel counts for each severity class
+        severity_pixel_counts = {}
         for severity in severity_classes:
-            mask_data = masks[severity]
-            try:
-                # Use xvec for zonal statistics with warning suppression for degrees of freedom issues
-                with warnings.catch_warnings():
-                    warnings.filterwarnings(
-                        "ignore",
-                        category=RuntimeWarning,
-                        message=".*degrees of freedom.*",
-                    )
-                    warnings.filterwarnings(
-                        "ignore",
-                        category=RuntimeWarning,
-                        message=".*invalid value encountered.*",
-                    )
-                    warnings.filterwarnings(
-                        "ignore",
-                        category=RuntimeWarning,
-                        message=".*Degrees of freedom <= 0.*",
-                    )
+            pixel_count = self._calculate_severity_pixels(
+                masks[severity], veg_subset, metadata
+            )
+            severity_pixel_counts[severity] = pixel_count
+            results[f"{severity}_ha"] = pixel_count * metadata["pixel_area_ha"]
 
-                    # Try exactextract method first (for consistency with old implementation)
-                    # Fall back to default method if exactextract is not available
-                    try:
-                        stats = mask_data.xvec.zonal_stats(
-                            veg_subset.geometry,
-                            metadata["x_coord"],
-                            metadata["y_coord"],
-                            stats=["count", "mean", "std"],
-                            all_touched=True,
-                            method="exactextract",
-                        )
-                    except Exception as exactextract_error:
-                        logger.debug(
-                            f"exactextract method failed for {severity}, using default: {exactextract_error}"
-                        )
-                        stats = mask_data.xvec.zonal_stats(
-                            veg_subset.geometry,
-                            metadata["x_coord"],
-                            metadata["y_coord"],
-                            stats=["count", "mean", "std"],
-                            all_touched=True,
-                        )
+        # Calculate overall severity statistics (mean and std from original data)
+        overall_mean, overall_std = self._calculate_overall_severity(
+            masks["original"], veg_subset, metadata
+        )
+        results["mean_severity"] = overall_mean
+        results["std_dev"] = overall_std
 
-                # Extract statistics from result with robust handling
-                # FIX: Handle both possible return formats from xvec.zonal_stats
-                if stats is not None and not np.isnan(stats.values).all():
-                    # Try new approach first (with zonal_statistics dimension)
-                    if hasattr(stats, "isel") and "zonal_statistics" in stats.dims:
-                        # stats.isel returns array with shape (n_geometries,)
-                        # We need to sum all pixel counts across geometries
-                        count_values = stats.isel(zonal_statistics=0).values
-                        pixel_count = float(np.sum(count_values))
-
-                        # For mean and std, we take the average across geometries
-                        mean_values = stats.isel(zonal_statistics=1).values
-                        mean_val = (
-                            float(np.nanmean(mean_values))
-                            if not np.isnan(mean_values).all()
-                            else 0.0
-                        )
-
-                        std_values = stats.isel(zonal_statistics=2).values
-                        std_val = (
-                            float(np.nanmean(std_values))
-                            if not np.isnan(std_values).all()
-                            else 0.0
-                        )
-                    # Try old approach (with named variables)
-                    elif "count" in stats:
-                        pixel_count = float(stats["count"].sum())
-                        mean_vals = (
-                            stats.get("mean", stats).values
-                            if "mean" in stats
-                            else [0.0]
-                        )
-                        mean_val = (
-                            float(np.nanmean(mean_vals))
-                            if not np.isnan(mean_vals).all()
-                            else 0.0
-                        )
-                        std_vals = (
-                            stats.get("std", stats).values if "std" in stats else [0.0]
-                        )
-                        std_val = (
-                            float(np.nanmean(std_vals))
-                            if not np.isnan(std_vals).all()
-                            else 0.0
-                        )
-                    else:
-                        # Fallback for unknown format
-                        logger.warning(
-                            f"Unknown zonal_stats return format for {severity}, using fallback"
-                        )
-                        pixel_count = 0.0
-                        mean_val = 0.0
-                        std_val = 0.0
-                else:
-                    pixel_count = 0.0
-                    mean_val = 0.0
-                    std_val = 0.0
-
-                severity_pixel_counts[severity] = pixel_count
-                results[f"{severity}_ha"] = pixel_count * metadata["pixel_area_ha"]
-                results[f"{severity}_mean"] = mean_val
-                results[f"{severity}_std"] = std_val
-
-            except Exception as e:
-                logger.warning(f"Error calculating {severity} stats: {str(e)}")
-                severity_pixel_counts[severity] = 0.0
-                results[f"{severity}_ha"] = 0.0
-                results[f"{severity}_mean"] = 0.0
-                results[f"{severity}_std"] = 0.0
-
-        # Calculate totals
+        # Total pixel count for validation
         results["total_pixel_count"] = sum(severity_pixel_counts.values())
 
-        # Calculate totals
-        results["total_pixel_count"] = sum(severity_pixel_counts.values())
-
-        # Calculate overall statistics from original data with warning suppression
-        try:
-            original_data = masks["original"]
-
-            # Calculate overall statistics using xvec with warning suppression
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore", category=RuntimeWarning, message=".*degrees of freedom.*"
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    category=RuntimeWarning,
-                    message=".*invalid value encountered.*",
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    category=RuntimeWarning,
-                    message=".*Degrees of freedom <= 0.*",
-                )
-
-                # Try exactextract method first, fall back to default
-                try:
-                    overall_stats = original_data.xvec.zonal_stats(
-                        veg_subset.geometry,
-                        metadata["x_coord"],
-                        metadata["y_coord"],
-                        stats=["mean", "std"],
-                        all_touched=True,
-                        method="exactextract",
-                    )
-                except Exception as exactextract_error:
-                    logger.debug(
-                        f"exactextract method failed for overall stats, using default: {exactextract_error}"
-                    )
-                    overall_stats = original_data.xvec.zonal_stats(
-                        veg_subset.geometry,
-                        metadata["x_coord"],
-                        metadata["y_coord"],
-                        stats=["mean", "std"],
-                        all_touched=True,
-                    )
-
-            # Handle overall statistics with robust NaN handling
-            # FIX: Handle both possible return formats from xvec.zonal_stats
-            if overall_stats is not None and not np.isnan(overall_stats.values).all():
-                # Try new approach first (with zonal_statistics dimension)
-                if (
-                    hasattr(overall_stats, "isel")
-                    and "zonal_statistics" in overall_stats.dims
-                ):
-                    # overall_stats.isel returns array with shape (n_geometries,)
-                    # Take the average across all geometries
-                    mean_values = overall_stats.isel(zonal_statistics=0).values
-                    results["mean_severity"] = (
-                        float(np.nanmean(mean_values))
-                        if not np.isnan(mean_values).all()
-                        else 0.0
-                    )
-
-                    std_values = overall_stats.isel(zonal_statistics=1).values
-                    results["std_dev"] = (
-                        float(np.nanmean(std_values))
-                        if not np.isnan(std_values).all()
-                        else 0.0
-                    )
-                # Try old approach (with named variables)
-                elif "mean" in overall_stats:
-                    mean_vals = overall_stats["mean"].values
-                    results["mean_severity"] = (
-                        float(np.nanmean(mean_vals))
-                        if not np.isnan(mean_vals).all()
-                        else 0.0
-                    )
-                    if "std" in overall_stats:
-                        std_vals = overall_stats["std"].values
-                        results["std_dev"] = (
-                            float(np.nanmean(std_vals))
-                            if not np.isnan(std_vals).all()
-                            else 0.0
-                        )
-                    else:
-                        results["std_dev"] = 0.0
-                else:
-                    # Fallback for unknown format
-                    logger.warning(
-                        "Unknown overall_stats return format, using fallback"
-                    )
-                    results["mean_severity"] = 0.0
-                    results["std_dev"] = 0.0
-            else:
-                results["mean_severity"] = 0.0
-                results["std_dev"] = 0.0
-
-        except Exception as e:
-            logger.warning(f"Error calculating overall stats: {str(e)}")
-            results["mean_severity"] = 0.0
-            results["std_dev"] = 0.0
+        # We don't calculate individual means/stds per severity class since
+        # they're not used in the vegetation analysis - only pixel counts matter
+        for severity in severity_classes:
+            results[f"{severity}_mean"] = 0.0
+            results[f"{severity}_std"] = 0.0
 
         return results
 
