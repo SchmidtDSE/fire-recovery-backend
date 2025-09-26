@@ -34,9 +34,17 @@ def mock_storage() -> Mock:
 def mock_storage_factory() -> Mock:
     """Create mock storage factory"""
     factory = Mock(spec=StorageFactory)
+
+    # Mock temp storage
     temp_storage = Mock(spec=StorageInterface)
     temp_storage.save_bytes = AsyncMock(return_value="mock://temp/path")
     factory.get_temp_storage = Mock(return_value=temp_storage)
+
+    # Mock final storage
+    final_storage = Mock(spec=StorageInterface)
+    final_storage.save_bytes = AsyncMock(return_value="mock://final/path")
+    factory.get_final_storage = Mock(return_value=final_storage)
+
     return factory
 
 
@@ -498,8 +506,9 @@ class TestVegetationResolveCommand:
             ]
         }
 
-        # Mock storage responses
-        valid_context.storage.save_bytes.side_effect = [
+        # Mock final storage responses for CSV and JSON files
+        final_storage = valid_context.storage_factory.get_final_storage()
+        final_storage.save_bytes.side_effect = [
             "mock://csv/url",
             "mock://json/url",
         ]
@@ -511,8 +520,8 @@ class TestVegetationResolveCommand:
         assert result["vegetation_matrix_csv"] == "mock://csv/url"
         assert result["vegetation_matrix_json"] == "mock://json/url"
 
-        # Verify storage was called twice (CSV and JSON)
-        assert valid_context.storage.save_bytes.call_count == 2
+        # Verify final storage was called twice (CSV and JSON)
+        assert final_storage.save_bytes.call_count == 2
 
     @pytest.mark.asyncio
     async def test_save_analysis_reports_storage_error(
@@ -524,8 +533,9 @@ class TestVegetationResolveCommand:
         result_df = pd.DataFrame({"total_ha": [100.0]}, index=["Forest"])
         json_structure = {"vegetation_communities": []}
 
-        # Mock storage error
-        valid_context.storage.save_bytes.side_effect = Exception("Storage error")
+        # Mock final storage error
+        final_storage = valid_context.storage_factory.get_final_storage()
+        final_storage.save_bytes.side_effect = Exception("Storage error")
 
         with pytest.raises(Exception, match="Storage error"):
             await command._save_analysis_reports(

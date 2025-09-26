@@ -364,13 +364,13 @@ class TestSTACJSONRepository:
             sample_stac_item["properties"], sample_stac_item["id"]
         )
 
-        expected_path = "stac/test_fire/fire_severity-job_123.json"
+        expected_path = "stac/test_fire/fire_severity-coarse-job_123.json"
         assert path == expected_path
 
         # Test with missing properties
         minimal_properties = {"fire_event_name": "test_fire"}
         path_minimal = repository._generate_item_path(minimal_properties, "test_id")
-        expected_minimal = "stac/test_fire/unknown-unknown.json"
+        expected_minimal = "stac/test_fire/unknown-coarse-unknown.json"
         assert path_minimal == expected_minimal
 
     @pytest.mark.asyncio
@@ -381,12 +381,13 @@ class TestSTACJSONRepository:
         repository = STACJSONRepository(memory_storage)
 
         # Test normal path
-        path = "stac/test_fire/fire_severity-job_123.json"
+        path = "stac/test_fire/fire_severity-coarse-job_123.json"
         terms = repository._extract_search_terms_from_path(path)
 
         expected_terms = {
             "fire_event_name": "test_fire",
             "product_type": "fire_severity",
+            "boundary_type": "coarse",
         }
         assert terms == expected_terms
 

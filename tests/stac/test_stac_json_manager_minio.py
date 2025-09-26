@@ -415,10 +415,10 @@ async def test_stac_json_manager_individual_file_storage(
 
         assert len(json_files) == 2
 
-        # Check file naming convention: {product_type}-{job_id}.json
+        # Check file naming convention: {product_type}-{boundary_type}-{job_id}.json
         expected_files = [
-            f"fire_severity-{job_id}.json",
-            f"fire_boundary-{job_id}_boundary.json",
+            f"fire_severity-coarse-{job_id}.json",
+            f"fire_boundary-coarse-{job_id}_boundary.json",
         ]
 
         for expected_file in expected_files:
