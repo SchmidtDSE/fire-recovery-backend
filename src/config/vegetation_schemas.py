@@ -7,7 +7,7 @@ without hardcoding field names.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import geopandas as gpd

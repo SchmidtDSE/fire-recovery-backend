@@ -4,13 +4,10 @@ Test that our statistical warning fixes work correctly.
 This focuses on testing the specific numpy RuntimeWarning fixes we implemented.
 """
 
-import pytest
 import warnings
 import numpy as np
 import pandas as pd
-import geopandas as gpd
 from unittest.mock import Mock, patch
-from shapely.geometry import Polygon
 
 from src.process.resolve_veg import (
     add_percentage_columns,

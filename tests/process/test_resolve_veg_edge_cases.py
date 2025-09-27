@@ -7,19 +7,14 @@ and edge cases that trigger numpy warnings in zonal statistics calculations.
 
 import pytest
 import warnings
-import tempfile
-import os
 import numpy as np
 import pandas as pd
 import xarray as xr
 import xvec  # Required for .xvec accessor  # noqa: F401
-import rioxarray  # Required for .rio accessor
 import geopandas as gpd
-from shapely.geometry import Polygon, Point
-from unittest.mock import patch, Mock
-import rasterio
+from shapely.geometry import Polygon
+from unittest.mock import Mock
 from rasterio.transform import from_bounds
-from rasterio.crs import CRS
 
 from src.process.resolve_veg import (
     calculate_zonal_stats,
@@ -409,7 +404,7 @@ class TestStatisticalEdgeCases:
                 if valid_count > 0:
                     print(f"  Values range: {np.nanmin(mask.values)} to {np.nanmax(mask.values)}")
                 else:
-                    print(f"  All NaN values")
+                    print("  All NaN values")
 
         with warnings.catch_warnings(record=True) as warning_list:
             warnings.simplefilter("always")
