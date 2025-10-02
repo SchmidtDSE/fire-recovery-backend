@@ -78,6 +78,15 @@ jobs:
           done
 
       - name: Run tests
+        env:
+          MINIO_ENDPOINT: localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          MINIO_SECURE: "False"
+          MINIO_TEST_BUCKET: test-bucket
+          GCP_ACCESS_KEY_ID: minioadmin
+          GCP_SECRET_ACCESS_KEY: minioadmin
+          RUN_LOCAL: "True"
         run: pixi run pytest --verbose
 
       - name: Upload test results

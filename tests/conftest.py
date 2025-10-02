@@ -60,7 +60,12 @@ def unique_test_id() -> str:
 
 
 # STAC Test Asset URLs - these should exist on your MinIO test bucket
-STAC_TEST_BASE_URL = "https://storage.googleapis.com/fire-recovery-temp/example_stac"
+# Use local MinIO in CI/testing, GCS in production
+_minio_endpoint = os.environ.get("MINIO_ENDPOINT", "storage.googleapis.com")
+_minio_secure = os.environ.get("MINIO_SECURE", "True").lower() == "true"
+_test_bucket = os.environ.get("MINIO_TEST_BUCKET", "fire-recovery-temp")
+_protocol = "https" if _minio_secure else "http"
+STAC_TEST_BASE_URL = f"{_protocol}://{_minio_endpoint}/{_test_bucket}/example_stac"
 STAC_TEST_CATALOG_URL = f"{STAC_TEST_BASE_URL}/catalog.json"
 
 # Test asset URLs that should be available on MinIO

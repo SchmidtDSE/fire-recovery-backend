@@ -79,6 +79,13 @@ def get_storage_factory() -> StorageFactory:
             "GCP_ACCESS_KEY_ID and GCP_SECRET_ACCESS_KEY environment variables are required for persistent storage"
         )
 
+    # Allow test environment to override bucket and endpoint
+    bucket_name = os.environ.get("MINIO_TEST_BUCKET", FINAL_BUCKET_NAME)
+    endpoint = os.environ.get("MINIO_ENDPOINT", "storage.googleapis.com")
+    secure = os.environ.get("MINIO_SECURE", "True").lower() == "true"
+    protocol = "https" if secure else "http"
+    base_url = f"{protocol}://{endpoint}/{bucket_name}"
+
     # Configure storage based on lifecycle semantics:
     # - temp_storage: Memory for ephemeral processing files (fast, auto-cleanup)
     # - final_storage: MinIO for persistent assets that outlive the request
@@ -87,13 +94,13 @@ def get_storage_factory() -> StorageFactory:
         temp_storage_config={"base_url": "memory://temp/"},
         final_storage_type="minio",
         final_storage_config={
-            "bucket_name": FINAL_BUCKET_NAME,
-            "endpoint": "storage.googleapis.com",
+            "bucket_name": bucket_name,
+            "endpoint": endpoint,
             "access_key": access_key,
             "secret_key": secret_key,
             "region": "auto",
-            "secure": True,
-            "base_url": f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}",
+            "secure": secure,
+            "base_url": base_url,
         },
     )
 
@@ -103,14 +110,22 @@ async def get_stac_manager(
 ) -> STACJSONManager:
     """Get STAC JSON manager instance and ensure catalog exists"""
     final_storage = storage_factory.get_final_storage()
+
+    # Use environment-aware base URL for STAC (supports test overrides)
+    bucket_name = os.environ.get("MINIO_TEST_BUCKET", FINAL_BUCKET_NAME)
+    endpoint = os.environ.get("MINIO_ENDPOINT", "storage.googleapis.com")
+    secure = os.environ.get("MINIO_SECURE", "True").lower() == "true"
+    protocol = "https" if secure else "http"
+    stac_base_url = f"{protocol}://{endpoint}/{bucket_name}/stac"
+
     stac_manager = STACJSONManager.for_production(
-        base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac",
+        base_url=stac_base_url,
         storage=final_storage,
     )
 
     # Ensure catalog exists by initializing it
     catalog_manager = STACCatalogManager.for_production(
-        base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac",
+        base_url=stac_base_url,
         storage=final_storage,
     )
 
