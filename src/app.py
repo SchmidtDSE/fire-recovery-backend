@@ -13,10 +13,8 @@ from dotenv import load_dotenv
 # Configure logging at module level
 logging.basicConfig(
     level=logging.WARNING,  # Set default to WARNING for all loggers
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
 )
 
 # Set your application loggers to DEBUG

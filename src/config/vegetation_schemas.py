@@ -102,5 +102,7 @@ def detect_vegetation_schema(
         # If no default schema is configured, create a minimal one
         return VegetationSchema(
             vegetation_type_field="veg_type",
-            geometry_column=gdf.geometry.name if hasattr(gdf, "geometry") else "geometry"
+            geometry_column=gdf.geometry.name
+            if hasattr(gdf, "geometry")
+            else "geometry",
         )

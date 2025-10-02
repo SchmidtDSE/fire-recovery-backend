@@ -49,7 +49,7 @@ class VegetationSchemaConfig:
             ValueError: If the configuration structure is invalid
         """
         file_path = Path(filepath)
-        
+
         if not file_path.exists():
             raise FileNotFoundError(f"Configuration file {filepath} not found.")
 
@@ -73,24 +73,38 @@ class VegetationSchemaConfig:
                 if not isinstance(park_unit, dict):
                     raise ValueError(f"Park unit at index {i} must be an object")
 
-                required_fields = ["id", "name", "vegetation_type_field", "geometry_column"]
+                required_fields = [
+                    "id",
+                    "name",
+                    "vegetation_type_field",
+                    "geometry_column",
+                ]
                 for field in required_fields:
                     if field not in park_unit:
-                        raise ValueError(f"Park unit at index {i} missing required field: {field}")
+                        raise ValueError(
+                            f"Park unit at index {i} missing required field: {field}"
+                        )
 
                 # Validate field types
                 if not isinstance(park_unit["id"], str) or not park_unit["id"].strip():
                     raise ValueError(f"Park unit at index {i} has invalid 'id' field")
 
-                if not isinstance(park_unit["name"], str) or not park_unit["name"].strip():
+                if (
+                    not isinstance(park_unit["name"], str)
+                    or not park_unit["name"].strip()
+                ):
                     raise ValueError(f"Park unit at index {i} has invalid 'name' field")
 
-            logger.info(f"Successfully loaded {len(park_units)} park unit configurations from {filepath}")
+            logger.info(
+                f"Successfully loaded {len(park_units)} park unit configurations from {filepath}"
+            )
             return cls(park_units=park_units)
 
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in configuration file {filepath}: {str(e)}")
-            raise json.JSONDecodeError(f"Invalid JSON in configuration file {filepath}: {str(e)}", e.doc, e.pos)
+            raise json.JSONDecodeError(
+                f"Invalid JSON in configuration file {filepath}: {str(e)}", e.doc, e.pos
+            )
         except Exception as e:
             logger.error(f"Failed to load configuration from {filepath}: {str(e)}")
             raise
@@ -127,11 +141,15 @@ class VegetationSchemaLoader:
         self._config_path = config_path
         self._schemas_cache: Optional[Dict[str, VegetationSchema]] = None
         self._cache_lock = threading.Lock()
-        
-        logger.debug(f"VegetationSchemaLoader initialized with config path: {config_path}")
+
+        logger.debug(
+            f"VegetationSchemaLoader initialized with config path: {config_path}"
+        )
 
     @classmethod
-    def get_instance(cls, config_path: str = "config/vegetation_schemas.json") -> "VegetationSchemaLoader":
+    def get_instance(
+        cls, config_path: str = "config/vegetation_schemas.json"
+    ) -> "VegetationSchemaLoader":
         """
         Get singleton instance of VegetationSchemaLoader.
 
@@ -164,7 +182,7 @@ class VegetationSchemaLoader:
 
             for park_unit in config.get_park_units():
                 park_id = park_unit["id"]
-                
+
                 # Convert to VegetationSchema dataclass
                 schema = VegetationSchema(
                     layer_name=park_unit.get("layer_name"),
@@ -172,9 +190,9 @@ class VegetationSchemaLoader:
                     description_field=park_unit.get("description_field"),
                     color_field=park_unit.get("color_field"),
                     geometry_column=park_unit["geometry_column"],
-                    preserve_fields=park_unit.get("preserve_fields")
+                    preserve_fields=park_unit.get("preserve_fields"),
                 )
-                
+
                 schemas[park_id] = schema
                 logger.debug(f"Loaded schema for park unit: {park_id}")
 
@@ -215,10 +233,12 @@ class VegetationSchemaLoader:
             raise ValueError(f"Invalid park unit ID: {park_unit_id}")
 
         schemas = self._get_schemas_cache()
-        
+
         if park_unit_id not in schemas:
             available_parks = list(schemas.keys())
-            logger.error(f"Park unit '{park_unit_id}' not found. Available parks: {available_parks}")
+            logger.error(
+                f"Park unit '{park_unit_id}' not found. Available parks: {available_parks}"
+            )
             raise ValueError(
                 f"No vegetation schema found for park unit '{park_unit_id}'. "
                 f"Available park units: {', '.join(available_parks)}"
@@ -296,10 +316,14 @@ class VegetationSchemaLoader:
         if park_unit_id and self.has_schema(park_unit_id):
             return self.get_schema(park_unit_id)
 
-        logger.info(f"No specific schema found for '{park_unit_id}', using default schema")
+        logger.info(
+            f"No specific schema found for '{park_unit_id}', using default schema"
+        )
         return self.get_default_schema()
 
-    def validate_schema_against_data(self, schema: VegetationSchema, data_columns: set) -> None:
+    def validate_schema_against_data(
+        self, schema: VegetationSchema, data_columns: set
+    ) -> None:
         """
         Validate that a schema's required fields exist in the data and log warnings for missing preserve_fields.
 
@@ -327,22 +351,32 @@ class VegetationSchemaLoader:
 
         if missing_required:
             logger.error(f"Required fields missing from data: {missing_required}")
-            raise ValueError(f"Required fields missing from data: {', '.join(missing_required)}")
+            raise ValueError(
+                f"Required fields missing from data: {', '.join(missing_required)}"
+            )
 
         # Check preserve_fields and log warnings for missing ones
         if schema.preserve_fields:
-            missing_preserve = [field for field in schema.preserve_fields if field not in data_columns]
+            missing_preserve = [
+                field for field in schema.preserve_fields if field not in data_columns
+            ]
             if missing_preserve:
                 logger.warning(
                     f"Preserve fields not found in data (will be skipped): {missing_preserve}. "
                     f"Available columns: {sorted(data_columns)}"
                 )
             else:
-                logger.debug(f"All preserve fields found in data: {schema.preserve_fields}")
+                logger.debug(
+                    f"All preserve fields found in data: {schema.preserve_fields}"
+                )
 
-        logger.info(f"Schema validation completed successfully for vegetation_type_field='{schema.vegetation_type_field}'")
+        logger.info(
+            f"Schema validation completed successfully for vegetation_type_field='{schema.vegetation_type_field}'"
+        )
 
-    def get_validated_schema(self, park_unit_id: str, data_columns: set) -> VegetationSchema:
+    def get_validated_schema(
+        self, park_unit_id: str, data_columns: set
+    ) -> VegetationSchema:
         """
         Get schema for park unit and validate it against actual data columns.
 

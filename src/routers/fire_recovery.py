@@ -696,19 +696,24 @@ async def execute_vegetation_resolution_command(
     """
     logger = logging.getLogger(__name__)
     logger.debug(f"Starting execute_vegetation_resolution_command for job {job_id}")
-    logger.debug(f"Parameters: veg_gpkg_url={veg_gpkg_url}, fire_cog_url={fire_cog_url}")
-    logger.debug(f"severity_breaks={severity_breaks}, geojson_url={geojson_url}, park_unit_id={park_unit_id}")
+    logger.debug(
+        f"Parameters: veg_gpkg_url={veg_gpkg_url}, fire_cog_url={fire_cog_url}"
+    )
+    logger.debug(
+        f"severity_breaks={severity_breaks}, geojson_url={geojson_url}, park_unit_id={park_unit_id}"
+    )
 
     try:
         # Create placeholder geometry (actual boundary comes from geojson_url)
         from typing import cast
         from geojson_pydantic.types import Position2D, Position3D
-        coordinates = cast(list[list[Position2D | Position3D]], [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]])
-        placeholder_geometry = Polygon(
-            type="Polygon", 
-            coordinates=coordinates
+
+        coordinates = cast(
+            list[list[Position2D | Position3D]],
+            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
         )
-        
+        placeholder_geometry = Polygon(type="Polygon", coordinates=coordinates)
+
         # Create command context with vegetation resolution parameters
         logger.debug("Creating CommandContext for vegetation resolution")
         context = CommandContext(
@@ -733,8 +738,10 @@ async def execute_vegetation_resolution_command(
         command = VegetationResolveCommand()
         logger.debug("Executing vegetation resolution command")
         result = await command.execute(context)
-        logger.debug(f"Command execution completed with status: success={result.is_success()}, failure={result.is_failure()}")
-        
+        logger.debug(
+            f"Command execution completed with status: success={result.is_success()}, failure={result.is_failure()}"
+        )
+
         if result.is_success():
             result_data = result.data or {}
             logger.info(
@@ -753,11 +760,11 @@ async def execute_vegetation_resolution_command(
                 f"Vegetation resolution completed with partial success for job {job_id}: "
                 f"{result.error_message}"
             )
-            
+
     except Exception as e:
         logger.error(
             f"Error executing vegetation resolution command for job {job_id}: {str(e)}",
-            exc_info=True
+            exc_info=True,
         )
 
 

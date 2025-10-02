@@ -41,8 +41,8 @@ class VegMapResolveRequest(BaseModel):
     )
     geojson_url: str = Field(..., description="URL to the GeoJSON of the fire boundary")
     park_unit_id: Optional[str] = Field(
-        None, 
-        description="Park unit identifier for vegetation schema selection (e.g., 'JOTR', 'MOJN'). If not provided, auto-detection will be used."
+        None,
+        description="Park unit identifier for vegetation schema selection (e.g., 'JOTR', 'MOJN'). If not provided, auto-detection will be used.",
     )
 
 
