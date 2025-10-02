@@ -45,9 +45,7 @@ class TestVegetationResolveCommandRealEdgeCases:
 
         geometry = GeoJSONPolygon(
             type="Polygon",
-            coordinates=[[
-                [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]
-            ]]
+            coordinates=[[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
         )
 
         return CommandContext(
@@ -77,7 +75,7 @@ class TestVegetationResolveCommandRealEdgeCases:
             data,
             coords={"y": [0, 1, 2], "x": [0, 1, 2]},
             dims=["y", "x"],
-            name="band_data"
+            name="band_data",
         )
 
         fire_ds = xr.Dataset({"band_data": fire_array})
@@ -85,6 +83,7 @@ class TestVegetationResolveCommandRealEdgeCases:
 
         # Mock transform
         from rasterio.transform import from_bounds
+
         fire_ds = fire_ds.rio.write_transform(from_bounds(0, 0, 3, 3, 3, 3))
 
         return fire_ds
@@ -93,29 +92,24 @@ class TestVegetationResolveCommandRealEdgeCases:
     def tiny_vegetation_gdf(self):
         """Create vegetation GeoDataFrame with tiny polygons."""
         # Create polygons smaller than a single pixel
-        tiny_polygon = Polygon([(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.1, 0.1)])
+        tiny_polygon = Polygon(
+            [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9), (0.1, 0.1)]
+        )
 
         return gpd.GeoDataFrame(
-            {"veg_type": ["Micro Shrub"], "geometry": [tiny_polygon]},
-            crs="EPSG:32611"
+            {"veg_type": ["Micro Shrub"], "geometry": [tiny_polygon]}, crs="EPSG:32611"
         )
 
     @pytest.fixture
     def empty_vegetation_gdf(self):
         """Create completely empty vegetation GeoDataFrame."""
-        return gpd.GeoDataFrame(
-            columns=["veg_type", "geometry"],
-            crs="EPSG:32611"
-        )
+        return gpd.GeoDataFrame(columns=["veg_type", "geometry"], crs="EPSG:32611")
 
     @pytest.fixture
     def boundary_gdf(self):
         """Create boundary GeoDataFrame."""
         boundary_polygon = Polygon([(0, 0), (3, 0), (3, 3), (0, 3), (0, 0)])
-        return gpd.GeoDataFrame(
-            {"geometry": [boundary_polygon]},
-            crs="EPSG:32611"
-        )
+        return gpd.GeoDataFrame({"geometry": [boundary_polygon]}, crs="EPSG:32611")
 
     @pytest.mark.asyncio
     async def test_calculate_zonal_stats_empty_vegetation(
@@ -127,11 +121,7 @@ class TestVegetationResolveCommandRealEdgeCases:
             tiny_fire_data["band_data"], [0.1, 0.27, 0.66], boundary_gdf
         )
 
-        metadata = {
-            "pixel_area_ha": 0.01,
-            "x_coord": "x",
-            "y_coord": "y"
-        }
+        metadata = {"pixel_area_ha": 0.01, "x_coord": "x", "y_coord": "y"}
 
         with warnings.catch_warnings(record=True) as warning_list:
             warnings.simplefilter("always")
@@ -141,9 +131,14 @@ class TestVegetationResolveCommandRealEdgeCases:
             )
 
             # Check that no statistical warnings were raised
-            stat_warnings = [w for w in warning_list
-                           if "degrees of freedom" in str(w.message).lower()]
-            assert len(stat_warnings) == 0, f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+            stat_warnings = [
+                w
+                for w in warning_list
+                if "degrees of freedom" in str(w.message).lower()
+            ]
+            assert len(stat_warnings) == 0, (
+                f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+            )
 
             # Should return empty statistics
             assert result == command._get_empty_statistics()
@@ -158,11 +153,7 @@ class TestVegetationResolveCommandRealEdgeCases:
             tiny_fire_data["band_data"], [0.1, 0.27, 0.66], boundary_gdf
         )
 
-        metadata = {
-            "pixel_area_ha": 0.01,
-            "x_coord": "x",
-            "y_coord": "y"
-        }
+        metadata = {"pixel_area_ha": 0.01, "x_coord": "x", "y_coord": "y"}
 
         with warnings.catch_warnings(record=True) as warning_list:
             warnings.simplefilter("always")
@@ -172,13 +163,21 @@ class TestVegetationResolveCommandRealEdgeCases:
             )
 
             # Check that no statistical warnings were raised
-            stat_warnings = [w for w in warning_list
-                           if any(phrase in str(w.message).lower() for phrase in [
-                               "degrees of freedom",
-                               "invalid value encountered",
-                               "ddof"
-                           ])]
-            assert len(stat_warnings) == 0, f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+            stat_warnings = [
+                w
+                for w in warning_list
+                if any(
+                    phrase in str(w.message).lower()
+                    for phrase in [
+                        "degrees of freedom",
+                        "invalid value encountered",
+                        "ddof",
+                    ]
+                )
+            ]
+            assert len(stat_warnings) == 0, (
+                f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+            )
 
             # Should return valid statistics (even if small)
             assert isinstance(result, dict)
@@ -196,13 +195,15 @@ class TestVegetationResolveCommandRealEdgeCases:
         file_data = {
             "vegetation": b"mock_tiny_vegetation",
             "fire_severity": b"mock_tiny_fire",
-            "boundary": b"mock_boundary"
+            "boundary": b"mock_boundary",
         }
 
         with (
             patch.object(command, "_load_fire_data_from_bytes") as mock_load_fire,
             patch.object(command, "_load_vegetation_data_from_bytes") as mock_load_veg,
-            patch.object(command, "_load_boundary_data_from_bytes") as mock_load_boundary,
+            patch.object(
+                command, "_load_boundary_data_from_bytes"
+            ) as mock_load_boundary,
             patch("src.commands.impl.vegetation_resolve_command.gpd.clip") as mock_clip,
         ):
             # Setup mocks for edge case scenario with proper xarray mock
@@ -212,33 +213,37 @@ class TestVegetationResolveCommandRealEdgeCases:
                 mock_fire_data,
                 coords={"y": [0, 1, 2], "x": [0, 1, 2]},
                 dims=["y", "x"],
-                name="band_data"
+                name="band_data",
             )
             mock_fire_ds = xr.Dataset({"band_data": mock_fire_array})
             # Set CRS for rio operations
             from rasterio.transform import from_bounds
+
             mock_fire_ds = mock_fire_ds.rio.write_crs("EPSG:32611")
-            mock_fire_ds = mock_fire_ds.rio.write_transform(from_bounds(0, 0, 3, 3, 3, 3))
+            mock_fire_ds = mock_fire_ds.rio.write_transform(
+                from_bounds(0, 0, 3, 3, 3, 3)
+            )
 
             metadata = {
                 "crs": "EPSG:32611",
                 "data_var": "band_data",
                 "pixel_area_ha": 0.01,
                 "x_coord": "x",
-                "y_coord": "y"
+                "y_coord": "y",
             }
             mock_load_fire.return_value = (mock_fire_ds, metadata)
 
             # Empty vegetation after clipping
-            empty_gdf = gpd.GeoDataFrame(columns=["veg_type", "geometry"], crs="EPSG:32611")
+            empty_gdf = gpd.GeoDataFrame(
+                columns=["veg_type", "geometry"], crs="EPSG:32611"
+            )
             mock_load_veg.return_value = empty_gdf
             mock_clip.return_value = empty_gdf
 
             # Create a proper boundary GeoDataFrame instead of Mock
             boundary_polygon = Polygon([(0, 0), (3, 0), (3, 3), (0, 3), (0, 0)])
             mock_boundary_gdf = gpd.GeoDataFrame(
-                {"geometry": [boundary_polygon]},
-                crs="EPSG:32611"
+                {"geometry": [boundary_polygon]}, crs="EPSG:32611"
             )
             mock_load_boundary.return_value = mock_boundary_gdf
 
@@ -250,9 +255,14 @@ class TestVegetationResolveCommandRealEdgeCases:
                 )
 
                 # Check warnings
-                stat_warnings = [w for w in warning_list
-                               if "degrees of freedom" in str(w.message).lower()]
-                assert len(stat_warnings) == 0, f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+                stat_warnings = [
+                    w
+                    for w in warning_list
+                    if "degrees of freedom" in str(w.message).lower()
+                ]
+                assert len(stat_warnings) == 0, (
+                    f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+                )
 
                 # Should handle empty case gracefully
                 assert len(result_df) == 0
@@ -266,13 +276,15 @@ class TestVegetationResolveCommandRealEdgeCases:
         file_data = {
             "vegetation": b"mock_tiny_vegetation",
             "fire_severity": b"mock_fire",
-            "boundary": b"mock_boundary"
+            "boundary": b"mock_boundary",
         }
 
         with (
             patch.object(command, "_load_fire_data_from_bytes") as mock_load_fire,
             patch.object(command, "_load_vegetation_data_from_bytes") as mock_load_veg,
-            patch.object(command, "_load_boundary_data_from_bytes") as mock_load_boundary,
+            patch.object(
+                command, "_load_boundary_data_from_bytes"
+            ) as mock_load_boundary,
             patch("src.commands.impl.vegetation_resolve_command.gpd.clip") as mock_clip,
             patch.object(command, "_create_severity_masks") as mock_create_masks,
         ):
@@ -282,20 +294,23 @@ class TestVegetationResolveCommandRealEdgeCases:
                 mock_fire_data,
                 coords={"y": range(10), "x": range(10)},
                 dims=["y", "x"],
-                name="band_data"
+                name="band_data",
             )
             mock_fire_ds = xr.Dataset({"band_data": mock_fire_array})
             # Set CRS for rio operations
             from rasterio.transform import from_bounds
+
             mock_fire_ds = mock_fire_ds.rio.write_crs("EPSG:32611")
-            mock_fire_ds = mock_fire_ds.rio.write_transform(from_bounds(0, 0, 10, 10, 10, 10))
+            mock_fire_ds = mock_fire_ds.rio.write_transform(
+                from_bounds(0, 0, 10, 10, 10, 10)
+            )
 
             metadata = {
                 "crs": "EPSG:32611",
                 "data_var": "band_data",
                 "pixel_area_ha": 0.01,
                 "x_coord": "x",
-                "y_coord": "y"
+                "y_coord": "y",
             }
             mock_load_fire.return_value = (mock_fire_ds, metadata)
 
@@ -303,11 +318,13 @@ class TestVegetationResolveCommandRealEdgeCases:
             tiny_polygon = Polygon([(0, 0), (1e-8, 0), (1e-8, 1e-8), (0, 1e-8), (0, 0)])
             tiny_gdf = gpd.GeoDataFrame(
                 {"veg_type": ["Tiny Plant"], "geometry": [tiny_polygon]},
-                crs="EPSG:32611"
+                crs="EPSG:32611",
             )
 
             # Mock area calculation using a different approach - patch the property
-            with patch.object(type(tiny_gdf.geometry), 'area', new_callable=lambda: Mock()) as mock_area:
+            with patch.object(
+                type(tiny_gdf.geometry), "area", new_callable=lambda: Mock()
+            ) as mock_area:
                 mock_area.sum.return_value = 1e-9  # Very small area
 
                 mock_load_veg.return_value = tiny_gdf
@@ -316,8 +333,7 @@ class TestVegetationResolveCommandRealEdgeCases:
                 # Create a proper boundary GeoDataFrame instead of Mock
                 boundary_polygon = Polygon([(0, 0), (10, 0), (10, 10), (0, 10), (0, 0)])
                 mock_boundary_gdf = gpd.GeoDataFrame(
-                    {"geometry": [boundary_polygon]},
-                    crs="EPSG:32611"
+                    {"geometry": [boundary_polygon]}, crs="EPSG:32611"
                 )
                 mock_load_boundary.return_value = mock_boundary_gdf
 
@@ -327,25 +343,37 @@ class TestVegetationResolveCommandRealEdgeCases:
                     "low": xr.DataArray(np.zeros((10, 10)), dims=["y", "x"]),
                     "moderate": xr.DataArray(np.zeros((10, 10)), dims=["y", "x"]),
                     "high": xr.DataArray(np.zeros((10, 10)), dims=["y", "x"]),
-                    "original": xr.DataArray(np.full((10, 10), 0.15), dims=["y", "x"])
+                    "original": xr.DataArray(np.full((10, 10), 0.15), dims=["y", "x"]),
                 }
 
                 with warnings.catch_warnings(record=True) as warning_list:
                     warnings.simplefilter("always")
 
                     # Mock _calculate_zonal_statistics to simulate the actual fallback behavior
-                    with patch.object(command, "_calculate_zonal_statistics") as mock_calc_stats:
+                    with patch.object(
+                        command, "_calculate_zonal_statistics"
+                    ) as mock_calc_stats:
                         # Return fallback statistics for tiny area
-                        mock_calc_stats.return_value = command._get_fallback_statistics(tiny_gdf, metadata)
+                        mock_calc_stats.return_value = command._get_fallback_statistics(
+                            tiny_gdf, metadata
+                        )
 
-                        result_df, json_structure = await command._analyze_vegetation_impact(
+                        (
+                            result_df,
+                            json_structure,
+                        ) = await command._analyze_vegetation_impact(
                             file_data, [0.1, 0.27, 0.66], None
                         )
 
                         # Check warnings
-                        stat_warnings = [w for w in warning_list
-                                       if "degrees of freedom" in str(w.message).lower()]
-                        assert len(stat_warnings) == 0, f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+                        stat_warnings = [
+                            w
+                            for w in warning_list
+                            if "degrees of freedom" in str(w.message).lower()
+                        ]
+                        assert len(stat_warnings) == 0, (
+                            f"Statistical warnings: {[str(w.message) for w in stat_warnings]}"
+                        )
 
                         # Should have used fallback statistics
                         assert len(result_df) == 1
@@ -357,13 +385,16 @@ class TestVegetationResolveCommandRealEdgeCases:
     async def test_percentage_calculation_with_edge_values(self, command):
         """Test percentage calculations with edge case values."""
         # Test with very small values
-        df = pd.DataFrame({
-            "total_ha": [1e-10, 0.0, 1e-6],
-            "unburned_ha": [5e-11, 0.0, 5e-7],
-            "low_ha": [3e-11, 0.0, 3e-7],
-            "moderate_ha": [1e-11, 0.0, 1e-7],
-            "high_ha": [1e-11, 0.0, 1e-7],
-        }, index=["Tiny", "Zero", "Small"])
+        df = pd.DataFrame(
+            {
+                "total_ha": [1e-10, 0.0, 1e-6],
+                "unburned_ha": [5e-11, 0.0, 5e-7],
+                "low_ha": [3e-11, 0.0, 3e-7],
+                "moderate_ha": [1e-11, 0.0, 1e-7],
+                "high_ha": [1e-11, 0.0, 1e-7],
+            },
+            index=["Tiny", "Zero", "Small"],
+        )
 
         result = command._add_percentage_columns(df)
 
@@ -380,25 +411,28 @@ class TestVegetationResolveCommandRealEdgeCases:
     @pytest.mark.asyncio
     async def test_json_structure_with_nan_values(self, command):
         """Test JSON structure creation with NaN and edge values."""
-        df = pd.DataFrame({
-            "total_ha": [100.0, np.nan, 0.0, 1e-10],
-            "unburned_ha": [60.0, np.nan, 0.0, 5e-11],
-            "low_ha": [20.0, np.nan, 0.0, 3e-11],
-            "moderate_ha": [15.0, np.nan, 0.0, 1e-11],
-            "high_ha": [5.0, np.nan, 0.0, 1e-11],
-            "unburned_percent": [60.0, np.nan, 0.0, 50.0],
-            "low_percent": [20.0, np.nan, 0.0, 30.0],
-            "moderate_percent": [15.0, np.nan, 0.0, 10.0],
-            "high_percent": [5.0, np.nan, 0.0, 10.0],
-            "unburned_mean": [0.05, np.nan, 0.0, 0.01],
-            "low_mean": [0.15, np.nan, 0.0, 0.12],
-            "moderate_mean": [0.40, np.nan, 0.0, 0.35],
-            "high_mean": [0.80, np.nan, 0.0, 0.75],
-            "unburned_std": [0.02, np.nan, 0.0, 0.01],
-            "low_std": [0.05, np.nan, 0.0, 0.03],
-            "moderate_std": [0.10, np.nan, 0.0, 0.08],
-            "high_std": [0.15, np.nan, 0.0, 0.12],
-        }, index=["Normal", "NaN_Type", "Zero_Type", "Tiny_Type"])
+        df = pd.DataFrame(
+            {
+                "total_ha": [100.0, np.nan, 0.0, 1e-10],
+                "unburned_ha": [60.0, np.nan, 0.0, 5e-11],
+                "low_ha": [20.0, np.nan, 0.0, 3e-11],
+                "moderate_ha": [15.0, np.nan, 0.0, 1e-11],
+                "high_ha": [5.0, np.nan, 0.0, 1e-11],
+                "unburned_percent": [60.0, np.nan, 0.0, 50.0],
+                "low_percent": [20.0, np.nan, 0.0, 30.0],
+                "moderate_percent": [15.0, np.nan, 0.0, 10.0],
+                "high_percent": [5.0, np.nan, 0.0, 10.0],
+                "unburned_mean": [0.05, np.nan, 0.0, 0.01],
+                "low_mean": [0.15, np.nan, 0.0, 0.12],
+                "moderate_mean": [0.40, np.nan, 0.0, 0.35],
+                "high_mean": [0.80, np.nan, 0.0, 0.75],
+                "unburned_std": [0.02, np.nan, 0.0, 0.01],
+                "low_std": [0.05, np.nan, 0.0, 0.03],
+                "moderate_std": [0.10, np.nan, 0.0, 0.08],
+                "high_std": [0.15, np.nan, 0.0, 0.12],
+            },
+            index=["Normal", "NaN_Type", "Zero_Type", "Tiny_Type"],
+        )
 
         result = command._create_json_structure(df)
 
@@ -427,11 +461,21 @@ class TestVegetationResolveCommandRealEdgeCases:
         empty_stats = command._get_empty_statistics()
 
         expected_keys = [
-            "unburned_ha", "low_ha", "moderate_ha", "high_ha",
+            "unburned_ha",
+            "low_ha",
+            "moderate_ha",
+            "high_ha",
             "total_pixel_count",
-            "unburned_mean", "low_mean", "moderate_mean", "high_mean",
-            "unburned_std", "low_std", "moderate_std", "high_std",
-            "mean_severity", "std_dev"
+            "unburned_mean",
+            "low_mean",
+            "moderate_mean",
+            "high_mean",
+            "unburned_std",
+            "low_std",
+            "moderate_std",
+            "high_std",
+            "mean_severity",
+            "std_dev",
         ]
 
         assert all(key in empty_stats for key in expected_keys)
@@ -441,10 +485,12 @@ class TestVegetationResolveCommandRealEdgeCases:
     def test_fallback_statistics_realistic_values(self, command):
         """Test that fallback statistics produce realistic values."""
         # Create a real GeoDataFrame for testing fallback statistics
-        test_polygon = Polygon([(0, 0), (50, 0), (50, 50), (0, 50), (0, 0)])  # 2500 m² polygon
+        test_polygon = Polygon(
+            [(0, 0), (50, 0), (50, 50), (0, 50), (0, 0)]
+        )  # 2500 m² polygon
         mock_veg_subset = gpd.GeoDataFrame(
             {"veg_type": ["Test Vegetation"], "geometry": [test_polygon]},
-            crs="EPSG:32611"  # UTM projection where units are meters
+            crs="EPSG:32611",  # UTM projection where units are meters
         )
 
         metadata = {"pixel_area_ha": 0.01}  # 100 m² per pixel = 0.01 ha
@@ -458,7 +504,9 @@ class TestVegetationResolveCommandRealEdgeCases:
         # Other values should be reasonable defaults
         assert fallback_stats["mean_severity"] == 0.0  # Assume unburned
         assert fallback_stats["std_dev"] == 0.0
-        assert all(fallback_stats[f"{sev}_ha"] == 0.0 for sev in ["low", "moderate", "high"])
+        assert all(
+            fallback_stats[f"{sev}_ha"] == 0.0 for sev in ["low", "moderate", "high"]
+        )
 
 
 class TestWarningSuppressionIntegration:
@@ -467,7 +515,9 @@ class TestWarningSuppressionIntegration:
     @pytest.mark.asyncio
     async def test_no_warnings_in_complete_workflow(self):
         """Test that no statistical warnings are emitted in a complete workflow."""
-        from src.commands.impl.vegetation_resolve_command import VegetationResolveCommand
+        from src.commands.impl.vegetation_resolve_command import (
+            VegetationResolveCommand,
+        )
 
         # This is an integration test that checks the complete workflow
         command = VegetationResolveCommand()
@@ -483,17 +533,20 @@ class TestWarningSuppressionIntegration:
             mock_download.return_value = {
                 "vegetation": b"edge_case_data",
                 "fire_severity": b"edge_case_fire",
-                "boundary": b"edge_case_boundary"
+                "boundary": b"edge_case_boundary",
             }
 
             # Simulate processing that might trigger warnings
-            edge_case_df = pd.DataFrame({
-                "total_ha": [1e-10],  # Very small value
-                "unburned_ha": [1e-10],
-                "low_ha": [0.0],
-                "moderate_ha": [0.0],
-                "high_ha": [0.0],
-            }, index=["Edge Case Veg"])
+            edge_case_df = pd.DataFrame(
+                {
+                    "total_ha": [1e-10],  # Very small value
+                    "unburned_ha": [1e-10],
+                    "low_ha": [0.0],
+                    "moderate_ha": [0.0],
+                    "high_ha": [0.0],
+                },
+                index=["Edge Case Veg"],
+            )
 
             mock_analyze.return_value = (edge_case_df, {"vegetation_communities": []})
             mock_save.return_value = {"csv": "url", "json": "url"}
@@ -507,7 +560,7 @@ class TestWarningSuppressionIntegration:
             mock_context.get_metadata.side_effect = lambda key: {
                 "veg_gpkg_url": "https://example.com/veg.gpkg",
                 "fire_cog_url": "https://example.com/fire.tif",
-                "geojson_url": "https://example.com/boundary.geojson"
+                "geojson_url": "https://example.com/boundary.geojson",
             }.get(key)
 
             with warnings.catch_warnings(record=True) as warning_list:
@@ -516,13 +569,21 @@ class TestWarningSuppressionIntegration:
                 result = await command.execute(mock_context)
 
                 # Check that no statistical warnings were emitted during execution
-                stat_warnings = [w for w in warning_list
-                               if any(phrase in str(w.message).lower() for phrase in [
-                                   "degrees of freedom",
-                                   "invalid value encountered",
-                                   "ddof"
-                               ])]
-                assert len(stat_warnings) == 0, f"Statistical warnings in workflow: {[str(w.message) for w in stat_warnings]}"
+                stat_warnings = [
+                    w
+                    for w in warning_list
+                    if any(
+                        phrase in str(w.message).lower()
+                        for phrase in [
+                            "degrees of freedom",
+                            "invalid value encountered",
+                            "ddof",
+                        ]
+                    )
+                ]
+                assert len(stat_warnings) == 0, (
+                    f"Statistical warnings in workflow: {[str(w.message) for w in stat_warnings]}"
+                )
 
                 # Execution should succeed
                 assert result.is_success()
