@@ -48,20 +48,20 @@ jobs:
       - name: Create environment files
         run: |
           mkdir -p .devcontainer
-          
-          # Create test.env with mock values for CI
+
+          # Create test.env with S3_* variables (new standard)
           cat > .devcontainer/test.env << EOF
-          MINIO_ENDPOINT=localhost:9000
-          MINIO_ACCESS_KEY=minioadmin
-          MINIO_SECRET_KEY=minioadmin
-          MINIO_SECURE=False
-          MINIO_TEST_BUCKET=test-bucket
+          S3_ENDPOINT=localhost:9000
+          S3_ACCESS_KEY_ID=minioadmin
+          S3_SECRET_ACCESS_KEY=minioadmin
+          S3_SECURE=False
+          S3_BUCKET=test-bucket
           EOF
-          
-          # Create .env with mock values for CI
+
+          # Create .env with S3_* variables (new standard)
           cat > .devcontainer/.env << EOF
-          GCP_ACCESS_KEY_ID=minioadmin
-          GCP_SECRET_ACCESS_KEY=minioadmin
+          S3_ACCESS_KEY_ID=minioadmin
+          S3_SECRET_ACCESS_KEY=minioadmin
           RUN_LOCAL=True
           EOF
 
@@ -77,15 +77,32 @@ jobs:
             sleep 2
           done
 
+      - name: Upload example STAC assets to MinIO
+        run: |
+          # Install MinIO client
+          curl -O https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+
+          # Configure mc to point to local MinIO
+          ./mc alias set local http://localhost:9000 minioadmin minioadmin
+
+          # Create bucket if it doesn't exist
+          ./mc mb --ignore-existing local/test-bucket
+
+          # Upload example STAC assets
+          ./mc cp --recursive example-stac-assets/ local/test-bucket/example_stac/
+
+          # Verify upload
+          ./mc ls local/test-bucket/example_stac/
+
       - name: Run tests
         env:
-          MINIO_ENDPOINT: localhost:9000
-          MINIO_ACCESS_KEY: minioadmin
-          MINIO_SECRET_KEY: minioadmin
-          MINIO_SECURE: "False"
-          MINIO_TEST_BUCKET: test-bucket
-          GCP_ACCESS_KEY_ID: minioadmin
-          GCP_SECRET_ACCESS_KEY: minioadmin
+          # Use S3_* naming convention (new standard)
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
           RUN_LOCAL: "True"
         run: pixi run pytest --verbose
 
