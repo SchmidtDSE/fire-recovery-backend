@@ -110,16 +110,18 @@ The Fire Recovery Backend API serves as the computational engine for a fire reco
 Expected `.env` file content for local development (place in `.devcontainer` folder):
 
 ```dotenv
-GCP_ACCESS_KEY_ID=[MINIO ACCESS KEY]
-GCP_SECRET_ACCESS_KEY=[MINIO SECRET]  
+# S3-compatible storage credentials
+S3_ACCESS_KEY_ID=[YOUR ACCESS KEY]
+S3_SECRET_ACCESS_KEY=[YOUR SECRET KEY]
 RUN_LOCAL=True
 ```
 
-For testing, we also expect a `test.env`
+For testing, we also expect a `test.env`:
 ```dotenv
-MINIO_ENDPOINT=storage.googleapis.com
-MINIO_ACCESS_KEY=[MINIO ACCESS KEY]
-MINIO_SECRET_KEY=[MINIO SECRET KEY]
-MINIO_SECURE=True
-MINIO_TEST_BUCKET=fire-recovery-temp
+# S3-compatible storage configuration
+S3_ENDPOINT=storage.googleapis.com
+S3_ACCESS_KEY_ID=[YOUR ACCESS KEY]
+S3_SECRET_ACCESS_KEY=[YOUR SECRET KEY]
+S3_SECURE=True
+S3_BUCKET=fire-recovery-temp
 ```
