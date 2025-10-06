@@ -70,19 +70,23 @@ def get_storage_factory() -> StorageFactory:
     """Get storage factory instance with lifecycle-based configuration"""
     from src.config.constants import FINAL_BUCKET_NAME
 
-    # Get MinIO credentials for persistent storage
-    access_key = os.environ.get("GCP_ACCESS_KEY_ID")
-    secret_key = os.environ.get("GCP_SECRET_ACCESS_KEY")
+    # Get S3-compatible credentials from environment
+    # Only S3_* variables are supported
+    access_key = os.environ.get("S3_ACCESS_KEY_ID")
+    secret_key = os.environ.get("S3_SECRET_ACCESS_KEY")
 
     if not access_key or not secret_key:
         raise ValueError(
-            "GCP_ACCESS_KEY_ID and GCP_SECRET_ACCESS_KEY environment variables are required for persistent storage"
+            "S3 credentials are required for persistent storage. "
+            "Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY environment variables."
         )
 
     # Allow test environment to override bucket and endpoint
-    bucket_name = os.environ.get("MINIO_TEST_BUCKET", FINAL_BUCKET_NAME)
-    endpoint = os.environ.get("MINIO_ENDPOINT", "storage.googleapis.com")
-    secure = os.environ.get("MINIO_SECURE", "True").lower() == "true"
+    # Only S3_* variables are supported
+    bucket_name = os.environ.get("S3_BUCKET") or FINAL_BUCKET_NAME
+    endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
     protocol = "https" if secure else "http"
     base_url = f"{protocol}://{endpoint}/{bucket_name}"
 
@@ -112,9 +116,11 @@ async def get_stac_manager(
     final_storage = storage_factory.get_final_storage()
 
     # Use environment-aware base URL for STAC (supports test overrides)
-    bucket_name = os.environ.get("MINIO_TEST_BUCKET", FINAL_BUCKET_NAME)
-    endpoint = os.environ.get("MINIO_ENDPOINT", "storage.googleapis.com")
-    secure = os.environ.get("MINIO_SECURE", "True").lower() == "true"
+    # Only S3_* variables are supported
+    bucket_name = os.environ.get("S3_BUCKET") or FINAL_BUCKET_NAME
+    endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
     protocol = "https" if secure else "http"
     stac_base_url = f"{protocol}://{endpoint}/{bucket_name}/stac"
 

@@ -25,31 +25,39 @@ async def memory_storage_with_file(
 
 @pytest.fixture
 def minio_available() -> bool:
-    """Check if GCP MinIO credentials are available for testing"""
-    # Check if required environment variables are set
-    required_vars = [
-        "MINIO_ENDPOINT",
-        "MINIO_ACCESS_KEY",
-        "MINIO_SECRET_KEY",
-        "MINIO_TEST_BUCKET",
-    ]
-    return all(os.environ.get(var) for var in required_vars)
+    """Check if S3-compatible storage credentials are available for testing"""
+    # Check if required S3_* environment variables are set
+    # Only S3_* variables are supported
+    has_endpoint = os.environ.get("S3_ENDPOINT")
+    has_access_key = os.environ.get("S3_ACCESS_KEY_ID")
+    has_secret_key = os.environ.get("S3_SECRET_ACCESS_KEY")
+    has_bucket = os.environ.get("S3_BUCKET")
+
+    return all([has_endpoint, has_access_key, has_secret_key, has_bucket])
 
 
 @pytest.fixture
 def minio_storage(minio_available: bool) -> StorageInterface:
-    """Fixture for GCP MinIO storage"""
+    """Fixture for S3-compatible storage (MinIO/GCS)"""
     if not minio_available:
-        pytest.skip("GCP MinIO credentials not available for testing")
+        pytest.skip("S3-compatible storage credentials not available for testing")
 
     from src.core.storage.minio import MinioCloudStorage
 
+    # Use S3_* variables only
+    endpoint = os.environ.get("S3_ENDPOINT") or "localhost:9000"
+    access_key = os.environ.get("S3_ACCESS_KEY_ID")
+    secret_key = os.environ.get("S3_SECRET_ACCESS_KEY")
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
+    bucket_name = os.environ.get("S3_BUCKET") or "test-bucket"
+
     return MinioCloudStorage(
-        endpoint=os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
-        access_key=os.environ.get("MINIO_ACCESS_KEY"),
-        secret_key=os.environ.get("MINIO_SECRET_KEY"),
-        secure=os.environ.get("MINIO_SECURE", "True").lower() == "true",
-        bucket_name=os.environ.get("MINIO_TEST_BUCKET", "test-bucket"),
+        endpoint=endpoint,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=secure,
+        bucket_name=bucket_name,
     )
 
 
@@ -59,13 +67,14 @@ def unique_test_id() -> str:
     return str(uuid.uuid4())
 
 
-# STAC Test Asset URLs - these should exist on your MinIO test bucket
-# Use local MinIO in CI/testing, GCS in production
-_minio_endpoint = os.environ.get("MINIO_ENDPOINT", "storage.googleapis.com")
-_minio_secure = os.environ.get("MINIO_SECURE", "True").lower() == "true"
-_test_bucket = os.environ.get("MINIO_TEST_BUCKET", "fire-recovery-temp")
-_protocol = "https" if _minio_secure else "http"
-STAC_TEST_BASE_URL = f"{_protocol}://{_minio_endpoint}/{_test_bucket}/example_stac"
+# STAC Test Asset URLs - these should exist on your S3-compatible test bucket
+# Only S3_* variables are supported
+_endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+_secure_str = os.environ.get("S3_SECURE") or "True"
+_secure = _secure_str.lower() == "true"
+_test_bucket = os.environ.get("S3_BUCKET") or "fire-recovery-temp"
+_protocol = "https" if _secure else "http"
+STAC_TEST_BASE_URL = f"{_protocol}://{_endpoint}/{_test_bucket}/example_stac"
 STAC_TEST_CATALOG_URL = f"{STAC_TEST_BASE_URL}/catalog.json"
 
 # Test asset URLs that should be available on MinIO

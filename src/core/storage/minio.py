@@ -45,20 +45,14 @@ class MinioCloudStorage(StorageInterface):
         self._endpoint = endpoint
 
         # Get credentials from args or environment variables
-        self._access_key = (
-            access_key
-            or os.environ.get("S3_ACCESS_KEY_ID")
-            or os.environ.get("GCP_ACCESS_KEY_ID")
-        )
-        self._secret_key = (
-            secret_key
-            or os.environ.get("S3_SECRET_ACCESS_KEY")
-            or os.environ.get("GCP_SECRET_ACCESS_KEY")
-        )
+        # Only S3_* environment variables are supported
+        self._access_key = access_key or os.environ.get("S3_ACCESS_KEY_ID")
+        self._secret_key = secret_key or os.environ.get("S3_SECRET_ACCESS_KEY")
 
         if not self._access_key or not self._secret_key:
             raise ValueError(
-                "Access key and secret key must be provided either as arguments or through environment variables"
+                "S3 credentials must be provided either as arguments or through environment variables. "
+                "Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY environment variables."
             )
 
         # Use obstore's TypedDict 'ClientConfig' for client options
