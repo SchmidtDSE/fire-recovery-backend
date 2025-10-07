@@ -127,6 +127,22 @@ jobs:
           asyncio.run(main())
           PYEOF
 
+      - name: Set MinIO bucket policy for public read
+        run: |
+          # Install MinIO client
+          curl -sLO https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+
+          # Configure mc to connect to local MinIO
+          ./mc alias set local http://localhost:9000 minioadmin minioadmin
+
+          # Set bucket policy to allow anonymous (public) read access
+          # This allows PySTAC to read catalog files via HTTP GET
+          ./mc anonymous set download local/test-bucket
+
+          # Verify the policy was set
+          ./mc anonymous get local/test-bucket
+
       - name: Run tests
         env:
           # Use S3_* naming convention (new standard)
