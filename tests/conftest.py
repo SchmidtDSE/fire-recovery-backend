@@ -74,7 +74,7 @@ _secure_str = os.environ.get("S3_SECURE") or "True"
 _secure = _secure_str.lower() == "true"
 _test_bucket = os.environ.get("S3_BUCKET") or "fire-recovery-temp"
 _protocol = "https" if _secure else "http"
-STAC_TEST_BASE_URL = f"{_protocol}://{_endpoint}/{_test_bucket}/example_stac"
+STAC_TEST_BASE_URL = f"{_protocol}://{_endpoint}/{_test_bucket}/stac"
 STAC_TEST_CATALOG_URL = f"{STAC_TEST_BASE_URL}/catalog.json"
 
 # Test asset URLs that should be available on MinIO
