@@ -82,7 +82,7 @@ jobs:
           S3_SECRET_ACCESS_KEY: minioadmin
           S3_SECURE: "False"
           S3_BUCKET: test-bucket
-        run: pixi run python scripts/init_stac_catalog.py
+        run: pixi run python -m src.scripts.init_stac_catalog
 
       - name: Run tests
         env:
