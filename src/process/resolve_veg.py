@@ -1,5 +1,6 @@
 import os
 import tempfile
+import warnings
 from typing import Dict, Generator, List, Any, Tuple
 import geopandas as gpd
 import pandas as pd
@@ -126,10 +127,10 @@ def load_fire_data(fire_cog_path: str) -> Tuple[xr.Dataset, Dict]:
 
 
 def create_severity_masks(
-    fire_data: xr.Dataset,
+    fire_data: xr.DataArray,
     severity_breaks: List[float],
     boundary: GeoDataFrame,
-) -> Dict[str, xr.Dataset]:
+) -> Dict[str, xr.DataArray]:
     """
     Create masks for different fire severity classes
     """
@@ -173,16 +174,24 @@ def create_severity_masks(
 
 
 def calculate_zonal_stats(
-    masks: Dict[str, xr.Dataset],
+    masks: Dict[str, xr.DataArray],
     veg_subset: gpd.GeoDataFrame,
     x_coord: str,
     y_coord: str,
     pixel_area_ha: float,
 ) -> Dict[str, float]:
     """
-    Calculate zonal statistics for a vegetation subset
+    Calculate zonal statistics for a vegetation subset with robust error handling.
+
+    Includes pre-validation to avoid statistical warnings and fallback handling
+    for edge cases like empty or very small vegetation polygons.
     """
     results = {}
+
+    # Pre-validation: Check for empty vegetation subset
+    if len(veg_subset) == 0:
+        print("Warning: Empty vegetation subset, returning zero statistics")
+        return _get_empty_zonal_statistics()
 
     # Ensure that the geometry is in the same CRS as the masks
     assert veg_subset.crs.to_string() == PROJECTED_CRS, (
@@ -195,6 +204,14 @@ def calculate_zonal_stats(
             assert mask.rio.crs.to_string() == PROJECTED_CRS, (
                 f"Mask {severity} has incorrect CRS"
             )
+
+    # Pre-validation: Check total geometry area
+    total_area = veg_subset.geometry.area.sum()
+    if total_area < 1e-6:  # Very small area (< 1 square meter)
+        print(
+            f"Warning: Very small vegetation area ({total_area:.2e} square units), using fallback statistics"
+        )
+        return _get_fallback_zonal_statistics(total_area, pixel_area_ha)
 
     # Consolidate geometries for this MapUnit_ID into a single geometry
     print(f"Consolidating {len(veg_subset)} geometries for MapUnit_ID")
@@ -209,24 +226,46 @@ def calculate_zonal_stats(
     for severity in severity_classes:
         mask = masks[severity]
         try:
-            stats = mask.xvec.zonal_stats(
-                unified_geometry.geometry,
-                x_coords=x_coord,
-                y_coords=y_coord,
-                stats=["count", "mean", "stdev"],
-                all_touched=True,
-                method="exactextract",
-            )
+            # Suppress numpy warnings about degrees of freedom in statistical calculations
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=RuntimeWarning, message=".*degrees of freedom.*"
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=RuntimeWarning,
+                    message=".*invalid value encountered.*",
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    category=RuntimeWarning,
+                    message=".*Degrees of freedom <= 0.*",
+                )
+
+                stats = mask.xvec.zonal_stats(
+                    unified_geometry.geometry,
+                    x_coord,
+                    y_coord,
+                    stats=["count", "mean", "stdev"],
+                    all_touched=True,
+                    method="exactextract",
+                )
 
             if stats is not None and not np.isnan(stats.values).all():
                 pixel_count = float(stats.isel(zonal_statistics=0).values)
                 severity_pixel_counts[severity] = pixel_count
                 results[f"{severity}_ha"] = pixel_count * pixel_area_ha
-                results[f"{severity}_mean"] = float(
-                    stats.isel(zonal_statistics=1).values
+
+                # Handle mean with NaN protection
+                mean_val = stats.isel(zonal_statistics=1).values
+                results[f"{severity}_mean"] = (
+                    float(mean_val) if not np.isnan(mean_val) else 0.0
                 )
-                results[f"{severity}_std"] = float(
-                    stats.isel(zonal_statistics=2).values
+
+                # Handle std with NaN protection for small samples
+                std_val = stats.isel(zonal_statistics=2).values
+                results[f"{severity}_std"] = (
+                    float(std_val) if not np.isnan(std_val) else 0.0
                 )
             else:
                 severity_pixel_counts[severity] = 0.0
@@ -248,17 +287,39 @@ def calculate_zonal_stats(
     # Calculate overall statistics from the original data for mean/std only
     try:
         original_mask = masks["original"]
-        stats = original_mask.xvec.zonal_stats(
-            unified_geometry.geometry,
-            x_coords=x_coord,
-            y_coords=y_coord,
-            stats=["mean", "std"],  # Remove count since we're using severity sum
-            all_touched=True,
-        )
+
+        # Suppress numpy warnings about degrees of freedom in statistical calculations
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message=".*degrees of freedom.*"
+            )
+            warnings.filterwarnings(
+                "ignore",
+                category=RuntimeWarning,
+                message=".*invalid value encountered.*",
+            )
+            warnings.filterwarnings(
+                "ignore", category=RuntimeWarning, message=".*Degrees of freedom <= 0.*"
+            )
+
+            stats = original_mask.xvec.zonal_stats(
+                unified_geometry.geometry,
+                x_coord,
+                y_coord,
+                stats=["mean", "std"],  # Remove count since we're using severity sum
+                all_touched=True,
+            )
 
         if stats is not None and not np.isnan(stats.values).all():
-            results["mean_severity"] = float(stats.isel(zonal_statistics=0).values)
-            results["std_dev"] = float(stats.isel(zonal_statistics=1).values)
+            # Handle mean with NaN protection
+            mean_val = stats.isel(zonal_statistics=0).values
+            results["mean_severity"] = (
+                float(mean_val) if not np.isnan(mean_val) else 0.0
+            )
+
+            # Handle std with NaN protection for small samples
+            std_val = stats.isel(zonal_statistics=1).values
+            results["std_dev"] = float(std_val) if not np.isnan(std_val) else 0.0
         else:
             results["mean_severity"] = 0.0
             results["std_dev"] = 0.0
@@ -270,11 +331,66 @@ def calculate_zonal_stats(
     return results
 
 
+def _get_empty_zonal_statistics() -> Dict[str, float]:
+    """Return empty statistics structure for empty vegetation subsets."""
+    return {
+        "unburned_ha": 0.0,
+        "low_ha": 0.0,
+        "moderate_ha": 0.0,
+        "high_ha": 0.0,
+        "total_pixel_count": 0.0,
+        "unburned_mean": 0.0,
+        "low_mean": 0.0,
+        "moderate_mean": 0.0,
+        "high_mean": 0.0,
+        "unburned_std": 0.0,
+        "low_std": 0.0,
+        "moderate_std": 0.0,
+        "high_std": 0.0,
+        "mean_severity": 0.0,
+        "std_dev": 0.0,
+    }
+
+
+def _get_fallback_zonal_statistics(
+    total_area_m2: float, pixel_area_ha: float
+) -> Dict[str, float]:
+    """Return fallback statistics for very small vegetation polygons."""
+    # For very small polygons, estimate pixel count and assume unburned
+    estimated_pixels = max(1, int(total_area_m2 / (pixel_area_ha * 10000)))
+
+    print(
+        f"Using fallback statistics for small polygon: {total_area_m2:.2e} m², ~{estimated_pixels} pixels"
+    )
+
+    return {
+        "unburned_ha": total_area_m2 / 10000,  # Convert m² to ha
+        "low_ha": 0.0,
+        "moderate_ha": 0.0,
+        "high_ha": 0.0,
+        "total_pixel_count": float(estimated_pixels),
+        "unburned_mean": 0.0,  # Assume unburned for very small areas
+        "low_mean": 0.0,
+        "moderate_mean": 0.0,
+        "high_mean": 0.0,
+        "unburned_std": 0.0,
+        "low_std": 0.0,
+        "moderate_std": 0.0,
+        "high_std": 0.0,
+        "mean_severity": 0.0,
+        "std_dev": 0.0,
+    }
+
+
 def create_veg_json_structure(result_df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Convert the result DataFrame to the JSON structure for visualization
+    Convert the result DataFrame to the JSON structure for visualization with safe handling.
     """
+    # Calculate total park area with NaN handling
     total_park_area = result_df["total_ha"].sum()
+    if np.isnan(total_park_area):
+        # If sum contains NaN, calculate sum of non-NaN values
+        total_park_area = result_df["total_ha"].fillna(0).sum()
 
     vegetation_communities = []
 
@@ -282,23 +398,43 @@ def create_veg_json_structure(result_df: pd.DataFrame) -> Dict[str, Any]:
         row = result_df.loc[veg_type]
         color = "#" + format(hash(str(veg_type)) % 0xFFFFFF, "06x")
 
+        # Safe division for percent_of_park with NaN handling for individual row
+        row_total_ha = row["total_ha"] if not np.isnan(row["total_ha"]) else 0.0
+        if total_park_area > 0:
+            percent_of_park = round((row_total_ha / total_park_area) * 100, 2)
+        else:
+            percent_of_park = 0.0
+
         community_data = {
             "name": str(veg_type),
             "color": color,
-            "total_hectares": round(row["total_ha"], 2),
-            "percent_of_park": round((row["total_ha"] / total_park_area) * 100, 2),
+            "total_hectares": round(row["total_ha"], 2)
+            if not np.isnan(row["total_ha"])
+            else 0.0,
+            "percent_of_park": percent_of_park,
             "severity_breakdown": {},
         }
 
-        # Build severity breakdown using the existing percentage columns
+        # Build severity breakdown using the existing percentage columns with safe handling
         for severity in ["unburned", "low", "moderate", "high"]:
-            if row[f"{severity}_ha"] > 0 and not np.isnan(row[f"{severity}_mean"]):
-                community_data["severity_breakdown"][severity] = {
-                    "hectares": round(row[f"{severity}_ha"], 2),
-                    "percent": round(row[f"{severity}_percent"], 2),
-                    "mean_severity": round(row.get(f"{severity}_mean", 0), 3),
-                    "std_dev": round(row.get(f"{severity}_std", 0), 3),
-                }
+            severity_ha = row.get(f"{severity}_ha", 0)
+            if severity_ha > 0:
+                # Check if mean column exists and has valid value
+                severity_mean_col = f"{severity}_mean"
+                severity_std_col = f"{severity}_std"
+
+                # Only include severity breakdown if we have a valid mean value
+                if (
+                    severity_mean_col in row.index
+                    and not pd.isna(row[severity_mean_col])
+                    and not np.isnan(row[severity_mean_col])
+                ):
+                    community_data["severity_breakdown"][severity] = {
+                        "hectares": round(severity_ha, 2),
+                        "percent": round(row.get(f"{severity}_percent", 0), 2),
+                        "mean_severity": round(row[severity_mean_col], 3),
+                        "std_dev": round(row.get(severity_std_col, 0), 3),
+                    }
 
         vegetation_communities.append(community_data)
 
@@ -307,7 +443,7 @@ def create_veg_json_structure(result_df: pd.DataFrame) -> Dict[str, Any]:
 
 def add_percentage_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Add percentage columns to the results dataframe
+    Add percentage columns to the results dataframe with robust error handling.
 
     Args:
         df: DataFrame with area calculations
@@ -315,15 +451,36 @@ def add_percentage_columns(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with added percentage columns
     """
-    # Calculate severity percentages within each vegetation type
+    # Calculate severity percentages within each vegetation type with safe division
     for severity in ["unburned", "low", "moderate", "high"]:
-        df[f"{severity}_percent"] = (df[f"{severity}_ha"] / df["total_ha"] * 100).round(
-            2
+        # Safe division: handle zero/NaN denominators
+        severity_ha = df[f"{severity}_ha"].fillna(0)
+        total_ha = df["total_ha"].fillna(0)
+
+        # Use numpy.where for safe division
+        df[f"{severity}_percent"] = np.where(
+            total_ha > 0, (severity_ha / total_ha * 100).round(2), 0.0
         )
 
     # Add percentage of total area for each vegetation type (regardless of severity)
     total_study_area = df["total_ha"].sum()
-    df["total_percent"] = (df["total_ha"] / total_study_area * 100).round(2)
+
+    # Safe division for total percentages
+    if total_study_area > 0 and not np.isnan(total_study_area):
+        df["total_percent"] = (df["total_ha"].fillna(0) / total_study_area * 100).round(
+            2
+        )
+    else:
+        print("Warning: Total study area is zero or NaN, setting total_percent to 0")
+        df["total_percent"] = 0.0
+
+    # Ensure all percentage columns are numeric and handle any remaining NaN values
+    percentage_columns = [
+        f"{s}_percent" for s in ["unburned", "low", "moderate", "high"]
+    ] + ["total_percent"]
+    for col in percentage_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
     # Validation: check if percentages add up to ~100%
     total_percentages = df[

@@ -7,7 +7,28 @@ from .routers import fire_recovery
 from contextlib import asynccontextmanager
 import time
 import os
+import logging
 from dotenv import load_dotenv
+
+# Configure logging at module level
+logging.basicConfig(
+    level=logging.WARNING,  # Set default to WARNING for all loggers
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+
+# Set your application loggers to DEBUG
+logging.getLogger("src").setLevel(logging.DEBUG)  # All src.* modules
+logging.getLogger("__main__").setLevel(logging.DEBUG)  # Main module if needed
+
+# Keep third-party loggers at INFO or WARNING to reduce noise
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+logging.getLogger("rasterio").setLevel(logging.WARNING)
+logging.getLogger("pystac").setLevel(logging.WARNING)
+logging.getLogger("PIL").setLevel(logging.WARNING)
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
 # Initialize cache with in-memory backend at app startup

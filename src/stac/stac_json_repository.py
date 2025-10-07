@@ -38,23 +38,27 @@ class STACJSONRepository:
         fire_event_name = item_properties.get("fire_event_name", "unknown")
         product_type = item_properties.get("product_type", "unknown")
         job_id = item_properties.get("job_id", "unknown")
+        boundary_type = item_properties.get("boundary_type", "coarse")
 
-        # Use product_type-job_id as filename for uniqueness
-        filename = f"{product_type}-{job_id}.json"
+        # Include boundary_type in filename to prevent overwrites between coarse/refined items
+        filename = f"{product_type}-{boundary_type}-{job_id}.json"
         return f"stac/{fire_event_name}/{filename}"
 
     def _extract_search_terms_from_path(self, path: str) -> Dict[str, str]:
         """Extract fire_event_name and product info from file path"""
-        # Path format: stac/{fire_event_name}/{product_type}-{job_id}.json
+        # Path format: stac/{fire_event_name}/{product_type}-{boundary_type}-{job_id}.json
         parts = path.split("/")
         if len(parts) >= 3 and parts[0] == "stac":
             fire_event_name = parts[1]
             filename = parts[2].replace(".json", "")
-            if "-" in filename:
-                product_type = filename.split("-")[0]
+            filename_parts = filename.split("-")
+            if len(filename_parts) >= 3:
+                product_type = filename_parts[0]
+                boundary_type = filename_parts[1]
                 return {
                     "fire_event_name": fire_event_name,
                     "product_type": product_type,
+                    "boundary_type": boundary_type,
                 }
         return {}
 

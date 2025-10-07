@@ -12,12 +12,16 @@
                 "0.0.0.0",
                 "--port",
                 "8000",
-                "--reload"
+                "--reload",
+                "--log-level",
+                "debug"
             ],
             "python": "${workspaceFolder}/.pixi/envs/default/bin/python",
             "justMyCode": false,
             "env": {
-                "PYTHONARGS": "-Xfrozen_modules=off" // For dask debugging
+                "PYTHONARGS": "-Xfrozen_modules=off", // For dask debugging
+                "PYTHONUNBUFFERED": "1",
+                "LOG_LEVEL": "DEBUG"
             },
             "envFile": "${workspaceFolder}/.devcontainer/.env"
         },

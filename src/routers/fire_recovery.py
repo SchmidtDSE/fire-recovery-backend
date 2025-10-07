@@ -17,15 +17,14 @@ from fastapi import (
 from geojson_pydantic import Polygon, Feature
 
 from src.config.constants import FINAL_BUCKET_NAME
-from src.process.resolve_veg import process_veg_map
 from src.stac.stac_json_manager import STACJSONManager
 from src.stac.stac_catalog_manager import STACCatalogManager
-from src.util.upload_blob import upload_to_gcs
 from src.util.boundary_utils import process_and_upload_geojson
 from src.commands.impl.upload_aoi_command import UploadAOICommand
 from src.commands.impl.health_check_command import HealthCheckCommand
 from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
 from src.commands.impl.boundary_refinement_command import BoundaryRefinementCommand
+from src.commands.impl.vegetation_resolve_command import VegetationResolveCommand
 from src.commands.interfaces.command_context import CommandContext
 from src.core.storage.storage_factory import StorageFactory
 from src.computation.registry.index_registry import IndexRegistry
@@ -71,14 +70,25 @@ def get_storage_factory() -> StorageFactory:
     """Get storage factory instance with lifecycle-based configuration"""
     from src.config.constants import FINAL_BUCKET_NAME
 
-    # Get MinIO credentials for persistent storage
-    access_key = os.environ.get("GCP_ACCESS_KEY_ID")
-    secret_key = os.environ.get("GCP_SECRET_ACCESS_KEY")
+    # Get S3-compatible credentials from environment
+    # Only S3_* variables are supported
+    access_key = os.environ.get("S3_ACCESS_KEY_ID")
+    secret_key = os.environ.get("S3_SECRET_ACCESS_KEY")
 
     if not access_key or not secret_key:
         raise ValueError(
-            "GCP_ACCESS_KEY_ID and GCP_SECRET_ACCESS_KEY environment variables are required for persistent storage"
+            "S3 credentials are required for persistent storage. "
+            "Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY environment variables."
         )
+
+    # Allow test environment to override bucket and endpoint
+    # Only S3_* variables are supported
+    bucket_name = os.environ.get("S3_BUCKET") or FINAL_BUCKET_NAME
+    endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
+    protocol = "https" if secure else "http"
+    base_url = f"{protocol}://{endpoint}/{bucket_name}"
 
     # Configure storage based on lifecycle semantics:
     # - temp_storage: Memory for ephemeral processing files (fast, auto-cleanup)
@@ -88,13 +98,13 @@ def get_storage_factory() -> StorageFactory:
         temp_storage_config={"base_url": "memory://temp/"},
         final_storage_type="minio",
         final_storage_config={
-            "bucket_name": FINAL_BUCKET_NAME,
-            "endpoint": "storage.googleapis.com",
+            "bucket_name": bucket_name,
+            "endpoint": endpoint,
             "access_key": access_key,
             "secret_key": secret_key,
             "region": "auto",
-            "secure": True,
-            "base_url": f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}",
+            "secure": secure,
+            "base_url": base_url,
         },
     )
 
@@ -104,14 +114,24 @@ async def get_stac_manager(
 ) -> STACJSONManager:
     """Get STAC JSON manager instance and ensure catalog exists"""
     final_storage = storage_factory.get_final_storage()
+
+    # Use environment-aware base URL for STAC (supports test overrides)
+    # Only S3_* variables are supported
+    bucket_name = os.environ.get("S3_BUCKET") or FINAL_BUCKET_NAME
+    endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
+    protocol = "https" if secure else "http"
+    stac_base_url = f"{protocol}://{endpoint}/{bucket_name}/stac"
+
     stac_manager = STACJSONManager.for_production(
-        base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac",
+        base_url=stac_base_url,
         storage=final_storage,
     )
 
     # Ensure catalog exists by initializing it
     catalog_manager = STACCatalogManager.for_production(
-        base_url=f"https://storage.googleapis.com/{FINAL_BUCKET_NAME}/stac",
+        base_url=stac_base_url,
         storage=final_storage,
     )
 
@@ -645,21 +665,29 @@ async def resolve_against_veg_map(
     request: VegMapResolveRequest,
     background_tasks: BackgroundTasks,
     storage_factory: StorageFactory = Depends(get_storage_factory),
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> ProcessingStartedResponse:
     """
     Resolve fire severity against vegetation map to create a matrix of affected areas.
     """
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Received resolve_against_veg_map request for job {request.job_id}")
+    logger.debug(f"Request details: {request}")
 
-    # Start processing in background
+    # Start processing in background using command pattern
     background_tasks.add_task(
-        process_veg_map_resolution,
+        execute_vegetation_resolution_command,
         job_id=request.job_id,
         fire_event_name=request.fire_event_name,
         veg_gpkg_url=request.veg_gpkg_url,
         fire_cog_url=request.fire_cog_url,
         severity_breaks=request.severity_breaks,
         geojson_url=request.geojson_url,
+        park_unit_id=request.park_unit_id,
         storage_factory=storage_factory,
+        stac_manager=stac_manager,
+        index_registry=index_registry,
     )
 
     return ProcessingStartedResponse(
@@ -669,95 +697,96 @@ async def resolve_against_veg_map(
     )
 
 
-async def process_veg_map_resolution(
+async def execute_vegetation_resolution_command(
     job_id: str,
     fire_event_name: str,
     veg_gpkg_url: str,
     fire_cog_url: str,
     severity_breaks: List[float],
     geojson_url: str,
+    park_unit_id: Optional[str],
     storage_factory: StorageFactory,
-    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    stac_manager: STACJSONManager,
+    index_registry: IndexRegistry,
 ) -> None:
     """
-    Process vegetation map against fire severity COG to create area matrix.
+    Execute vegetation resolution using command pattern with complete storage abstraction.
+
+    This replaces the previous process_veg_map_resolution function and eliminates
+    all filesystem dependencies by using the VegetationResolveCommand.
     """
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Starting execute_vegetation_resolution_command for job {job_id}")
+    logger.debug(
+        f"Parameters: veg_gpkg_url={veg_gpkg_url}, fire_cog_url={fire_cog_url}"
+    )
+    logger.debug(
+        f"severity_breaks={severity_breaks}, geojson_url={geojson_url}, park_unit_id={park_unit_id}"
+    )
+
     try:
-        # Set up output directory
-        output_dir = f"tmp/{job_id}"
-        os.makedirs(output_dir, exist_ok=True)
+        # Create placeholder geometry (actual boundary comes from geojson_url)
+        from typing import cast
+        from geojson_pydantic.types import Position2D, Position3D
 
-        # Process the vegetation map against fire severity
-        result = await process_veg_map(
-            veg_gpkg_url=veg_gpkg_url,
-            fire_cog_url=fire_cog_url,
-            output_dir=output_dir,
+        coordinates = cast(
+            list[list[Position2D | Position3D]],
+            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+        )
+        placeholder_geometry = Polygon(type="Polygon", coordinates=coordinates)
+
+        # Create command context with vegetation resolution parameters
+        logger.debug("Creating CommandContext for vegetation resolution")
+        context = CommandContext(
             job_id=job_id,
+            fire_event_name=fire_event_name,
+            geometry=placeholder_geometry,
+            storage=storage_factory.get_temp_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
             severity_breaks=severity_breaks,
-            geojson_url=geojson_url,
+            metadata={
+                "veg_gpkg_url": veg_gpkg_url,
+                "fire_cog_url": fire_cog_url,
+                "geojson_url": geojson_url,
+                "park_unit_id": park_unit_id,
+            },
         )
 
-        if result["status"] != "completed":
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"Error processing vegetation map: {result.get('error_message')}"
-            )
-            return
-
-        logger = logging.getLogger(__name__)
-        logger.info("Vegetation map processing completed successfully.")
-
-        # Upload both CSV and JSON to GCS
-        csv_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
-        json_blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.json"
-
-        csv_url = await upload_to_gcs(
-            result["output_csv"], csv_blob_name, storage_factory
-        )
-        json_url = await upload_to_gcs(
-            result["output_json"], json_blob_name, storage_factory
+        # Execute vegetation resolution command
+        logger.debug("Creating VegetationResolveCommand instance")
+        command = VegetationResolveCommand()
+        logger.debug("Executing vegetation resolution command")
+        result = await command.execute(context)
+        logger.debug(
+            f"Command execution completed with status: success={result.is_success()}, failure={result.is_failure()}"
         )
 
-        logger = logging.getLogger(__name__)
-        logger.info(f"Vegetation fire matrix CSV uploaded to {csv_url}")
-        logger.info(f"Vegetation fire matrix JSON uploaded to {json_url}")
-
-        # Get geometry from the fire severity COG
-        stac_item = await stac_manager.get_items_by_id_and_coarseness(
-            f"{fire_event_name}-severity-{job_id}", "refined"
-        )
-        if not stac_item:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Fire severity COG not found for job ID {job_id}",
-            )
-        else:
-            geometry = stac_item["geometry"]
-            bbox = stac_item["bbox"]
-
-            # Get datetime from the fire severity COG
-            datetime_str = stac_item["properties"]["datetime"]
-
-            logger = logging.getLogger(__name__)
+        if result.is_success():
+            result_data = result.data or {}
             logger.info(
-                f"Resolved vegetation map against fire severity for {fire_event_name}..."
+                f"Vegetation resolution completed successfully for job {job_id}. "
+                f"Analyzed {result_data.get('vegetation_types_analyzed', 0)} vegetation types "
+                f"covering {result_data.get('total_area_hectares', 0):.1f} hectares."
             )
-
-            await stac_manager.create_veg_matrix_item(
-                fire_event_name=fire_event_name,
-                job_id=job_id,
-                fire_veg_matrix_csv_url=csv_url,
-                fire_veg_matrix_json_url=json_url,
-                geometry=geometry,
-                bbox=bbox,
-                classification_breaks=severity_breaks,
-                datetime_str=datetime_str,
+        elif result.is_failure():
+            logger.error(
+                f"Vegetation resolution failed for job {job_id}: {result.error_message}"
+            )
+            if result.error_details:
+                logger.error(f"Error details: {result.error_details}")
+        else:
+            logger.warning(
+                f"Vegetation resolution completed with partial success for job {job_id}: "
+                f"{result.error_message}"
             )
 
     except Exception as e:
-        # Log error with proper logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error processing vegetation map against fire severity: {str(e)}")
+        logger.error(
+            f"Error executing vegetation resolution command for job {job_id}: {str(e)}",
+            exc_info=True,
+        )
 
 
 @router.get(
