@@ -6,9 +6,6 @@ on:
       - main
       - dev
   pull_request:
-    branches:
-      - main
-      - dev
 
 jobs:
   test:
@@ -24,7 +21,8 @@ jobs:
           # Bitnami MinIO uses these environment variables
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: test-bucket
+          # Create test-bucket with anonymous download policy (allows PySTAC HTTP reads)
+          MINIO_DEFAULT_BUCKETS: test-bucket:download
           # Bitnami-specific settings
           MINIO_SCHEME: http
           BITNAMI_DEBUG: false
@@ -84,64 +82,7 @@ jobs:
           S3_SECRET_ACCESS_KEY: minioadmin
           S3_SECURE: "False"
           S3_BUCKET: test-bucket
-        run: |
-          pixi run python << 'PYEOF'
-          import asyncio
-          import os
-          from src.core.storage.minio import MinioCloudStorage
-          from src.stac.stac_catalog_manager import STACCatalogManager
-
-          async def main():
-              endpoint = os.environ["S3_ENDPOINT"]
-              bucket = os.environ["S3_BUCKET"]
-              access_key = os.environ["S3_ACCESS_KEY_ID"]
-              secret_key = os.environ["S3_SECRET_ACCESS_KEY"]
-              secure = os.environ.get("S3_SECURE", "False").lower() == "true"
-
-              protocol = "https" if secure else "http"
-              base_url = f"{protocol}://{endpoint}/{bucket}/stac"
-
-              print(f"Initializing STAC catalog at: {base_url}")
-
-              storage = MinioCloudStorage(
-                  endpoint=endpoint,
-                  bucket_name=bucket,
-                  access_key=access_key,
-                  secret_key=secret_key,
-                  secure=secure
-              )
-
-              catalog_manager = STACCatalogManager.for_production(
-                  base_url=base_url,
-                  storage=storage
-              )
-
-              existing = await catalog_manager.get_catalog()
-              if existing:
-                  print("✓ STAC catalog already exists")
-              else:
-                  print("Initializing new STAC catalog...")
-                  await catalog_manager.initialize_catalog()
-                  print("✓ STAC catalog initialized successfully")
-
-          asyncio.run(main())
-          PYEOF
-
-      - name: Set MinIO bucket policy for public read
-        run: |
-          # Install MinIO client
-          curl -sLO https://dl.min.io/client/mc/release/linux-amd64/mc
-          chmod +x mc
-
-          # Configure mc to connect to local MinIO
-          ./mc alias set local http://localhost:9000 minioadmin minioadmin
-
-          # Set bucket policy to allow anonymous (public) read access
-          # This allows PySTAC to read catalog files via HTTP GET
-          ./mc anonymous set download local/test-bucket
-
-          # Verify the policy was set
-          ./mc anonymous get local/test-bucket
+        run: pixi run python scripts/init_stac_catalog.py
 
       - name: Run tests
         env:
