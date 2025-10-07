@@ -77,23 +77,55 @@ jobs:
             sleep 2
           done
 
-      - name: Upload example STAC assets to MinIO
+      - name: Initialize STAC catalog in MinIO
+        env:
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
         run: |
-          # Install MinIO client
-          curl -O https://dl.min.io/client/mc/release/linux-amd64/mc
-          chmod +x mc
+          pixi run python << 'PYEOF'
+          import asyncio
+          import os
+          from src.core.storage.minio import MinioCloudStorage
+          from src.stac.stac_catalog_manager import STACCatalogManager
 
-          # Configure mc to point to local MinIO
-          ./mc alias set local http://localhost:9000 minioadmin minioadmin
+          async def main():
+              endpoint = os.environ["S3_ENDPOINT"]
+              bucket = os.environ["S3_BUCKET"]
+              access_key = os.environ["S3_ACCESS_KEY_ID"]
+              secret_key = os.environ["S3_SECRET_ACCESS_KEY"]
+              secure = os.environ.get("S3_SECURE", "False").lower() == "true"
 
-          # Create bucket if it doesn't exist
-          ./mc mb --ignore-existing local/test-bucket
+              protocol = "https" if secure else "http"
+              base_url = f"{protocol}://{endpoint}/{bucket}/stac"
 
-          # Upload example STAC assets
-          ./mc cp --recursive example-stac-assets/ local/test-bucket/example_stac/
+              print(f"Initializing STAC catalog at: {base_url}")
 
-          # Verify upload
-          ./mc ls local/test-bucket/example_stac/
+              storage = MinioCloudStorage(
+                  endpoint=endpoint,
+                  bucket_name=bucket,
+                  access_key=access_key,
+                  secret_key=secret_key,
+                  secure=secure
+              )
+
+              catalog_manager = STACCatalogManager.for_production(
+                  base_url=base_url,
+                  storage=storage
+              )
+
+              existing = await catalog_manager.get_catalog()
+              if existing:
+                  print("✓ STAC catalog already exists")
+              else:
+                  print("Initializing new STAC catalog...")
+                  await catalog_manager.initialize_catalog()
+                  print("✓ STAC catalog initialized successfully")
+
+          asyncio.run(main())
+          PYEOF
 
       - name: Run tests
         env:
