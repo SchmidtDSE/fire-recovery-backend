@@ -41,7 +41,7 @@ async def main() -> int:
         secure = os.environ.get("S3_SECURE", "False").lower() == "true"
 
         protocol = "https" if secure else "http"
-        base_url = f"{protocol}://{endpoint}/{bucket}/example_stac"
+        base_url = f"{protocol}://{endpoint}/{bucket}/stac"
 
         print(f"Initializing STAC catalog at: {base_url}")
 
