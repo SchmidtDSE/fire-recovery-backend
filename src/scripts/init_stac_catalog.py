@@ -6,6 +6,7 @@ This script is used in CI/CD workflows to ensure a STAC catalog exists
 before running tests. It uses the application's own STACCatalogManager
 to create the catalog structure programmatically.
 """
+
 import asyncio
 import os
 import sys
@@ -46,13 +47,12 @@ async def main() -> int:
             bucket_name=bucket,
             access_key=access_key,
             secret_key=secret_key,
-            secure=secure
+            secure=secure,
         )
 
         # Create catalog manager
         catalog_manager = STACCatalogManager.for_production(
-            base_url=base_url,
-            storage=storage
+            base_url=base_url, storage=storage
         )
 
         # Check if catalog exists
@@ -72,6 +72,7 @@ async def main() -> int:
     except Exception as e:
         print(f"✗ Error initializing STAC catalog: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
