@@ -1,7 +1,14 @@
+import io
 import os
 import uuid
+import zipfile
+
+import geopandas as gpd
 import pytest
 from geojson_pydantic import Polygon
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import Point as ShapelyPoint
+
 from src.core.storage.memory import MemoryStorage
 from src.core.storage.interface import StorageInterface
 
@@ -110,3 +117,119 @@ def sample_geometry() -> Polygon:
         ],
     }
     return Polygon.model_validate(test_polygon)
+
+
+@pytest.fixture
+def sample_shapefile_zip_bytes(tmp_path) -> bytes:
+    """Create a valid shapefile zip in memory for testing"""
+    import tempfile
+    import shutil
+
+    # Create a simple polygon
+    polygon = ShapelyPolygon(
+        [
+            (-120.0, 35.0),
+            (-120.0, 36.0),
+            (-119.0, 36.0),
+            (-119.0, 35.0),
+            (-120.0, 35.0),
+        ]
+    )
+
+    gdf = gpd.GeoDataFrame({"geometry": [polygon]}, crs="EPSG:4326")
+
+    # Use a temporary directory to write shapefile components
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = os.path.join(tmpdir, "test.shp")
+        gdf.to_file(shp_path, driver="ESRI Shapefile")
+
+        # Create a zip file in memory containing the shapefile
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                file_path = os.path.join(tmpdir, file)
+                zipf.write(file_path, arcname=file)
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
+
+
+@pytest.fixture
+def multipolygon_shapefile_zip_bytes(tmp_path) -> bytes:
+    """Create shapefile with multiple polygons"""
+    import tempfile
+
+    polygon1 = ShapelyPolygon(
+        [(-120, 35), (-120, 36), (-119, 36), (-119, 35), (-120, 35)]
+    )
+    polygon2 = ShapelyPolygon(
+        [(-119, 35), (-119, 36), (-118, 36), (-118, 35), (-119, 35)]
+    )
+
+    gdf = gpd.GeoDataFrame({"geometry": [polygon1, polygon2]}, crs="EPSG:4326")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = os.path.join(tmpdir, "test.shp")
+        gdf.to_file(shp_path, driver="ESRI Shapefile")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                file_path = os.path.join(tmpdir, file)
+                zipf.write(file_path, arcname=file)
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
+
+
+@pytest.fixture
+def empty_shapefile_zip_bytes(tmp_path) -> bytes:
+    """Create empty shapefile"""
+    import tempfile
+
+    gdf = gpd.GeoDataFrame({"geometry": []}, crs="EPSG:4326")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = os.path.join(tmpdir, "test.shp")
+        gdf.to_file(shp_path, driver="ESRI Shapefile")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                file_path = os.path.join(tmpdir, file)
+                zipf.write(file_path, arcname=file)
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
+
+
+@pytest.fixture
+def point_shapefile_zip_bytes(tmp_path) -> bytes:
+    """Create shapefile with Point geometry (invalid for boundaries)"""
+    import tempfile
+
+    point = ShapelyPoint(-120.0, 35.0)
+    gdf = gpd.GeoDataFrame({"geometry": [point]}, crs="EPSG:4326")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = os.path.join(tmpdir, "test.shp")
+        gdf.to_file(shp_path, driver="ESRI Shapefile")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                file_path = os.path.join(tmpdir, file)
+                zipf.write(file_path, arcname=file)
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
+
+
+@pytest.fixture
+def zip_without_shp_bytes() -> bytes:
+    """Create zip file without .shp component"""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("test.txt", "Not a shapefile")
+    buffer.seek(0)
+    return buffer.read()

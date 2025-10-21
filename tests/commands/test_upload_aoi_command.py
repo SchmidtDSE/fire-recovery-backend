@@ -10,10 +10,15 @@ from src.commands.interfaces.command_result import CommandStatus
 
 
 @pytest.fixture
-def mock_storage() -> AsyncMock:
+def mock_storage() -> MagicMock:
     """Mock storage interface"""
-    storage = AsyncMock()
-    storage.save_bytes = AsyncMock(return_value="https://storage.example.com/test-path")
+    storage = MagicMock()
+
+    # Make save_bytes return a URL that includes the path
+    async def mock_save_bytes(data, path, temporary=False):
+        return f"https://storage.example.com/{path}"
+
+    storage.save_bytes = AsyncMock(side_effect=mock_save_bytes)
     return storage
 
 
@@ -275,16 +280,51 @@ class TestUploadAOICommand:
         geojson_command_context.stac_manager.create_boundary_item.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("src.commands.impl.upload_aoi_command.polygon_to_valid_geojson")
     @patch("src.commands.impl.upload_aoi_command.upload_to_gcs")
+    @patch("src.commands.impl.upload_aoi_command.shape")
     async def test_execute_shapefile_success(
         self,
+        mock_shape: MagicMock,
         mock_upload_to_gcs: MagicMock,
+        mock_polygon_to_valid_geojson: MagicMock,
         shapefile_command_context: CommandContext,
         shapefile_upload_file: UploadFile,
+        sample_shapefile_zip_bytes: bytes,
     ) -> None:
         """Test successful Shapefile upload execution"""
+        from geojson_pydantic import FeatureCollection, Feature, Polygon
+
+        # Setup file with real shapefile bytes
+        shapefile_upload_file.read = AsyncMock(return_value=sample_shapefile_zip_bytes)  # type: ignore
+
         # Setup mocks
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
+                    ),
+                    properties={},
+                )
+            ],
+        )
         mock_upload_to_gcs.return_value = "https://gcs.example.com/test.zip"
+
+        mock_geom = MagicMock()
+        mock_geom.bounds = (-120.0, 35.0, -119.0, 36.0)
+        mock_shape.return_value = mock_geom
 
         command = UploadAOICommand()
         result = await command.execute(shapefile_command_context)
@@ -302,10 +342,12 @@ class TestUploadAOICommand:
         assert result.data["status"] == "complete"
         assert result.data["filename"] == "test_shapefile.zip"
         assert "shapefile_url" in result.data
+        assert "boundary_geojson_url" in result.data  # NEW - geometry extracted
+        assert "stac_item_url" in result.data  # NEW - STAC created
         assert "gcs_shapefile_url" in result.data
 
-        # Verify storage was called
-        shapefile_command_context.storage.save_bytes.assert_called_once()
+        # Verify storage was called for both zip and geojson
+        assert shapefile_command_context.storage.save_bytes.call_count == 2
 
         # Verify file was read
         shapefile_upload_file.read.assert_called_once()
@@ -474,3 +516,298 @@ class TestUploadAOICommand:
         assert "name='upload_aoi'" in repr_str
         assert "estimated_duration=30.0s" in repr_str
         assert "supports_retry=True" in repr_str
+
+
+class TestShapefileExtraction:
+    """Test in-memory shapefile geometry extraction"""
+
+    def test_extract_valid_shapefile(self, sample_shapefile_zip_bytes: bytes) -> None:
+        """Test extracting geometry from valid shapefile"""
+        command = UploadAOICommand()
+
+        geometry = command._extract_geometry_from_shapefile_zip(sample_shapefile_zip_bytes)
+
+        assert geometry["type"] in ["Polygon", "MultiPolygon"]
+        assert "coordinates" in geometry
+        assert len(geometry["coordinates"]) > 0
+
+    def test_extract_empty_shapefile(self, empty_shapefile_zip_bytes: bytes) -> None:
+        """Test that empty shapefile raises ValueError"""
+        command = UploadAOICommand()
+
+        with pytest.raises(ValueError, match="contains no features"):
+            command._extract_geometry_from_shapefile_zip(empty_shapefile_zip_bytes)
+
+    def test_extract_invalid_geometry_type(
+        self, point_shapefile_zip_bytes: bytes
+    ) -> None:
+        """Test that Point geometry raises ValueError"""
+        command = UploadAOICommand()
+
+        with pytest.raises(ValueError, match="unsupported geometry types"):
+            command._extract_geometry_from_shapefile_zip(point_shapefile_zip_bytes)
+
+    def test_extract_multipolygon_shapefile(
+        self, multipolygon_shapefile_zip_bytes: bytes
+    ) -> None:
+        """Test extracting MultiPolygon from shapefile with multiple features"""
+        command = UploadAOICommand()
+
+        geometry = command._extract_geometry_from_shapefile_zip(
+            multipolygon_shapefile_zip_bytes
+        )
+
+        # Should dissolve into single geometry
+        assert geometry["type"] in ["Polygon", "MultiPolygon"]
+
+    def test_extract_corrupted_zip(self) -> None:
+        """Test that corrupted zip raises ValueError"""
+        command = UploadAOICommand()
+
+        with pytest.raises(ValueError, match="Invalid zip file or no .shp file found"):
+            command._extract_geometry_from_shapefile_zip(b"not a zip file")
+
+    def test_extract_zip_without_shp(self, zip_without_shp_bytes: bytes) -> None:
+        """Test that zip without .shp file raises ValueError"""
+        command = UploadAOICommand()
+
+        with pytest.raises(ValueError, match="no .shp file found"):
+            command._extract_geometry_from_shapefile_zip(zip_without_shp_bytes)
+
+
+class TestBoundaryTypeParameter:
+    """Test boundary_type parameter handling"""
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.upload_aoi_command.polygon_to_valid_geojson")
+    @patch("src.commands.impl.upload_aoi_command.upload_to_gcs")
+    @patch("src.commands.impl.upload_aoi_command.shape")
+    async def test_geojson_upload_with_coarse_boundary_type(
+        self,
+        mock_shape: MagicMock,
+        mock_upload_to_gcs: MagicMock,
+        mock_polygon_to_valid_geojson: MagicMock,
+        geojson_command_context: CommandContext,
+    ) -> None:
+        """Test GeoJSON upload with boundary_type='coarse'"""
+        from geojson_pydantic import FeatureCollection, Feature, Polygon
+
+        geojson_command_context.metadata["boundary_type"] = "coarse"
+
+        # Setup mocks
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
+                    ),
+                    properties={},
+                )
+            ],
+        )
+        mock_upload_to_gcs.return_value = "https://gcs.example.com/test.geojson"
+
+        mock_geom = MagicMock()
+        mock_geom.bounds = (-120.0, 35.0, -119.0, 36.0)
+        mock_shape.return_value = mock_geom
+
+        command = UploadAOICommand()
+        result = await command.execute(geojson_command_context)
+
+        assert result.is_success()
+        assert result.data["boundary_type"] == "coarse"
+        # Verify filename contains "coarse"
+        assert "coarse_boundary" in result.data["boundary_geojson_url"]
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.upload_aoi_command.polygon_to_valid_geojson")
+    @patch("src.commands.impl.upload_aoi_command.upload_to_gcs")
+    @patch("src.commands.impl.upload_aoi_command.shape")
+    async def test_geojson_upload_with_refined_boundary_type(
+        self,
+        mock_shape: MagicMock,
+        mock_upload_to_gcs: MagicMock,
+        mock_polygon_to_valid_geojson: MagicMock,
+        geojson_command_context: CommandContext,
+    ) -> None:
+        """Test GeoJSON upload with boundary_type='refined'"""
+        from geojson_pydantic import FeatureCollection, Feature, Polygon
+
+        geojson_command_context.metadata["boundary_type"] = "refined"
+
+        # Setup mocks
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
+                    ),
+                    properties={},
+                )
+            ],
+        )
+        mock_upload_to_gcs.return_value = "https://gcs.example.com/test.geojson"
+
+        mock_geom = MagicMock()
+        mock_geom.bounds = (-120.0, 35.0, -119.0, 36.0)
+        mock_shape.return_value = mock_geom
+
+        command = UploadAOICommand()
+        result = await command.execute(geojson_command_context)
+
+        assert result.is_success()
+        assert result.data["boundary_type"] == "refined"
+        assert "refined_boundary" in result.data["boundary_geojson_url"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_boundary_type_raises_error(
+        self, geojson_command_context: CommandContext
+    ) -> None:
+        """Test that invalid boundary_type raises ValueError"""
+        geojson_command_context.metadata["boundary_type"] = "uploaded"  # Invalid!
+
+        command = UploadAOICommand()
+        result = await command.execute(geojson_command_context)
+
+        assert result.is_failure()
+        assert "Invalid boundary_type" in result.error_message
+
+
+class TestShapefileUploadIntegration:
+    """Test complete shapefile upload flow"""
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.upload_aoi_command.polygon_to_valid_geojson")
+    @patch("src.commands.impl.upload_aoi_command.upload_to_gcs")
+    @patch("src.commands.impl.upload_aoi_command.shape")
+    async def test_shapefile_upload_creates_geojson_and_stac(
+        self,
+        mock_shape: MagicMock,
+        mock_upload_to_gcs: MagicMock,
+        mock_polygon_to_valid_geojson: MagicMock,
+        shapefile_command_context: CommandContext,
+        sample_shapefile_zip_bytes: bytes,
+        shapefile_upload_file: UploadFile,
+    ) -> None:
+        """Test that shapefile upload extracts geometry, saves GeoJSON, and creates STAC item"""
+        from geojson_pydantic import FeatureCollection, Feature, Polygon
+
+        shapefile_upload_file.read = AsyncMock(return_value=sample_shapefile_zip_bytes)  # type: ignore
+        shapefile_command_context.metadata["boundary_type"] = "refined"
+
+        # Setup mocks
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
+                    ),
+                    properties={},
+                )
+            ],
+        )
+        mock_upload_to_gcs.return_value = "https://gcs.example.com/test.zip"
+
+        mock_geom = MagicMock()
+        mock_geom.bounds = (-120.0, 35.0, -119.0, 36.0)
+        mock_shape.return_value = mock_geom
+
+        command = UploadAOICommand()
+        result = await command.execute(shapefile_command_context)
+
+        assert result.is_success()
+        assert result.data["upload_type"] == "shapefile"
+        assert "shapefile_url" in result.data
+        assert "boundary_geojson_url" in result.data  # NEW - geometry extracted
+        assert "stac_item_url" in result.data  # NEW - STAC created
+        assert result.data["boundary_type"] == "refined"
+
+        # Verify storage was called for both shapefile and geojson
+        assert shapefile_command_context.storage.save_bytes.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.upload_aoi_command.polygon_to_valid_geojson")
+    @patch("src.commands.impl.upload_aoi_command.upload_to_gcs")
+    @patch("src.commands.impl.upload_aoi_command.shape")
+    async def test_shapefile_upload_with_coarse_boundary_type(
+        self,
+        mock_shape: MagicMock,
+        mock_upload_to_gcs: MagicMock,
+        mock_polygon_to_valid_geojson: MagicMock,
+        shapefile_command_context: CommandContext,
+        sample_shapefile_zip_bytes: bytes,
+        shapefile_upload_file: UploadFile,
+    ) -> None:
+        """Test shapefile upload can use 'coarse' boundary_type"""
+        from geojson_pydantic import FeatureCollection, Feature, Polygon
+
+        shapefile_upload_file.read = AsyncMock(return_value=sample_shapefile_zip_bytes)  # type: ignore
+        shapefile_command_context.metadata["boundary_type"] = "coarse"
+
+        # Setup mocks
+        mock_polygon_to_valid_geojson.return_value = FeatureCollection(
+            type="FeatureCollection",
+            features=[
+                Feature(
+                    type="Feature",
+                    geometry=Polygon(
+                        type="Polygon",
+                        coordinates=[
+                            [
+                                (-120.0, 35.0),
+                                (-119.0, 35.0),
+                                (-119.0, 36.0),
+                                (-120.0, 36.0),
+                                (-120.0, 35.0),
+                            ]
+                        ],
+                    ),
+                    properties={},
+                )
+            ],
+        )
+        mock_upload_to_gcs.return_value = "https://gcs.example.com/test.zip"
+
+        mock_geom = MagicMock()
+        mock_geom.bounds = (-120.0, 35.0, -119.0, 36.0)
+        mock_shape.return_value = mock_geom
+
+        command = UploadAOICommand()
+        result = await command.execute(shapefile_command_context)
+
+        assert result.is_success()
+        assert result.data["boundary_type"] == "coarse"
+        assert "coarse_boundary" in result.data["boundary_geojson_url"]

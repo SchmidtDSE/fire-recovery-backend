@@ -38,10 +38,13 @@ class VegMapMatrixResponse(BaseResponse):
 
 class UploadedGeoJSONResponse(BaseResponse):
     refined_boundary_geojson_url: str
+    boundary_type: str = Field(..., description="Type of boundary (coarse or refined)")
 
 
 class UploadedShapefileZipResponse(BaseResponse):
     shapefile_url: str = Field(..., description="URL to the uploaded shapefile zip")
+    boundary_geojson_url: str = Field(..., description="URL to extracted boundary GeoJSON")
+    boundary_type: str = Field(..., description="Type of boundary (coarse or refined)")
 
 
 class HealthCheckResponse(BaseResponse):

@@ -1,11 +1,11 @@
 from typing import List, Union, Optional
 from pydantic import BaseModel, Field
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 
 class ProcessingRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    coarse_geojson: Union[Polygon, Feature] = Field(
+    coarse_geojson: Union[Polygon, MultiPolygon, Feature] = Field(
         ..., description="GeoJSON of bounding box AOI"
     )
     prefire_date_range: list[str] = Field(
@@ -20,7 +20,7 @@ class ProcessingRequest(BaseModel):
 
 class RefineRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    refined_geojson: Union[Polygon, Feature] = Field(
+    refined_geojson: Union[Polygon, MultiPolygon, Feature] = Field(
         ..., description="GeoJSON of refined AOI"
     )
     job_id: str = Field(
@@ -48,7 +48,8 @@ class VegMapResolveRequest(BaseModel):
 
 class GeoJSONUploadRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    geojson: Union[Polygon, Feature] = Field(..., description="GeoJSON data to upload")
+    geojson: Union[Polygon, MultiPolygon, Feature] = Field(..., description="GeoJSON data to upload")
+    boundary_type: str = Field(default="coarse", description="Type of boundary - 'coarse' or 'refined'")
 
 
 class HealthCheckRequest(BaseModel):

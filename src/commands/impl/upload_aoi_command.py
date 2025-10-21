@@ -1,10 +1,14 @@
+import io
 import json
 import logging
 import time
 from typing import Any, Dict, List, Tuple
 
+import geopandas as gpd
 from fastapi import UploadFile
 from geojson_pydantic import Feature, FeatureCollection
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
 from shapely.geometry import shape
 
 from src.commands.interfaces.command import Command
@@ -142,6 +146,15 @@ class UploadAOICommand(Command):
         logger.info("Processing GeoJSON upload")
 
         try:
+            # Get boundary_type from metadata (defaults to "coarse" for backward compatibility)
+            boundary_type = context.get_metadata("boundary_type", "coarse")
+
+            # Validate boundary_type
+            if boundary_type not in ["coarse", "refined"]:
+                raise ValueError(
+                    f"Invalid boundary_type '{boundary_type}'. Must be 'coarse' or 'refined'"
+                )
+
             # Get geometry from context and convert to dict format for processing
             geometry_obj = context.geometry
             if hasattr(geometry_obj, "model_dump"):
@@ -161,17 +174,18 @@ class UploadAOICommand(Command):
                     f"Unsupported GeoJSON type: {geojson_dict.get('type')}"
                 )
 
-            # Process and upload the GeoJSON
+            # Process and upload the GeoJSON with dynamic filename
+            filename = f"{boundary_type}_boundary"
             geojson_url, valid_geojson, bbox = await self._process_and_upload_geojson(
-                context=context, geometry=geojson_dict, filename="uploaded_aoi"
+                context=context, geometry=geojson_dict, filename=filename
             )
 
-            # Create STAC boundary item
+            # Create STAC boundary item with correct boundary_type
             stac_item_url = await self._create_boundary_stac_item(
                 context=context,
                 boundary_url=geojson_url,
                 bbox=bbox,
-                boundary_type="uploaded",
+                boundary_type=boundary_type,
             )
 
             return {
@@ -180,6 +194,7 @@ class UploadAOICommand(Command):
                 "boundary_geojson_url": geojson_url,
                 "stac_item_url": stac_item_url,
                 "bbox": bbox,
+                "boundary_type": boundary_type,
                 "geometry_validated": True,
                 "asset_urls": {
                     "boundary_geojson": geojson_url,
@@ -195,10 +210,35 @@ class UploadAOICommand(Command):
     async def _process_shapefile_upload(
         self, context: CommandContext, upload_file: UploadFile
     ) -> Dict[str, Any]:
-        """Process Shapefile zip upload"""
+        """
+        Process Shapefile zip upload - extract geometry and save both zip and GeoJSON.
+
+        This method:
+        1. Validates the zip file
+        2. Saves the original .zip to storage
+        3. Extracts geometry from shapefile in-memory
+        4. Converts to GeoJSON and uploads
+        5. Creates STAC boundary item
+
+        Args:
+            context: Command execution context
+            upload_file: The uploaded .zip file
+
+        Returns:
+            Dict with shapefile_url, boundary_geojson_url, stac_item_url, etc.
+        """
         logger.info("Processing Shapefile upload")
 
         try:
+            # Get boundary_type from metadata (defaults to "refined")
+            boundary_type = context.get_metadata("boundary_type", "refined")
+
+            # Validate boundary_type
+            if boundary_type not in ["coarse", "refined"]:
+                raise ValueError(
+                    f"Invalid boundary_type '{boundary_type}'. Must be 'coarse' or 'refined'"
+                )
+
             # Validate file extension
             if not upload_file.filename or not upload_file.filename.lower().endswith(
                 ".zip"
@@ -207,14 +247,40 @@ class UploadAOICommand(Command):
 
             # Read file content
             content = await upload_file.read()
+            logger.info(f"Read {len(content)} bytes from shapefile upload")
 
-            # Upload zip file to storage
+            # Step 1: Upload zip file to storage (for archival purposes)
             zip_path = f"assets/{context.job_id}/uploads/original_shapefile.zip"
             shapefile_url = await context.storage.save_bytes(
                 data=content, path=zip_path, temporary=False
             )
+            logger.info(f"Shapefile zip uploaded to: {shapefile_url}")
 
-            # Create GCS fallback upload for backward compatibility
+            # Step 2: Extract geometry from shapefile in-memory
+            try:
+                geometry_dict = self._extract_geometry_from_shapefile_zip(content)
+                logger.info("Successfully extracted geometry from shapefile")
+            except Exception as e:
+                logger.error(f"Failed to extract geometry from shapefile: {str(e)}")
+                raise ValueError(f"Invalid shapefile: {str(e)}")
+
+            # Step 3: Process and upload the extracted GeoJSON
+            filename = f"{boundary_type}_boundary"
+            geojson_url, valid_geojson, bbox = await self._process_and_upload_geojson(
+                context=context, geometry=geometry_dict, filename=filename
+            )
+            logger.info(f"Boundary GeoJSON uploaded to: {geojson_url}")
+
+            # Step 4: Create STAC boundary item
+            stac_item_url = await self._create_boundary_stac_item(
+                context=context,
+                boundary_url=geojson_url,
+                bbox=bbox,
+                boundary_type=boundary_type,
+            )
+            logger.info(f"STAC item created: {stac_item_url}")
+
+            # Step 5: Create GCS fallback upload for backward compatibility
             zip_blob_name = (
                 f"{context.fire_event_name}/{context.job_id}/original_shapefile.zip"
             )
@@ -226,10 +292,19 @@ class UploadAOICommand(Command):
                 "upload_type": "shapefile",
                 "status": "complete",
                 "shapefile_url": shapefile_url,
+                "boundary_geojson_url": geojson_url,
+                "stac_item_url": stac_item_url,
                 "gcs_shapefile_url": gcs_url,
+                "boundary_type": boundary_type,
                 "filename": upload_file.filename,
                 "file_size_bytes": len(content),
-                "asset_urls": {"shapefile": shapefile_url, "gcs_shapefile": gcs_url},
+                "bbox": bbox,
+                "asset_urls": {
+                    "shapefile": shapefile_url,
+                    "gcs_shapefile": gcs_url,
+                    "boundary_geojson": geojson_url,
+                    "stac_item": stac_item_url,
+                },
             }
 
         except Exception as e:
@@ -320,3 +395,94 @@ class UploadAOICommand(Command):
             # Add upload stage information for debugging
             setattr(e, "_upload_stage", "stac_creation")
             raise
+
+    def _extract_geometry_from_shapefile_zip(self, zip_bytes: bytes) -> Dict[str, Any]:
+        """
+        Extract GeoJSON geometry from a zipped shapefile using in-memory processing.
+
+        This method uses GeoPandas with pyogrio backend to read the shapefile
+        directly from memory without requiring filesystem access. It's fully
+        serverless-compatible.
+
+        Args:
+            zip_bytes: Bytes of the zipped shapefile
+
+        Returns:
+            GeoJSON dict with geometry (either Polygon or MultiPolygon)
+
+        Raises:
+            ValueError: If shapefile is invalid, empty, or contains unsupported geometry
+        """
+        logger.info("Extracting geometry from shapefile zip")
+
+        try:
+            # Wrap bytes in BytesIO for in-memory processing
+            zip_buffer = io.BytesIO(zip_bytes)
+
+            # Read shapefile using GeoPandas (uses pyogrio backend)
+            # GeoPandas automatically handles /vsizip/ GDAL virtual filesystem
+            gdf = gpd.read_file(zip_buffer)
+
+            logger.info(f"Read {len(gdf)} features from shapefile")
+
+            # Validate we have features
+            if len(gdf) == 0:
+                raise ValueError("Shapefile contains no features")
+
+            # Validate geometry types
+            geom_types = gdf.geometry.geom_type.unique()
+            logger.info(f"Geometry types found: {list(geom_types)}")
+
+            valid_types = {"Polygon", "MultiPolygon"}
+            invalid_types = set(geom_types) - valid_types
+            if invalid_types:
+                raise ValueError(
+                    f"Shapefile contains unsupported geometry types: {invalid_types}. "
+                    f"Only Polygon and MultiPolygon are supported for fire boundaries."
+                )
+
+            # Dissolve all features into a single geometry
+            # This is standard for fire boundary shapefiles which may have
+            # multiple polygons representing different burned areas
+            logger.info("Dissolving features into single geometry")
+            dissolved = gdf.dissolve()
+
+            if len(dissolved) != 1:
+                raise ValueError(
+                    f"Expected single geometry after dissolve, got {len(dissolved)}"
+                )
+
+            # Extract the geometry
+            geometry = dissolved.iloc[0].geometry
+
+            # Validate it's a Polygon or MultiPolygon
+            if not isinstance(geometry, (ShapelyPolygon, ShapelyMultiPolygon)):
+                raise ValueError(
+                    f"Expected Polygon or MultiPolygon, got {type(geometry).__name__}"
+                )
+
+            # Convert to GeoJSON dict using shapely's __geo_interface__
+            geojson_dict = geometry.__geo_interface__
+
+            logger.info(
+                f"Extracted {geojson_dict['type']} geometry with "
+                f"{len(geojson_dict.get('coordinates', []))} coordinate rings"
+            )
+
+            return geojson_dict
+
+        except Exception as e:
+            # Enhance error messages for common issues
+            error_msg = str(e)
+            if "No such file or directory" in error_msg:
+                raise ValueError(
+                    "Invalid zip file or no .shp file found in zip. "
+                    "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
+                )
+            elif "Cannot open" in error_msg or "not recognized as being in a supported file format" in error_msg:
+                raise ValueError(
+                    "Invalid zip file or no .shp file found in zip. "
+                    "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
+                )
+            else:
+                raise ValueError(f"Failed to extract geometry from shapefile: {error_msg}")
