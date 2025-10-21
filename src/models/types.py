@@ -16,7 +16,7 @@ Design Principles:
 from typing import Any, Union
 from typing_extensions import TypedDict, Literal, NotRequired
 import xarray as xr
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 
 # =============================================================================
@@ -111,7 +111,7 @@ class FireSeveritySTACItem(TypedDict):
     fire_event_name: str
     job_id: str
     cog_urls: dict[str, str]  # Flexible for different COG combinations
-    geometry: Polygon | Feature  # Use geojson-pydantic types
+    geometry: Polygon | MultiPolygon | Feature  # Use geojson-pydantic types
     datetime_str: str
     boundary_type: NotRequired[str]  # Optional, defaults to "coarse"
     skip_validation: NotRequired[bool]  # Optional, defaults to False
@@ -228,7 +228,7 @@ class ShapefileUploadResult(TypedDict):
     """Result from shapefile upload and processing"""
 
     shapefile_url: str
-    extracted_geojson: Polygon | Feature
+    extracted_geojson: Polygon | MultiPolygon | Feature
     boundary_stac_item_url: str
     job_id: str
 
@@ -264,7 +264,7 @@ class ProcessingMetadata(TypedDict):
 # =============================================================================
 
 # Common geometry representations used across the codebase
-GeometryInput = Union[Polygon, Feature, dict[str, Any]]
+GeometryInput = Union[Polygon, MultiPolygon, Feature, dict[str, Any]]
 
 # Date range format used in API requests
 DateRange = list[str]  # ["YYYY-MM-DD", "YYYY-MM-DD"] format

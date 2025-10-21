@@ -2,7 +2,7 @@ from typing import Dict, List, Any
 from shapely.geometry import shape
 import pystac
 from datetime import datetime
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 
 class STACItemFactory:
@@ -58,7 +58,7 @@ class STACItemFactory:
         fire_event_name: str,
         job_id: str,
         cog_urls: Dict[str, str],
-        geometry: Polygon | Feature,
+        geometry: Polygon | MultiPolygon | Feature,
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
@@ -70,7 +70,7 @@ class STACItemFactory:
             fire_event_name: Name of the fire event
             job_id: Job ID for the processing task
             cog_urls: Dictionary of COG URLs for each metric {'rbr': url, 'dnbr': url, 'rdnbr': url}
-            geometry: GeoJSON geometry object
+            geometry: GeoJSON geometry object (Polygon, MultiPolygon, or Feature)
             datetime_str: Timestamp for the item
             boundary_type: Type of boundary ('coarse' or 'refined')
             skip_validation: If True, skip validation (useful for testing)

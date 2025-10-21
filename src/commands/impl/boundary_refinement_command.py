@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timezone
 from typing import List, Tuple
 
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
@@ -71,9 +71,9 @@ class BoundaryRefinementCommand(Command):
                 "refined boundary geometry is required for boundary refinement",
             )
 
-        # Ensure geometry is valid format (Polygon or Feature)
-        if not isinstance(context.geometry, (Polygon, Feature)):
-            return False, "geometry must be a Polygon or Feature object"
+        # Ensure geometry is valid format (Polygon, MultiPolygon, or Feature)
+        if not isinstance(context.geometry, (Polygon, MultiPolygon, Feature)):
+            return False, "geometry must be a Polygon, MultiPolygon, or Feature object"
 
         return True, "Context validation passed"
 

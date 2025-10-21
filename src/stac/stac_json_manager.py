@@ -2,7 +2,7 @@ from typing import Dict, List, Any, Optional
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_repository import STACJSONRepository
 from src.stac.stac_item_factory import STACItemFactory
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 
 class STACJSONManager:
@@ -42,7 +42,7 @@ class STACJSONManager:
         fire_event_name: str,
         job_id: str,
         cog_urls: Dict[str, str],
-        geometry: Polygon | Feature,
+        geometry: Polygon | MultiPolygon | Feature,
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
@@ -54,7 +54,7 @@ class STACJSONManager:
             fire_event_name: Name of the fire event
             job_id: Job ID for the processing task
             cog_urls: Dictionary of COG URLs {'rbr': url, 'dnbr': url, 'rdnbr': url}
-            geometry: GeoJSON geometry object
+            geometry: GeoJSON geometry object (Polygon, MultiPolygon, or Feature)
             datetime_str: Timestamp for the item
             boundary_type: Type of boundary ('coarse' or 'refined')
 

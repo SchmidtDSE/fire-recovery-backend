@@ -3,25 +3,25 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Union
 
 from geojson_pydantic import FeatureCollection
-from shapely import Polygon as ShapelyPolygon
+from shapely import Polygon as ShapelyPolygon, MultiPolygon as ShapelyMultiPolygon
 from shapely import from_geojson, to_geojson
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 
 def validate_polygon(
-    polygon_data: Union[Polygon, Feature, Dict[str, Any]],
-) -> ShapelyPolygon:
+    polygon_data: Union[Polygon, MultiPolygon, Feature, Dict[str, Any]],
+) -> Union[ShapelyPolygon, ShapelyMultiPolygon]:
     """
-    Validates a GeoJSON polygon using shapely.
+    Validates a GeoJSON Polygon or MultiPolygon using shapely.
 
     Args:
-        polygon_data: Polygon, Feature (geojson-pydantic), or dictionary containing polygon data
+        polygon_data: Polygon, MultiPolygon, Feature (geojson-pydantic), or dictionary containing polygon data
 
     Returns:
-        Validated Shapely Polygon object
+        Validated Shapely Polygon or MultiPolygon object
 
     Raises:
-        ValueError: If the polygon is invalid
+        ValueError: If the polygon/multipolygon is invalid
     """
     try:
         polygon_json: str
@@ -30,14 +30,18 @@ def validate_polygon(
         if isinstance(polygon_data, Feature):
             if polygon_data.geometry is None:
                 raise ValueError("Feature has no geometry")
-            if polygon_data.geometry.type != "Polygon":
+            if polygon_data.geometry.type not in ["Polygon", "MultiPolygon"]:
                 raise ValueError(
-                    f"Expected Polygon geometry in Feature, got {polygon_data.geometry.type}"
+                    f"Expected Polygon or MultiPolygon geometry in Feature, got {polygon_data.geometry.type}"
                 )
             polygon_json = polygon_data.geometry.model_dump_json()
 
         # Handle geojson-pydantic Polygon objects
         elif isinstance(polygon_data, Polygon):
+            polygon_json = polygon_data.model_dump_json()
+
+        # Handle geojson-pydantic MultiPolygon objects
+        elif isinstance(polygon_data, MultiPolygon):
             polygon_json = polygon_data.model_dump_json()
 
         # Handle dictionary inputs (for backward compatibility)
@@ -46,30 +50,30 @@ def validate_polygon(
             if (
                 "geometry" in polygon_data
                 and isinstance(polygon_data["geometry"], dict)
-                and polygon_data["geometry"].get("type") == "Polygon"
+                and polygon_data["geometry"].get("type") in ["Polygon", "MultiPolygon"]
             ):
                 polygon_json = json.dumps(polygon_data["geometry"])
             # If we have a direct geometry
             elif (
-                polygon_data.get("type") == "Polygon" and "coordinates" in polygon_data
+                polygon_data.get("type") in ["Polygon", "MultiPolygon"] and "coordinates" in polygon_data
             ):
                 polygon_json = json.dumps(polygon_data)
             else:
                 raise ValueError(
-                    "Invalid polygon data. Expected either a Polygon geometry "
-                    "or an object with a geometry property containing a Polygon"
+                    "Invalid polygon data. Expected either a Polygon or MultiPolygon geometry "
+                    "or an object with a geometry property containing a Polygon or MultiPolygon"
                 )
         else:
             raise ValueError(
-                f"Input must be a Polygon, Feature, or dictionary, got {type(polygon_data)}"
+                f"Input must be a Polygon, MultiPolygon, Feature, or dictionary, got {type(polygon_data)}"
             )
 
         # Parse the GeoJSON with shapely
         shapely_geom = from_geojson(polygon_json)
 
-        # Verify it's a polygon
-        if shapely_geom.geom_type != "Polygon":
-            raise ValueError(f"Expected Polygon geometry, got {shapely_geom.geom_type}")
+        # Verify it's a polygon or multipolygon
+        if shapely_geom.geom_type not in ["Polygon", "MultiPolygon"]:
+            raise ValueError(f"Expected Polygon or MultiPolygon geometry, got {shapely_geom.geom_type}")
 
         return shapely_geom
     except Exception as e:
@@ -77,21 +81,21 @@ def validate_polygon(
 
 
 def polygon_to_feature(
-    polygon: Union[ShapelyPolygon, Polygon, Feature, Dict[str, Any]],
+    polygon: Union[ShapelyPolygon, ShapelyMultiPolygon, Polygon, MultiPolygon, Feature, Dict[str, Any]],
     properties: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Converts a polygon to a GeoJSON Feature.
+    Converts a polygon or multipolygon to a GeoJSON Feature.
 
     Args:
-        polygon: Shapely Polygon, geojson-pydantic Polygon/Feature, or dict with polygon data
+        polygon: Shapely Polygon/MultiPolygon, geojson-pydantic Polygon/MultiPolygon/Feature, or dict with polygon data
         properties: Optional properties for the Feature
 
     Returns:
         Feature as dictionary
     """
     # Convert to Shapely object if needed
-    if not isinstance(polygon, ShapelyPolygon):
+    if not isinstance(polygon, (ShapelyPolygon, ShapelyMultiPolygon)):
         polygon = validate_polygon(polygon)
 
     # Default properties
@@ -111,16 +115,16 @@ def polygon_to_feature(
 
 
 def polygon_to_valid_geojson(
-    polygon_data: Union[Polygon, Feature, Dict[str, Any]],
+    polygon_data: Union[Polygon, MultiPolygon, Feature, Dict[str, Any]],
     properties: Optional[Dict[str, Any]] = None,
     collection_properties: Optional[Dict[str, Any]] = None,
 ) -> FeatureCollection:
     """
-    Validates a polygon, constructs a FeatureCollection containing it,
+    Validates a polygon or multipolygon, constructs a FeatureCollection containing it,
     validates the FeatureCollection, and returns it as a geojson-pydantic FeatureCollection.
 
     Args:
-        polygon_data: Polygon, Feature (geojson-pydantic), or dictionary containing polygon data
+        polygon_data: Polygon, MultiPolygon, Feature (geojson-pydantic), or dictionary containing polygon data
         properties: Optional properties for the Feature
         collection_properties: Optional properties for the FeatureCollection
 

@@ -8,7 +8,7 @@ and to be reusable across different commands and routers.
 import json
 from typing import Any, Dict, List, Tuple
 
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 from shapely.geometry import shape
 
 from src.core.storage.storage_factory import StorageFactory
@@ -22,7 +22,7 @@ from src.util.upload_blob import upload_to_gcs
 
 
 async def process_and_upload_geojson(
-    geometry: Polygon | Feature | dict,
+    geometry: Polygon | MultiPolygon | Feature | dict,
     fire_event_name: str,
     job_id: str,
     filename: str,
@@ -32,7 +32,7 @@ async def process_and_upload_geojson(
     Validate, save and upload a GeoJSON boundary
 
     Args:
-        geometry: The geometry or GeoJSON to process
+        geometry: The geometry or GeoJSON to process (Polygon, MultiPolygon, Feature, or dict)
         fire_event_name: Name of the fire event
         job_id: Job ID for the processing task
         filename: Base filename for the GeoJSON (without extension)

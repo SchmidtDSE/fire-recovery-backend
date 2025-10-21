@@ -4,7 +4,7 @@ from src.core.storage.interface import StorageInterface
 from src.core.storage.storage_factory import StorageFactory
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 
 @dataclass
@@ -22,7 +22,7 @@ class CommandContext:
     fire_event_name: str
 
     # Geometry data (GeoJSON format only)
-    geometry: Polygon | Feature
+    geometry: Polygon | MultiPolygon | Feature
 
     # Dependencies (injected by command registry)
     storage: StorageInterface
