@@ -14,7 +14,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from geojson_pydantic import Polygon, Feature
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 from src.config.constants import FINAL_BUCKET_NAME
 from src.stac.stac_json_manager import STACJSONManager
@@ -46,10 +46,12 @@ from src.models.responses import (
 )
 
 
-def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | Feature:
+def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | MultiPolygon | Feature:
     """Convert dict geometry to geojson-pydantic type"""
     if geometry.get("type") == "Feature":
         return Feature.model_validate(geometry)
+    elif geometry.get("type") == "MultiPolygon":
+        return MultiPolygon.model_validate(geometry)
     else:
         return Polygon.model_validate(geometry)
 
@@ -266,7 +268,7 @@ async def analyze_fire_severity(
 async def process_fire_severity(
     job_id: str,
     fire_event_name: str,
-    geometry: Polygon | Feature,
+    geometry: Polygon | MultiPolygon | Feature,
     prefire_date_range: list[str],
     postfire_date_range: list[str],
     stac_manager: STACJSONManager,
@@ -409,7 +411,7 @@ async def refine_fire_boundary(
 async def process_boundary_refinement(
     job_id: str,
     fire_event_name: str,
-    refined_geojson: Polygon | Feature,
+    refined_geojson: Polygon | MultiPolygon | Feature,
     storage_factory: StorageFactory,
     stac_manager: STACJSONManager,
     index_registry: IndexRegistry,
@@ -532,7 +534,17 @@ async def upload_geojson(
 ) -> UploadedGeoJSONResponse:
     """
     Upload GeoJSON data for a fire event.
+
+    Args:
+        request: GeoJSON upload request (includes geojson and boundary_type)
     """
+    # Validate boundary_type from request model
+    if request.boundary_type not in ["coarse", "refined"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boundary_type '{request.boundary_type}'. Must be 'coarse' or 'refined'",
+        )
+
     # Generate a unique job ID
     job_id = str(uuid.uuid4())
 
@@ -542,11 +554,11 @@ async def upload_geojson(
             job_id=job_id,
             fire_event_name=request.fire_event_name,
             geometry=request.geojson,
-            storage=storage_factory.get_temp_storage(),
+            storage=storage_factory.get_final_storage(),
             storage_factory=storage_factory,
             stac_manager=stac_manager,
             index_registry=index_registry,
-            metadata={"upload_type": "geojson"},
+            metadata={"upload_type": "geojson", "boundary_type": request.boundary_type},
         )
 
         # Execute upload command
@@ -576,6 +588,7 @@ async def upload_geojson(
             status="complete",
             job_id=job_id,
             refined_boundary_geojson_url=boundary_url,
+            boundary_type=request.boundary_type,
         )
     except HTTPException:
         raise
@@ -591,11 +604,26 @@ async def upload_geojson(
 async def upload_shapefile(
     fire_event_name: str = Form(...),
     shapefile: UploadFile = File(...),
+    boundary_type: str = Form(default="refined"),
     stac_manager: STACJSONManager = Depends(get_stac_manager),
     storage_factory: StorageFactory = Depends(get_storage_factory),
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> UploadedShapefileZipResponse:
-    """Upload a zipped shapefile for a fire event."""
+    """
+    Upload a zipped shapefile for a fire event.
+
+    Args:
+        fire_event_name: Name of the fire event
+        shapefile: Zipped shapefile upload
+        boundary_type: Type of boundary - either "coarse" or "refined" (default: "refined")
+    """
+    # Validate boundary_type
+    if boundary_type not in ["coarse", "refined"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boundary_type '{boundary_type}'. Must be 'coarse' or 'refined'",
+        )
+
     job_id = str(uuid.uuid4())
 
     try:
@@ -612,11 +640,15 @@ async def upload_shapefile(
                     "properties": {},
                 }
             ),  # Placeholder
-            storage=storage_factory.get_temp_storage(),
+            storage=storage_factory.get_final_storage(),
             storage_factory=storage_factory,
             stac_manager=stac_manager,
             index_registry=index_registry,
-            metadata={"upload_type": "shapefile", "upload_data": shapefile},
+            metadata={
+                "upload_type": "shapefile",
+                "upload_data": shapefile,
+                "boundary_type": boundary_type,
+            },
         )
 
         # Execute upload command
@@ -641,11 +673,20 @@ async def upload_shapefile(
                 status_code=500, detail="Upload succeeded but no shapefile URL returned"
             )
 
+        boundary_geojson_url = result.data.get("boundary_geojson_url")
+        if not boundary_geojson_url:
+            raise HTTPException(
+                status_code=500,
+                detail="Upload succeeded but no boundary GeoJSON URL returned",
+            )
+
         return UploadedShapefileZipResponse(
             fire_event_name=fire_event_name,
             status="complete",
             job_id=job_id,
             shapefile_url=shapefile_url,
+            boundary_geojson_url=boundary_geojson_url,
+            boundary_type=boundary_type,
         )
 
     except HTTPException:
@@ -726,14 +767,11 @@ async def execute_vegetation_resolution_command(
 
     try:
         # Create placeholder geometry (actual boundary comes from geojson_url)
-        from typing import cast
-        from geojson_pydantic.types import Position2D, Position3D
-
-        coordinates = cast(
-            list[list[Position2D | Position3D]],
-            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+        # Pydantic will validate the coordinates automatically
+        placeholder_geometry = Polygon(
+            type="Polygon",
+            coordinates=[[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]]
         )
-        placeholder_geometry = Polygon(type="Polygon", coordinates=coordinates)
 
         # Create command context with vegetation resolution parameters
         logger.debug("Creating CommandContext for vegetation resolution")
