@@ -4,9 +4,8 @@ import time
 import warnings
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional, cast
 import geopandas as gpd
-from geojson_pydantic import Polygon as GeoJSONPolygon
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -1161,8 +1160,19 @@ class VegetationResolveCommand(Command):
 
             # Convert geometry dict to proper type if needed
             if isinstance(geometry, dict):
-                # Convert dict to GeoJSONPolygon
-                geojson_geometry = GeoJSONPolygon(**geometry)
+                # Import necessary types
+                from geojson_pydantic import Polygon, MultiPolygon, Feature
+
+                # Use model_validate instead of unpacking
+                geom_type = geometry.get("type")
+                if geom_type == "MultiPolygon":
+                    geojson_geometry = MultiPolygon.model_validate(geometry)
+                elif geom_type == "Polygon":
+                    geojson_geometry = Polygon.model_validate(geometry)
+                elif geom_type == "Feature":
+                    geojson_geometry = Feature.model_validate(geometry)
+                else:
+                    raise ValueError(f"Unsupported geometry type: {geom_type}")
             else:
                 geojson_geometry = geometry
 
@@ -1230,7 +1240,7 @@ class VegetationResolveCommand(Command):
 
     def _create_fallback_metadata(
         self, context: CommandContext
-    ) -> Tuple[Dict, List[float], str]:
+    ) -> Tuple[Dict[str, Any], List[float], str]:
         """Create fallback metadata when STAC item is not found"""
         # Use the geometry from context, or create a minimal bounding box
         if hasattr(context.geometry, "coordinates"):
@@ -1239,25 +1249,25 @@ class VegetationResolveCommand(Command):
                 context.geometry.coordinates[0] if context.geometry.coordinates else []
             )
             if coords:
-                lons = [c[0] for c in coords]
-                lats = [c[1] for c in coords]
-                bbox = [min(lons), min(lats), max(lons), max(lats)]
+                lons = [cast(float, c[0]) for c in coords]
+                lats = [cast(float, c[1]) for c in coords]
+                bbox: List[float] = [min(lons), min(lats), max(lons), max(lats)]
             else:
-                bbox = [-180, -90, 180, 90]  # Global fallback
+                bbox = cast(List[float], [-180, -90, 180, 90])  # Global fallback
 
-            geometry = {
+            geometry: Dict[str, Any] = {
                 "type": context.geometry.type,
                 "coordinates": context.geometry.coordinates,
             }
         else:
             # Minimal fallback geometry
-            bbox = [-180, -90, 180, 90]
-            geometry = {
+            bbox = cast(List[float], [-180, -90, 180, 90])
+            geometry = cast(Dict[str, Any], {
                 "type": "Polygon",
                 "coordinates": [
                     [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
                 ],
-            }
+            })
 
         # Use current datetime as fallback
         datetime_str = datetime.now(timezone.utc).isoformat() + "Z"
