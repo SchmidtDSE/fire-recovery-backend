@@ -1428,6 +1428,411 @@ class TestVegetationSchemaErrorScenarios:
                 assert error_msg == "Context validation passed"
 
 
+class TestZonalStatisticsBugFixes:
+    """Test fixes for zonal statistics bugs - stdev parameter and per-class statistics."""
+
+    @pytest.mark.asyncio
+    async def test_zonal_stats_uses_stdev_not_std(self):
+        """Test that zonal_stats calls use 'stdev' parameter, not 'std'."""
+        command = VegetationResolveCommand()
+
+        # Create mock data
+        import numpy as np
+        import xarray as xr
+        import geopandas as gpd
+        from shapely.geometry import Point
+
+        # Mock DataArray with required methods
+        mock_data_array = Mock()
+        mock_data_array.xvec = Mock()
+
+        # Mock the zonal_stats return value
+        mock_stats_result = Mock()
+        mock_stats_result.isel = Mock(side_effect=[
+            Mock(values=np.array([100.0])),  # count
+            Mock(values=np.array([0.5])),     # mean
+            Mock(values=np.array([0.1])),     # stdev
+        ])
+        mock_stats_result.dims = ["zonal_statistics"]
+        mock_data_array.xvec.zonal_stats = Mock(return_value=mock_stats_result)
+
+        # Create mock vegetation subset
+        mock_veg_subset = Mock(spec=gpd.GeoDataFrame)
+        mock_veg_subset.geometry = Mock()
+
+        # Create mock metadata
+        metadata = {
+            "x_coord": "x",
+            "y_coord": "y",
+            "pixel_area_ha": 0.09,
+        }
+
+        # Call the method
+        mean, std = command._calculate_overall_severity(
+            mock_data_array, mock_veg_subset, metadata
+        )
+
+        # Verify zonal_stats was called with correct parameters
+        mock_data_array.xvec.zonal_stats.assert_called_once()
+        call_args = mock_data_array.xvec.zonal_stats.call_args
+
+        # Verify stats parameter uses "stdev" not "std"
+        assert "stats" in call_args[1]
+        assert call_args[1]["stats"] == ["count", "mean", "stdev"]
+        assert "std" not in call_args[1]["stats"]
+
+        # Verify method parameter
+        assert call_args[1]["method"] == "exactextract"
+
+        # Verify results are computed correctly
+        assert mean == 0.5
+        assert std == 0.1
+
+    @pytest.mark.asyncio
+    async def test_severity_class_stats_calculation(self):
+        """Test that _calculate_severity_class_stats properly calculates mean and std."""
+        command = VegetationResolveCommand()
+
+        import numpy as np
+        import geopandas as gpd
+
+        # Mock DataArray with required methods
+        mock_mask_data = Mock()
+        mock_mask_data.xvec = Mock()
+
+        # Mock the zonal_stats return value
+        mock_stats_result = Mock()
+        mock_stats_result.isel = Mock(side_effect=[
+            Mock(values=np.array([50.0, 50.0])),      # count values for 2 polygons
+            Mock(values=np.array([0.25, 0.35])),      # mean values for 2 polygons
+            Mock(values=np.array([0.05, 0.08])),      # stdev values for 2 polygons
+        ])
+        mock_stats_result.dims = ["zonal_statistics"]
+        mock_mask_data.xvec.zonal_stats = Mock(return_value=mock_stats_result)
+
+        # Create mock vegetation subset
+        mock_veg_subset = Mock(spec=gpd.GeoDataFrame)
+        mock_veg_subset.geometry = Mock()
+
+        # Create mock metadata
+        metadata = {
+            "x_coord": "x",
+            "y_coord": "y",
+            "pixel_area_ha": 0.09,
+        }
+
+        # Call the method
+        mean, std = command._calculate_severity_class_stats(
+            mock_mask_data, mock_veg_subset, metadata
+        )
+
+        # Verify zonal_stats was called with correct parameters
+        mock_mask_data.xvec.zonal_stats.assert_called_once()
+        call_args = mock_mask_data.xvec.zonal_stats.call_args
+
+        # Verify stats parameter
+        assert call_args[1]["stats"] == ["count", "mean", "stdev"]
+        assert call_args[1]["method"] == "exactextract"
+
+        # Verify pixel-weighted mean calculation
+        # (50*0.25 + 50*0.35) / (50+50) = 30/100 = 0.3
+        assert mean == 0.3
+
+        # Verify std is the mean of stdev values
+        # (0.05 + 0.08) / 2 = 0.065
+        assert std == 0.065
+
+    @pytest.mark.asyncio
+    async def test_zonal_statistics_populates_per_class_stats(self):
+        """Test that _calculate_zonal_statistics populates mean and std for each severity class."""
+        command = VegetationResolveCommand()
+
+        import numpy as np
+        import geopandas as gpd
+
+        # Create mock masks
+        mock_masks = {}
+        for severity in ["unburned", "low", "moderate", "high", "original"]:
+            mock_mask = Mock()
+            mock_mask.xvec = Mock()
+            mock_masks[severity] = mock_mask
+
+        # Mock pixel count calculations
+        with patch.object(command, '_calculate_severity_pixels') as mock_pixels:
+            # Return different pixel counts for each severity class
+            mock_pixels.side_effect = [10.0, 20.0, 30.0, 40.0]  # For each severity class
+
+            # Mock severity class stats calculations
+            with patch.object(command, '_calculate_severity_class_stats') as mock_class_stats:
+                # Return different mean/std for each severity class
+                mock_class_stats.side_effect = [
+                    (0.05, 0.01),   # unburned
+                    (0.20, 0.05),   # low
+                    (0.45, 0.10),   # moderate
+                    (0.75, 0.15),   # high
+                ]
+
+                # Mock overall severity calculation
+                with patch.object(command, '_calculate_overall_severity') as mock_overall:
+                    mock_overall.return_value = (0.35, 0.12)
+
+                    # Create mock vegetation subset
+                    mock_veg_subset = Mock(spec=gpd.GeoDataFrame)
+                    mock_veg_subset.__len__ = Mock(return_value=5)
+                    mock_veg_subset.geometry = Mock()
+                    mock_veg_subset.geometry.area = Mock()
+                    mock_veg_subset.geometry.area.sum = Mock(return_value=1000.0)
+
+                    # Create mock metadata
+                    metadata = {
+                        "x_coord": "x",
+                        "y_coord": "y",
+                        "pixel_area_ha": 0.09,
+                    }
+
+                    # Call the method
+                    results = await command._calculate_zonal_statistics(
+                        mock_masks, mock_veg_subset, metadata
+                    )
+
+                    # Verify per-class statistics are populated with non-zero values
+                    assert results["unburned_mean"] == 0.05
+                    assert results["unburned_std"] == 0.01
+                    assert results["low_mean"] == 0.20
+                    assert results["low_std"] == 0.05
+                    assert results["moderate_mean"] == 0.45
+                    assert results["moderate_std"] == 0.10
+                    assert results["high_mean"] == 0.75
+                    assert results["high_std"] == 0.15
+
+                    # Verify overall statistics
+                    assert results["mean_severity"] == 0.35
+                    assert results["std_dev"] == 0.12
+
+                    # Verify hectares calculations
+                    assert results["unburned_ha"] == 10.0 * 0.09
+                    assert results["low_ha"] == 20.0 * 0.09
+                    assert results["moderate_ha"] == 30.0 * 0.09
+                    assert results["high_ha"] == 40.0 * 0.09
+
+                    # Verify _calculate_severity_class_stats was called 4 times (once per severity class)
+                    assert mock_class_stats.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_zonal_stats_error_handling_with_stdev(self):
+        """Test that errors in zonal_stats with stdev parameter are handled gracefully."""
+        command = VegetationResolveCommand()
+
+        import geopandas as gpd
+
+        # Mock DataArray that raises an error
+        mock_data_array = Mock()
+        mock_data_array.xvec = Mock()
+        mock_data_array.xvec.zonal_stats = Mock(side_effect=Exception("Unsupported stat: std"))
+
+        # Create mock vegetation subset
+        mock_veg_subset = Mock(spec=gpd.GeoDataFrame)
+        mock_veg_subset.geometry = Mock()
+
+        # Create mock metadata
+        metadata = {
+            "x_coord": "x",
+            "y_coord": "y",
+            "pixel_area_ha": 0.09,
+        }
+
+        # Call should handle error and return zeros
+        mean, std = command._calculate_overall_severity(
+            mock_data_array, mock_veg_subset, metadata
+        )
+
+        # Should return 0,0 on error
+        assert mean == 0.0
+        assert std == 0.0
+
+    def test_json_structure_includes_per_class_stats(self):
+        """Test that JSON structure includes mean and std for each severity class."""
+        command = VegetationResolveCommand()
+
+        # Create DataFrame with per-class statistics
+        df = pd.DataFrame(
+            {
+                "total_ha": [100.0],
+                "unburned_ha": [30.0],
+                "low_ha": [25.0],
+                "moderate_ha": [25.0],
+                "high_ha": [20.0],
+                "unburned_percent": [30.0],
+                "low_percent": [25.0],
+                "moderate_percent": [25.0],
+                "high_percent": [20.0],
+                "unburned_mean": [0.05],
+                "low_mean": [0.18],
+                "moderate_mean": [0.45],
+                "high_mean": [0.75],
+                "unburned_std": [0.01],
+                "low_std": [0.05],
+                "moderate_std": [0.10],
+                "high_std": [0.15],
+            },
+            index=["Joshua Tree Woodland"],
+        )
+
+        result = command._create_json_structure(df)
+
+        # Verify structure
+        assert "vegetation_communities" in result
+        assert len(result["vegetation_communities"]) == 1
+
+        community = result["vegetation_communities"][0]
+        assert community["name"] == "Joshua Tree Woodland"
+
+        # Verify each severity class has mean_severity and std_dev in breakdown
+        for severity in ["unburned", "low", "moderate", "high"]:
+            assert severity in community["severity_breakdown"]
+            assert "mean_severity" in community["severity_breakdown"][severity]
+            assert "std_dev" in community["severity_breakdown"][severity]
+
+            # Verify values are not zero
+            if severity == "unburned":
+                assert community["severity_breakdown"][severity]["mean_severity"] == 0.05
+                assert community["severity_breakdown"][severity]["std_dev"] == 0.01
+            elif severity == "low":
+                assert community["severity_breakdown"][severity]["mean_severity"] == 0.18
+                assert community["severity_breakdown"][severity]["std_dev"] == 0.05
+            elif severity == "moderate":
+                assert community["severity_breakdown"][severity]["mean_severity"] == 0.45
+                assert community["severity_breakdown"][severity]["std_dev"] == 0.1
+            elif severity == "high":
+                assert community["severity_breakdown"][severity]["mean_severity"] == 0.75
+                assert community["severity_breakdown"][severity]["std_dev"] == 0.15
+
+    @pytest.mark.asyncio
+    async def test_result_dataframe_has_all_columns_initialized(self):
+        """Test that result DataFrame is initialized with all required columns."""
+        command = VegetationResolveCommand()
+
+        import geopandas as gpd
+        from shapely.geometry import Point, Polygon as ShapelyPolygon
+
+        # Create minimal mock data to test DataFrame initialization
+        with (
+            patch.object(command, "_load_fire_data_from_bytes") as mock_load_fire,
+            patch.object(command, "_load_vegetation_data_from_bytes") as mock_load_veg,
+            patch.object(command, "_load_boundary_data_from_bytes") as mock_load_boundary,
+            patch.object(command, "_create_severity_masks") as mock_create_masks,
+            patch.object(command, "_calculate_zonal_statistics") as mock_zonal_stats,
+            patch("src.commands.impl.vegetation_resolve_command.gpd.clip") as mock_clip,
+        ):
+            # Mock fire data
+            mock_fire_ds = Mock()
+            mock_fire_ds.__getitem__ = Mock(return_value=Mock())
+            metadata = {
+                "crs": "EPSG:32611",
+                "data_var": "band_data",
+                "pixel_area_ha": 0.09,
+                "x_coord": "x",
+                "y_coord": "y",
+            }
+            mock_load_fire.return_value = (mock_fire_ds, metadata)
+
+            # Mock vegetation data with 2 vegetation types
+            veg_data = {
+                "veg_type": ["Forest", "Shrubland"],
+                "geometry": [
+                    ShapelyPolygon([(0, 0), (1, 0), (1, 1), (0, 1)]),
+                    ShapelyPolygon([(2, 2), (3, 2), (3, 3), (2, 3)]),
+                ],
+            }
+            mock_veg_gdf = gpd.GeoDataFrame(veg_data, crs="EPSG:32611")
+            mock_load_veg.return_value = mock_veg_gdf
+            mock_clip.return_value = mock_veg_gdf
+
+            # Mock boundary data
+            boundary_data = {
+                "geometry": [ShapelyPolygon([(0, 0), (5, 0), (5, 5), (0, 5)])]
+            }
+            mock_boundary_gdf = gpd.GeoDataFrame(boundary_data, crs="EPSG:32611")
+            mock_boundary_gdf.geometry.union_all = Mock(
+                return_value=boundary_data["geometry"][0]
+            )
+            mock_load_boundary.return_value = mock_boundary_gdf
+
+            # Mock severity masks
+            mock_create_masks.return_value = {
+                "unburned": Mock(),
+                "low": Mock(),
+                "moderate": Mock(),
+                "high": Mock(),
+                "original": Mock(),
+            }
+
+            # Mock zonal statistics to return all statistics
+            mock_zonal_stats.return_value = {
+                "unburned_ha": 10.0,
+                "low_ha": 20.0,
+                "moderate_ha": 15.0,
+                "high_ha": 5.0,
+                "total_pixel_count": 100,
+                "unburned_mean": 0.05,
+                "unburned_std": 0.01,
+                "low_mean": 0.20,
+                "low_std": 0.05,
+                "moderate_mean": 0.45,
+                "moderate_std": 0.10,
+                "high_mean": 0.75,
+                "high_std": 0.15,
+                "mean_severity": 0.35,
+                "std_dev": 0.12,
+            }
+
+            file_data = {
+                "vegetation": b"veg_data",
+                "fire_severity": b"fire_data",
+                "boundary": b"boundary_data",
+            }
+
+            result_df, json_structure = await command._analyze_vegetation_impact(
+                file_data, [0.1, 0.27, 0.66], None
+            )
+
+            # Verify all expected columns exist in the DataFrame
+            expected_columns = [
+                "unburned_ha",
+                "low_ha",
+                "moderate_ha",
+                "high_ha",
+                "total_ha",
+                "unburned_mean",
+                "unburned_std",
+                "low_mean",
+                "low_std",
+                "moderate_mean",
+                "moderate_std",
+                "high_mean",
+                "high_std",
+                "mean_severity",
+                "std_dev",
+            ]
+
+            for col in expected_columns:
+                assert col in result_df.columns, f"Column '{col}' is missing from result DataFrame"
+
+            # Verify all rows have non-NaN values for these columns
+            for veg_type in result_df.index:
+                for col in expected_columns:
+                    value = result_df.loc[veg_type, col]
+                    assert not pd.isna(value), f"Value for '{col}' in '{veg_type}' is NaN"
+                    # Values should be numeric (float)
+                    assert isinstance(value, (int, float)), f"Value for '{col}' in '{veg_type}' is not numeric"
+
+            # Verify mean and std values match what was returned from zonal_stats
+            assert result_df.loc["Forest", "unburned_mean"] == 0.05
+            assert result_df.loc["Forest", "unburned_std"] == 0.01
+            assert result_df.loc["Forest", "low_mean"] == 0.20
+            assert result_df.loc["Forest", "low_std"] == 0.05
+
+
 class TestVegetationAnalysisEdgeCases:
     """Test edge cases in vegetation analysis processing."""
 

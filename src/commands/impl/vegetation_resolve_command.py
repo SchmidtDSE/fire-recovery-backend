@@ -448,12 +448,23 @@ class VegetationResolveCommand(Command):
                 f"Processing {len(veg_types)} unique vegetation types: {list(veg_types)}"
             )
 
+            # Define all columns that will be used in the results DataFrame
             severity_columns = [
                 "unburned_ha",
                 "low_ha",
                 "moderate_ha",
                 "high_ha",
                 "total_ha",
+                "unburned_mean",
+                "unburned_std",
+                "low_mean",
+                "low_std",
+                "moderate_mean",
+                "moderate_std",
+                "high_mean",
+                "high_std",
+                "mean_severity",
+                "std_dev",
             ]
             result_df = pd.DataFrame(
                 0.0, index=veg_types, columns=severity_columns, dtype=float
@@ -864,7 +875,7 @@ class VegetationResolveCommand(Command):
                     veg_subset.geometry,
                     metadata["x_coord"],
                     metadata["y_coord"],
-                    stats=["count", "mean", "std"],
+                    stats=["count", "mean", "stdev"],
                     all_touched=True,
                     method="exactextract",
                 )
@@ -879,19 +890,79 @@ class VegetationResolveCommand(Command):
                 std_values = stats.isel(zonal_statistics=2).values
 
                 # Pixel-weighted mean across all polygons
-                total_pixels = np.sum(count_values)
-                if total_pixels > 0:
-                    weighted_mean = float(
-                        np.sum(count_values * mean_values) / total_pixels
-                    )
-                    # For std, take simple mean (std doesn't weight well)
+                # Filter out NaN values to properly calculate weighted average
+                valid_mask = ~np.isnan(mean_values)
+                if np.any(valid_mask):
+                    # Calculate weighted mean using only valid (non-NaN) values
+                    valid_counts = count_values[valid_mask]
+                    valid_means = mean_values[valid_mask]
+                    total_valid_pixels = np.sum(valid_counts)
+
+                    if total_valid_pixels > 0:
+                        weighted_mean = float(np.sum(valid_counts * valid_means) / total_valid_pixels)
+                    else:
+                        weighted_mean = 0.0
+
+                    # For std, take simple mean (std doesn't weight well), ignoring NaN
                     weighted_std = float(np.nanmean(std_values))
+
                     return weighted_mean, weighted_std
 
             return 0.0, 0.0
 
         except Exception as e:
             logger.warning(f"Error calculating overall severity: {str(e)}")
+            return 0.0, 0.0
+
+    def _calculate_severity_class_stats(
+        self, mask_data: xr.DataArray, veg_subset: gpd.GeoDataFrame, metadata: Dict
+    ) -> Tuple[float, float]:
+        """Calculate mean and std for a specific severity class mask."""
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+                stats = mask_data.xvec.zonal_stats(
+                    veg_subset.geometry,
+                    metadata["x_coord"],
+                    metadata["y_coord"],
+                    stats=["count", "mean", "stdev"],
+                    all_touched=True,
+                    method="exactextract",
+                )
+
+            if (
+                stats is not None
+                and hasattr(stats, "isel")
+                and "zonal_statistics" in stats.dims
+            ):
+                count_values = stats.isel(zonal_statistics=0).values
+                mean_values = stats.isel(zonal_statistics=1).values
+                std_values = stats.isel(zonal_statistics=2).values
+
+                # Pixel-weighted mean across all polygons
+                # Filter out NaN values to properly calculate weighted average
+                valid_mask = ~np.isnan(mean_values)
+                if np.any(valid_mask):
+                    # Calculate weighted mean using only valid (non-NaN) values
+                    valid_counts = count_values[valid_mask]
+                    valid_means = mean_values[valid_mask]
+                    total_valid_pixels = np.sum(valid_counts)
+
+                    if total_valid_pixels > 0:
+                        weighted_mean = float(np.sum(valid_counts * valid_means) / total_valid_pixels)
+                    else:
+                        weighted_mean = 0.0
+
+                    # For std, take simple mean (std doesn't weight well), ignoring NaN
+                    weighted_std = float(np.nanmean(std_values))
+
+                    return weighted_mean, weighted_std
+
+            return 0.0, 0.0
+
+        except Exception as e:
+            logger.warning(f"Error calculating severity class stats: {str(e)}")
             return 0.0, 0.0
 
     async def _calculate_zonal_statistics(
@@ -917,7 +988,7 @@ class VegetationResolveCommand(Command):
         results = {}
         severity_classes = ["unburned", "low", "moderate", "high"]
 
-        # Calculate pixel counts for each severity class
+        # Calculate pixel counts and statistics for each severity class
         severity_pixel_counts = {}
         for severity in severity_classes:
             pixel_count = self._calculate_severity_pixels(
@@ -925,6 +996,13 @@ class VegetationResolveCommand(Command):
             )
             severity_pixel_counts[severity] = pixel_count
             results[f"{severity}_ha"] = pixel_count * metadata["pixel_area_ha"]
+
+            # Calculate mean and std for this severity class
+            severity_mean, severity_std = self._calculate_severity_class_stats(
+                masks[severity], veg_subset, metadata
+            )
+            results[f"{severity}_mean"] = severity_mean
+            results[f"{severity}_std"] = severity_std
 
         # Calculate overall severity statistics (mean and std from original data)
         overall_mean, overall_std = self._calculate_overall_severity(
@@ -935,12 +1013,6 @@ class VegetationResolveCommand(Command):
 
         # Total pixel count for validation
         results["total_pixel_count"] = sum(severity_pixel_counts.values())
-
-        # We don't calculate individual means/stds per severity class since
-        # they're not used in the vegetation analysis - only pixel counts matter
-        for severity in severity_classes:
-            results[f"{severity}_mean"] = 0.0
-            results[f"{severity}_std"] = 0.0
 
         return results
 
