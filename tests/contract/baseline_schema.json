@@ -1,0 +1,1894 @@
+{
+  "components": {
+    "schemas": {
+      "BaseModel": {
+        "properties": {},
+        "title": "BaseModel",
+        "type": "object"
+      },
+      "Body_upload_shapefile_fire_recovery_upload_shapefile_post": {
+        "properties": {
+          "boundary_type": {
+            "default": "refined",
+            "title": "Boundary Type",
+            "type": "string"
+          },
+          "fire_event_name": {
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "shapefile": {
+            "format": "binary",
+            "title": "Shapefile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "shapefile"
+        ],
+        "title": "Body_upload_shapefile_fire_recovery_upload_shapefile_post",
+        "type": "object"
+      },
+      "Feature": {
+        "description": "Feature Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "GeometryCollection": "#/components/schemas/GeometryCollection",
+                    "LineString": "#/components/schemas/LineString",
+                    "MultiLineString": "#/components/schemas/MultiLineString",
+                    "MultiPoint": "#/components/schemas/MultiPoint",
+                    "MultiPolygon": "#/components/schemas/MultiPolygon",
+                    "Point": "#/components/schemas/Point",
+                    "Polygon": "#/components/schemas/Polygon"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Point"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MultiPoint"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LineString"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MultiLineString"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Polygon"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MultiPolygon"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GeometryCollection"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometry"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "$ref": "#/components/schemas/BaseModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Properties"
+          },
+          "type": {
+            "const": "Feature",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "geometry",
+          "properties"
+        ],
+        "title": "Feature",
+        "type": "object"
+      },
+      "FireSeverityResponse": {
+        "properties": {
+          "coarse_severity_cog_urls": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "URLs to the COGs for each metric",
+            "title": "Coarse Severity Cog Urls",
+            "type": "object"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id",
+          "coarse_severity_cog_urls"
+        ],
+        "title": "FireSeverityResponse",
+        "type": "object"
+      },
+      "GeoJSONUploadRequest": {
+        "properties": {
+          "boundary_type": {
+            "default": "coarse",
+            "description": "Type of boundary - 'coarse' or 'refined'",
+            "title": "Boundary Type",
+            "type": "string"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "geojson": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Polygon"
+              },
+              {
+                "$ref": "#/components/schemas/MultiPolygon"
+              },
+              {
+                "$ref": "#/components/schemas/Feature"
+              }
+            ],
+            "description": "GeoJSON data to upload",
+            "title": "Geojson"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "geojson"
+        ],
+        "title": "GeoJSONUploadRequest",
+        "type": "object"
+      },
+      "GeometryCollection": {
+        "description": "GeometryCollection Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "geometries": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "GeometryCollection": "#/components/schemas/GeometryCollection",
+                  "LineString": "#/components/schemas/LineString",
+                  "MultiLineString": "#/components/schemas/MultiLineString",
+                  "MultiPoint": "#/components/schemas/MultiPoint",
+                  "MultiPolygon": "#/components/schemas/MultiPolygon",
+                  "Point": "#/components/schemas/Point",
+                  "Polygon": "#/components/schemas/Polygon"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Point"
+                },
+                {
+                  "$ref": "#/components/schemas/MultiPoint"
+                },
+                {
+                  "$ref": "#/components/schemas/LineString"
+                },
+                {
+                  "$ref": "#/components/schemas/MultiLineString"
+                },
+                {
+                  "$ref": "#/components/schemas/Polygon"
+                },
+                {
+                  "$ref": "#/components/schemas/MultiPolygon"
+                },
+                {
+                  "$ref": "#/components/schemas/GeometryCollection"
+                }
+              ]
+            },
+            "title": "Geometries",
+            "type": "array"
+          },
+          "type": {
+            "const": "GeometryCollection",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "geometries"
+        ],
+        "title": "GeometryCollection",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthCheckResponse": {
+        "description": "Response model for health check endpoint",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "description": "Individual component health checks",
+            "title": "Checks",
+            "type": "object"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "overall_status": {
+            "description": "Overall system health status",
+            "title": "Overall Status",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Unix timestamp of the health check",
+            "title": "Timestamp",
+            "type": "number"
+          },
+          "unhealthy_components": {
+            "description": "Number of unhealthy components",
+            "title": "Unhealthy Components",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id",
+          "overall_status",
+          "timestamp",
+          "checks",
+          "unhealthy_components"
+        ],
+        "title": "HealthCheckResponse",
+        "type": "object"
+      },
+      "LineString": {
+        "description": "LineString Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Position2D"
+                },
+                {
+                  "$ref": "#/components/schemas/Position3D"
+                }
+              ]
+            },
+            "minItems": 2,
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "LineString",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "LineString",
+        "type": "object"
+      },
+      "MultiLineString": {
+        "description": "MultiLineString Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Position2D"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Position3D"
+                  }
+                ]
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "MultiLineString",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "MultiLineString",
+        "type": "object"
+      },
+      "MultiPoint": {
+        "description": "MultiPoint Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Position2D"
+                },
+                {
+                  "$ref": "#/components/schemas/Position3D"
+                }
+              ]
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "MultiPoint",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "MultiPoint",
+        "type": "object"
+      },
+      "MultiPolygon": {
+        "description": "MultiPolygon Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Position2D"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Position3D"
+                    }
+                  ]
+                },
+                "minItems": 4,
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "MultiPolygon",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "MultiPolygon",
+        "type": "object"
+      },
+      "Point": {
+        "description": "Point Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Position2D"
+              },
+              {
+                "$ref": "#/components/schemas/Position3D"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "type": {
+            "const": "Point",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "Polygon": {
+        "description": "Polygon Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Position2D"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Position3D"
+                  }
+                ]
+              },
+              "minItems": 4,
+              "type": "array"
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "Polygon",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "Polygon",
+        "type": "object"
+      },
+      "Position2D": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "title": "Longitude",
+            "type": "number"
+          },
+          {
+            "title": "Latitude",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "Position3D": {
+        "maxItems": 3,
+        "minItems": 3,
+        "prefixItems": [
+          {
+            "title": "Longitude",
+            "type": "number"
+          },
+          {
+            "title": "Latitude",
+            "type": "number"
+          },
+          {
+            "title": "Altitude",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "ProcessingRequest": {
+        "properties": {
+          "coarse_geojson": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Polygon"
+              },
+              {
+                "$ref": "#/components/schemas/MultiPolygon"
+              },
+              {
+                "$ref": "#/components/schemas/Feature"
+              }
+            ],
+            "description": "GeoJSON of bounding box AOI",
+            "title": "Coarse Geojson"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "postfire_date_range": {
+            "description": "Date range for postfire imagery (e.g. ['2024-01-01', '2024-12-31'])",
+            "items": {
+              "type": "string"
+            },
+            "title": "Postfire Date Range",
+            "type": "array"
+          },
+          "prefire_date_range": {
+            "description": "Date range for prefire imagery (e.g. ['2023-01-01', '2023-12-31'])",
+            "items": {
+              "type": "string"
+            },
+            "title": "Prefire Date Range",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "coarse_geojson",
+          "prefire_date_range",
+          "postfire_date_range"
+        ],
+        "title": "ProcessingRequest",
+        "type": "object"
+      },
+      "ProcessingStartedResponse": {
+        "properties": {
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id"
+        ],
+        "title": "ProcessingStartedResponse",
+        "type": "object"
+      },
+      "RefineRequest": {
+        "properties": {
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "description": "Job ID of the original fire severity analysis",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "refined_geojson": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Polygon"
+              },
+              {
+                "$ref": "#/components/schemas/MultiPolygon"
+              },
+              {
+                "$ref": "#/components/schemas/Feature"
+              }
+            ],
+            "description": "GeoJSON of refined AOI",
+            "title": "Refined Geojson"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "refined_geojson",
+          "job_id"
+        ],
+        "title": "RefineRequest",
+        "type": "object"
+      },
+      "RefinedBoundaryResponse": {
+        "properties": {
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "refined_boundary_geojson_url": {
+            "title": "Refined Boundary Geojson Url",
+            "type": "string"
+          },
+          "refined_severity_cog_urls": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "URLs to the refined COGs for each metric",
+            "title": "Refined Severity Cog Urls",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id",
+          "refined_boundary_geojson_url",
+          "refined_severity_cog_urls"
+        ],
+        "title": "RefinedBoundaryResponse",
+        "type": "object"
+      },
+      "TaskPendingResponse": {
+        "description": "Response for when a task is still being processed",
+        "properties": {
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id"
+        ],
+        "title": "TaskPendingResponse",
+        "type": "object"
+      },
+      "UploadedGeoJSONResponse": {
+        "properties": {
+          "boundary_type": {
+            "description": "Type of boundary (coarse or refined)",
+            "title": "Boundary Type",
+            "type": "string"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "refined_boundary_geojson_url": {
+            "title": "Refined Boundary Geojson Url",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id",
+          "refined_boundary_geojson_url",
+          "boundary_type"
+        ],
+        "title": "UploadedGeoJSONResponse",
+        "type": "object"
+      },
+      "UploadedShapefileZipResponse": {
+        "properties": {
+          "boundary_geojson_url": {
+            "description": "URL to extracted boundary GeoJSON",
+            "title": "Boundary Geojson Url",
+            "type": "string"
+          },
+          "boundary_type": {
+            "description": "Type of boundary (coarse or refined)",
+            "title": "Boundary Type",
+            "type": "string"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "shapefile_url": {
+            "description": "URL to the uploaded shapefile zip",
+            "title": "Shapefile Url",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id",
+          "shapefile_url",
+          "boundary_geojson_url",
+          "boundary_type"
+        ],
+        "title": "UploadedShapefileZipResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VegMapMatrixResponse": {
+        "properties": {
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "fire_veg_matrix_csv_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fire Veg Matrix Csv Url"
+          },
+          "fire_veg_matrix_json_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fire Veg Matrix Json Url"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id"
+        ],
+        "title": "VegMapMatrixResponse",
+        "type": "object"
+      },
+      "VegMapResolveRequest": {
+        "properties": {
+          "fire_cog_url": {
+            "description": "URL to the fire severity COG",
+            "title": "Fire Cog Url",
+            "type": "string"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "geojson_url": {
+            "description": "URL to the GeoJSON of the fire boundary",
+            "title": "Geojson Url",
+            "type": "string"
+          },
+          "job_id": {
+            "description": "Job ID of the original fire severity analysis",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "park_unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Park unit identifier for vegetation schema selection (e.g., 'JOTR', 'MOJN'). If not provided, auto-detection will be used.",
+            "title": "Park Unit Id"
+          },
+          "severity_breaks": {
+            "description": "List of classifation breaks for discrete fire severity classification (e.g. [0, .2, .4, .8])",
+            "items": {
+              "type": "number"
+            },
+            "title": "Severity Breaks",
+            "type": "array"
+          },
+          "veg_gpkg_url": {
+            "description": "URL to the vegetation map GeoPackage",
+            "title": "Veg Gpkg Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "veg_gpkg_url",
+          "fire_cog_url",
+          "job_id",
+          "severity_breaks",
+          "geojson_url"
+        ],
+        "title": "VegMapResolveRequest",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "API for fire recovery analysis tools including fire severity analysis, boundary refinement, and vegetation impact assessment",
+    "title": "Fire Recovery Backend",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Root  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root"
+      }
+    },
+    "/cache_test": {
+      "get": {
+        "operationId": "cache_test_cache_test_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Cache Test Cache Test Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cache Test"
+      }
+    },
+    "/fire-recovery/": {
+      "get": {
+        "operationId": "root_fire_recovery__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Root Fire Recovery  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "summary": "Root",
+        "tags": [
+          "Fire Recovery",
+          "Root"
+        ]
+      }
+    },
+    "/fire-recovery/healthz": {
+      "get": {
+        "description": "Health check endpoint using command pattern.\n\nThis endpoint demonstrates the command pattern for a simple operation\nand serves as a template for other endpoints.",
+        "operationId": "health_check_fire_recovery_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "summary": "Health Check",
+        "tags": [
+          "Fire Recovery",
+          "Health"
+        ]
+      }
+    },
+    "/fire-recovery/process/analyze_fire_severity": {
+      "post": {
+        "description": "Analyze fire severity using remote sensing data.",
+        "operationId": "analyze_fire_severity_fire_recovery_process_analyze_fire_severity_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingStartedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Fire Severity",
+        "tags": [
+          "Fire Recovery",
+          "Fire Severity"
+        ]
+      }
+    },
+    "/fire-recovery/process/refine": {
+      "post": {
+        "description": "Refine the fire boundary to the provided GeoJSON.",
+        "operationId": "refine_fire_boundary_fire_recovery_process_refine_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingStartedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refine Fire Boundary",
+        "tags": [
+          "Fire Recovery",
+          "Boundary Refinement"
+        ]
+      }
+    },
+    "/fire-recovery/process/resolve_against_veg_map": {
+      "post": {
+        "description": "Resolve fire severity against vegetation map to create a matrix of affected areas.",
+        "operationId": "resolve_against_veg_map_fire_recovery_process_resolve_against_veg_map_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VegMapResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingStartedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Against Veg Map",
+        "tags": [
+          "Fire Recovery",
+          "Vegetation Map Analysis"
+        ]
+      }
+    },
+    "/fire-recovery/result/analyze_fire_severity/{fire_event_name}/{job_id}": {
+      "get": {
+        "description": "Get the result of the fire severity analysis.",
+        "operationId": "get_fire_severity_result_fire_recovery_result_analyze_fire_severity__fire_event_name___job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fire_event_name",
+            "required": true,
+            "schema": {
+              "title": "Fire Event Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TaskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FireSeverityResponse"
+                    }
+                  ],
+                  "title": "Response Get Fire Severity Result Fire Recovery Result Analyze Fire Severity  Fire Event Name   Job Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Fire Severity Result",
+        "tags": [
+          "Fire Recovery",
+          "Fire Severity"
+        ]
+      }
+    },
+    "/fire-recovery/result/refine/{fire_event_name}/{job_id}": {
+      "get": {
+        "description": "Get the result of the fire boundary refinement.",
+        "operationId": "get_refine_result_fire_recovery_result_refine__fire_event_name___job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fire_event_name",
+            "required": true,
+            "schema": {
+              "title": "Fire Event Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TaskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RefinedBoundaryResponse"
+                    }
+                  ],
+                  "title": "Response Get Refine Result Fire Recovery Result Refine  Fire Event Name   Job Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Refine Result",
+        "tags": [
+          "Fire Recovery",
+          "Boundary Refinement"
+        ]
+      }
+    },
+    "/fire-recovery/result/resolve_against_veg_map/{fire_event_name}/{job_id}": {
+      "get": {
+        "description": "Get the result of the vegetation map resolution against fire severity.\nUse query parameter: ?severity_breaks=0.1&severity_breaks=0.2&severity_breaks=0.3",
+        "operationId": "get_veg_map_result_fire_recovery_result_resolve_against_veg_map__fire_event_name___job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fire_event_name",
+            "required": true,
+            "schema": {
+              "title": "Fire Event Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Severity Breaks"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TaskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/VegMapMatrixResponse"
+                    }
+                  ],
+                  "title": "Response Get Veg Map Result Fire Recovery Result Resolve Against Veg Map  Fire Event Name   Job Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Veg Map Result",
+        "tags": [
+          "Fire Recovery",
+          "Vegetation Map Analysis"
+        ]
+      }
+    },
+    "/fire-recovery/upload/geojson": {
+      "post": {
+        "description": "Upload GeoJSON data for a fire event.\n\nArgs:\n    request: GeoJSON upload request (includes geojson and boundary_type)",
+        "operationId": "upload_geojson_fire_recovery_upload_geojson_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeoJSONUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadedGeoJSONResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Geojson",
+        "tags": [
+          "Fire Recovery",
+          "Upload"
+        ]
+      }
+    },
+    "/fire-recovery/upload/shapefile": {
+      "post": {
+        "description": "Upload a zipped shapefile for a fire event.\n\nArgs:\n    fire_event_name: Name of the fire event\n    shapefile: Zipped shapefile upload\n    boundary_type: Type of boundary - either \"coarse\" or \"refined\" (default: \"refined\")",
+        "operationId": "upload_shapefile_fire_recovery_upload_shapefile_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_shapefile_fire_recovery_upload_shapefile_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadedShapefileZipResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Shapefile",
+        "tags": [
+          "Fire Recovery",
+          "Upload"
+        ]
+      }
+    }
+  }
+}
