@@ -155,6 +155,9 @@ class UploadAOICommand(Command):
                     f"Invalid boundary_type '{boundary_type}'. Must be 'coarse' or 'refined'"
                 )
 
+            # Assert geometry is not None (validated in validate_context for geojson uploads)
+            assert context.geometry is not None, "geometry required for GeoJSON upload"
+
             # Get geometry from context and convert to dict format for processing
             geometry_obj = context.geometry
             if hasattr(geometry_obj, "model_dump"):

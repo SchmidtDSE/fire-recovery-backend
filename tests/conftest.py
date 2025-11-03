@@ -123,7 +123,6 @@ def sample_geometry() -> Polygon:
 def sample_shapefile_zip_bytes(tmp_path) -> bytes:
     """Create a valid shapefile zip in memory for testing"""
     import tempfile
-    import shutil
 
     # Create a simple polygon
     polygon = ShapelyPolygon(

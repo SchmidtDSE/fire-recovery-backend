@@ -1438,9 +1438,7 @@ class TestZonalStatisticsBugFixes:
 
         # Create mock data
         import numpy as np
-        import xarray as xr
         import geopandas as gpd
-        from shapely.geometry import Point
 
         # Mock DataArray with required methods
         mock_data_array = Mock()
@@ -1547,7 +1545,6 @@ class TestZonalStatisticsBugFixes:
         """Test that _calculate_zonal_statistics populates mean and std for each severity class."""
         command = VegetationResolveCommand()
 
-        import numpy as np
         import geopandas as gpd
 
         # Create mock masks
@@ -1713,7 +1710,7 @@ class TestZonalStatisticsBugFixes:
         command = VegetationResolveCommand()
 
         import geopandas as gpd
-        from shapely.geometry import Point, Polygon as ShapelyPolygon
+        from shapely.geometry import Polygon as ShapelyPolygon
 
         # Create minimal mock data to test DataFrame initialization
         with (

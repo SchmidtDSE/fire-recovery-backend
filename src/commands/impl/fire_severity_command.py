@@ -5,6 +5,7 @@ import xarray as xr
 import stackstac
 import numpy as np
 from shapely.geometry import shape
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
@@ -105,6 +106,11 @@ class FireSeverityAnalysisCommand(Command):
                 },
             )
 
+        # Assert geometry is not None (validated above)
+        assert context.geometry is not None, "geometry validated but is None"
+        # Assign to local variable for type narrowing
+        geometry = context.geometry
+
         try:
             # Extract configuration
             prefire_date_range = context.get_computation_config("prefire_date_range")
@@ -133,6 +139,7 @@ class FireSeverityAnalysisCommand(Command):
             # Step 1: Fetch satellite data via STAC
             stac_data = await self._fetch_satellite_data(
                 context,
+                geometry,
                 prefire_date_range,
                 postfire_date_range,
                 collection,
@@ -141,7 +148,7 @@ class FireSeverityAnalysisCommand(Command):
 
             # Step 2: Calculate burn indices using strategy pattern
             index_results = await self._calculate_burn_indices(
-                context, stac_data, indices
+                context, geometry, stac_data, indices
             )
 
             # Step 3: Save results as COGs via storage abstraction
@@ -149,7 +156,7 @@ class FireSeverityAnalysisCommand(Command):
 
             # Step 4: Update STAC metadata
             stac_item_url = await self._create_stac_metadata(
-                context, asset_urls, prefire_date_range, postfire_date_range
+                context, geometry, asset_urls, prefire_date_range, postfire_date_range
             )
 
             execution_time = (time.time() - start_time) * 1000
@@ -194,6 +201,7 @@ class FireSeverityAnalysisCommand(Command):
     async def _fetch_satellite_data(
         self,
         context: CommandContext,
+        geometry: Polygon | MultiPolygon | Feature,
         prefire_date_range: List[str],
         postfire_date_range: List[str],
         collection: str,
@@ -211,7 +219,7 @@ class FireSeverityAnalysisCommand(Command):
 
             # Search for items
             items, endpoint_config = await stac_handler.search_items(
-                geometry=context.geometry,
+                geometry=geometry,
                 date_range=full_date_range,
                 collections=[collection],
             )
@@ -233,10 +241,10 @@ class FireSeverityAnalysisCommand(Command):
 
             # Calculate buffered bounds
             # Convert geometry to dict format for shapely processing
-            if hasattr(context.geometry, "model_dump"):
-                geometry_dict: Dict[str, Any] = context.geometry.model_dump()
+            if hasattr(geometry, "model_dump"):
+                geometry_dict: Dict[str, Any] = geometry.model_dump()
             else:
-                geometry_dict: Dict[str, Any] = context.geometry  # type: ignore
+                geometry_dict: Dict[str, Any] = geometry  # type: ignore
             buffered_bounds = self._get_buffered_bounds(geometry_dict, buffer_meters)
 
             # Stack data using stackstac
@@ -274,6 +282,7 @@ class FireSeverityAnalysisCommand(Command):
     async def _calculate_burn_indices(
         self,
         context: CommandContext,
+        geometry: Polygon | MultiPolygon | Feature,
         stac_data: STACDataPayload,
         requested_indices: List[str],
     ) -> Dict[str, xr.DataArray]:
@@ -290,7 +299,7 @@ class FireSeverityAnalysisCommand(Command):
             calc_context = {
                 "band_mapping": {"nir": nir_band, "swir": swir_band},
                 "job_id": context.job_id,
-                "geometry": context.geometry,
+                "geometry": geometry,
             }
 
             index_results = {}
@@ -365,6 +374,7 @@ class FireSeverityAnalysisCommand(Command):
     async def _create_stac_metadata(
         self,
         context: CommandContext,
+        geometry: Polygon | MultiPolygon | Feature,
         asset_urls: Dict[str, str],
         prefire_date_range: List[str],
         postfire_date_range: List[str],
@@ -378,7 +388,7 @@ class FireSeverityAnalysisCommand(Command):
                 fire_event_name=context.fire_event_name,
                 job_id=context.job_id,
                 cog_urls=asset_urls,
-                geometry=context.geometry,
+                geometry=geometry,
                 datetime_str=postfire_date_range[1],
                 boundary_type="coarse",
                 skip_validation=False,
