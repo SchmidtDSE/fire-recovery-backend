@@ -58,6 +58,32 @@ pixi run pytest --cov
 pixi run pytest tests/test_example.py
 ```
 
+### Contract Testing
+
+Contract tests ensure API stability and prevent breaking changes between backend and frontend:
+
+```bash
+# Run all contract tests
+pixi run pytest tests/contract/
+
+# Run specific contract test suite
+pixi run pytest tests/contract/test_openapi_schema.py
+pixi run pytest tests/contract/test_schema_stability.py
+
+# Generate baseline schema (after intentional API changes)
+pixi run python -m scripts.generate_baseline_schema
+```
+
+**When to update the baseline**:
+- After adding new endpoints
+- After modifying request/response models
+- After intentional breaking changes (coordinate with frontend)
+
+**Never update the baseline without**:
+1. Reviewing the schema diff
+2. Confirming changes are intentional
+3. Coordinating with frontend team if breaking
+
 ## Environment Variables & Secrets
 
 ### Overview
