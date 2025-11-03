@@ -95,6 +95,36 @@ jobs:
           RUN_LOCAL: "True"
         run: pixi run pytest --verbose
 
+      - name: Generate OpenAPI schema artifact
+        if: always()
+        env:
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
+          RUN_LOCAL: "True"
+        run: |
+          echo "Generating current OpenAPI schema..."
+          pixi run python -m scripts.generate_baseline_schema
+
+      - name: Upload OpenAPI schema artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openapi-schema-${{ github.sha }}
+          path: tests/contract/baseline_schema.json
+          retention-days: 30
+
+      - name: Upload contract test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-test-results-${{ github.sha }}
+          path: |
+            tests/contract/schemas/
+          retention-days: 7
+
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
