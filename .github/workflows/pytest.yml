@@ -95,7 +95,10 @@ jobs:
           RUN_LOCAL: "True"
         run: pixi run pytest --verbose
 
-      - name: Generate OpenAPI schema artifact
+      # Note: Contract tests are included in the main pytest run above
+      # They validate OpenAPI schema stability and endpoint contracts
+
+      - name: Generate OpenAPI schema
         if: always()
         env:
           S3_ENDPOINT: localhost:9000
@@ -105,16 +108,59 @@ jobs:
           S3_BUCKET: test-bucket
           RUN_LOCAL: "True"
         run: |
-          echo "Generating current OpenAPI schema..."
+          echo "Generating OpenAPI schema for frontend consumption..."
           pixi run python -m scripts.generate_baseline_schema
 
-      - name: Upload OpenAPI schema artifact
-        uses: actions/upload-artifact@v4
-        if: always()
+      - name: Authenticate with Google Cloud
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        uses: google-github-actions/auth@v2
         with:
-          name: openapi-schema-${{ github.sha }}
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          project_id: 'dse-nps'
+
+      - name: Upload schema to GCP bucket
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
           path: tests/contract/baseline_schema.json
-          retention-days: 30
+          destination: fire-recovery-temp/openapi-schemas/
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload branch-specific schema (dev)
+        if: github.ref == 'refs/heads/dev'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/dev.json
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload branch-specific schema (production)
+        if: github.ref == 'refs/heads/main'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/production.json
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload commit-specific schema
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/${{ github.sha }}.json
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
 
       - name: Upload contract test results
         uses: actions/upload-artifact@v4
