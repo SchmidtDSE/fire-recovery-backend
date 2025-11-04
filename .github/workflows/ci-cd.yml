@@ -198,7 +198,7 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: baseline_schema.json
-          destination: fire-recovery-temp/openapi-schemas/${{ github.sha }}.json
+          destination: fire-recovery-store/openapi-schemas/${{ github.sha }}.json
           process_gcloudignore: false
           headers: |-
             content-type: application/json
@@ -207,7 +207,7 @@ jobs:
         uses: google-github-actions/upload-cloud-storage@v2
         with:
           path: baseline_schema.json
-          destination: fire-recovery-temp/openapi-schemas/${{ github.ref_name }}.json
+          destination: fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json
           process_gcloudignore: false
           headers: |-
             content-type: application/json
@@ -215,8 +215,8 @@ jobs:
       - name: Display schema URLs
         run: |
           echo "OpenAPI schema published:"
-          echo "  Commit: https://storage.googleapis.com/fire-recovery-temp/openapi-schemas/${{ github.sha }}.json"
-          echo "  Branch: https://storage.googleapis.com/fire-recovery-temp/openapi-schemas/${{ github.ref_name }}.json"
+          echo "  Commit: https://storage.googleapis.com/fire-recovery-store/openapi-schemas/${{ github.sha }}.json"
+          echo "  Branch: https://storage.googleapis.com/fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json"
 
   # Job 5: Deploy to Cloud Run (needs schema publish to succeed)
   # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
