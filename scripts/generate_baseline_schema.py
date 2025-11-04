@@ -29,10 +29,7 @@ def generate_baseline_schema() -> None:
 
         # Save to baseline file
         baseline_path = (
-            Path(__file__).parent.parent
-            / "tests"
-            / "contract"
-            / "baseline_schema.json"
+            Path(__file__).parent.parent / "tests" / "contract" / "baseline_schema.json"
         )
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
 

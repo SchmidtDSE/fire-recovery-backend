@@ -482,10 +482,15 @@ class UploadAOICommand(Command):
                     "Invalid zip file or no .shp file found in zip. "
                     "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
                 )
-            elif "Cannot open" in error_msg or "not recognized as being in a supported file format" in error_msg:
+            elif (
+                "Cannot open" in error_msg
+                or "not recognized as being in a supported file format" in error_msg
+            ):
                 raise ValueError(
                     "Invalid zip file or no .shp file found in zip. "
                     "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
                 )
             else:
-                raise ValueError(f"Failed to extract geometry from shapefile: {error_msg}")
+                raise ValueError(
+                    f"Failed to extract geometry from shapefile: {error_msg}"
+                )

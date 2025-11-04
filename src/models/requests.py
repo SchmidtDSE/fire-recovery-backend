@@ -48,8 +48,12 @@ class VegMapResolveRequest(BaseModel):
 
 class GeoJSONUploadRequest(BaseModel):
     fire_event_name: str = Field(..., description="Name of the fire event")
-    geojson: Union[Polygon, MultiPolygon, Feature] = Field(..., description="GeoJSON data to upload")
-    boundary_type: str = Field(default="coarse", description="Type of boundary - 'coarse' or 'refined'")
+    geojson: Union[Polygon, MultiPolygon, Feature] = Field(
+        ..., description="GeoJSON data to upload"
+    )
+    boundary_type: str = Field(
+        default="coarse", description="Type of boundary - 'coarse' or 'refined'"
+    )
 
 
 class HealthCheckRequest(BaseModel):

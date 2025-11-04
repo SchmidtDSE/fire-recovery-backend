@@ -1446,11 +1446,13 @@ class TestZonalStatisticsBugFixes:
 
         # Mock the zonal_stats return value
         mock_stats_result = Mock()
-        mock_stats_result.isel = Mock(side_effect=[
-            Mock(values=np.array([100.0])),  # count
-            Mock(values=np.array([0.5])),     # mean
-            Mock(values=np.array([0.1])),     # stdev
-        ])
+        mock_stats_result.isel = Mock(
+            side_effect=[
+                Mock(values=np.array([100.0])),  # count
+                Mock(values=np.array([0.5])),  # mean
+                Mock(values=np.array([0.1])),  # stdev
+            ]
+        )
         mock_stats_result.dims = ["zonal_statistics"]
         mock_data_array.xvec.zonal_stats = Mock(return_value=mock_stats_result)
 
@@ -1500,11 +1502,13 @@ class TestZonalStatisticsBugFixes:
 
         # Mock the zonal_stats return value
         mock_stats_result = Mock()
-        mock_stats_result.isel = Mock(side_effect=[
-            Mock(values=np.array([50.0, 50.0])),      # count values for 2 polygons
-            Mock(values=np.array([0.25, 0.35])),      # mean values for 2 polygons
-            Mock(values=np.array([0.05, 0.08])),      # stdev values for 2 polygons
-        ])
+        mock_stats_result.isel = Mock(
+            side_effect=[
+                Mock(values=np.array([50.0, 50.0])),  # count values for 2 polygons
+                Mock(values=np.array([0.25, 0.35])),  # mean values for 2 polygons
+                Mock(values=np.array([0.05, 0.08])),  # stdev values for 2 polygons
+            ]
+        )
         mock_stats_result.dims = ["zonal_statistics"]
         mock_mask_data.xvec.zonal_stats = Mock(return_value=mock_stats_result)
 
@@ -1555,22 +1559,31 @@ class TestZonalStatisticsBugFixes:
             mock_masks[severity] = mock_mask
 
         # Mock pixel count calculations
-        with patch.object(command, '_calculate_severity_pixels') as mock_pixels:
+        with patch.object(command, "_calculate_severity_pixels") as mock_pixels:
             # Return different pixel counts for each severity class
-            mock_pixels.side_effect = [10.0, 20.0, 30.0, 40.0]  # For each severity class
+            mock_pixels.side_effect = [
+                10.0,
+                20.0,
+                30.0,
+                40.0,
+            ]  # For each severity class
 
             # Mock severity class stats calculations
-            with patch.object(command, '_calculate_severity_class_stats') as mock_class_stats:
+            with patch.object(
+                command, "_calculate_severity_class_stats"
+            ) as mock_class_stats:
                 # Return different mean/std for each severity class
                 mock_class_stats.side_effect = [
-                    (0.05, 0.01),   # unburned
-                    (0.20, 0.05),   # low
-                    (0.45, 0.10),   # moderate
-                    (0.75, 0.15),   # high
+                    (0.05, 0.01),  # unburned
+                    (0.20, 0.05),  # low
+                    (0.45, 0.10),  # moderate
+                    (0.75, 0.15),  # high
                 ]
 
                 # Mock overall severity calculation
-                with patch.object(command, '_calculate_overall_severity') as mock_overall:
+                with patch.object(
+                    command, "_calculate_overall_severity"
+                ) as mock_overall:
                     mock_overall.return_value = (0.35, 0.12)
 
                     # Create mock vegetation subset
@@ -1625,7 +1638,9 @@ class TestZonalStatisticsBugFixes:
         # Mock DataArray that raises an error
         mock_data_array = Mock()
         mock_data_array.xvec = Mock()
-        mock_data_array.xvec.zonal_stats = Mock(side_effect=Exception("Unsupported stat: std"))
+        mock_data_array.xvec.zonal_stats = Mock(
+            side_effect=Exception("Unsupported stat: std")
+        )
 
         # Create mock vegetation subset
         mock_veg_subset = Mock(spec=gpd.GeoDataFrame)
@@ -1692,16 +1707,24 @@ class TestZonalStatisticsBugFixes:
 
             # Verify values are not zero
             if severity == "unburned":
-                assert community["severity_breakdown"][severity]["mean_severity"] == 0.05
+                assert (
+                    community["severity_breakdown"][severity]["mean_severity"] == 0.05
+                )
                 assert community["severity_breakdown"][severity]["std_dev"] == 0.01
             elif severity == "low":
-                assert community["severity_breakdown"][severity]["mean_severity"] == 0.18
+                assert (
+                    community["severity_breakdown"][severity]["mean_severity"] == 0.18
+                )
                 assert community["severity_breakdown"][severity]["std_dev"] == 0.05
             elif severity == "moderate":
-                assert community["severity_breakdown"][severity]["mean_severity"] == 0.45
+                assert (
+                    community["severity_breakdown"][severity]["mean_severity"] == 0.45
+                )
                 assert community["severity_breakdown"][severity]["std_dev"] == 0.1
             elif severity == "high":
-                assert community["severity_breakdown"][severity]["mean_severity"] == 0.75
+                assert (
+                    community["severity_breakdown"][severity]["mean_severity"] == 0.75
+                )
                 assert community["severity_breakdown"][severity]["std_dev"] == 0.15
 
     @pytest.mark.asyncio
@@ -1716,7 +1739,9 @@ class TestZonalStatisticsBugFixes:
         with (
             patch.object(command, "_load_fire_data_from_bytes") as mock_load_fire,
             patch.object(command, "_load_vegetation_data_from_bytes") as mock_load_veg,
-            patch.object(command, "_load_boundary_data_from_bytes") as mock_load_boundary,
+            patch.object(
+                command, "_load_boundary_data_from_bytes"
+            ) as mock_load_boundary,
             patch.object(command, "_create_severity_masks") as mock_create_masks,
             patch.object(command, "_calculate_zonal_statistics") as mock_zonal_stats,
             patch("src.commands.impl.vegetation_resolve_command.gpd.clip") as mock_clip,
@@ -1813,15 +1838,21 @@ class TestZonalStatisticsBugFixes:
             ]
 
             for col in expected_columns:
-                assert col in result_df.columns, f"Column '{col}' is missing from result DataFrame"
+                assert col in result_df.columns, (
+                    f"Column '{col}' is missing from result DataFrame"
+                )
 
             # Verify all rows have non-NaN values for these columns
             for veg_type in result_df.index:
                 for col in expected_columns:
                     value = result_df.loc[veg_type, col]
-                    assert not pd.isna(value), f"Value for '{col}' in '{veg_type}' is NaN"
+                    assert not pd.isna(value), (
+                        f"Value for '{col}' in '{veg_type}' is NaN"
+                    )
                     # Values should be numeric (float)
-                    assert isinstance(value, (int, float)), f"Value for '{col}' in '{veg_type}' is not numeric"
+                    assert isinstance(value, (int, float)), (
+                        f"Value for '{col}' in '{veg_type}' is not numeric"
+                    )
 
             # Verify mean and std values match what was returned from zonal_stats
             assert result_df.loc["Forest", "unburned_mean"] == 0.05

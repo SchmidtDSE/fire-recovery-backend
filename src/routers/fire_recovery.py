@@ -46,7 +46,9 @@ from src.models.responses import (
 )
 
 
-def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | MultiPolygon | Feature:
+def convert_geometry_to_pydantic(
+    geometry: dict[str, Any],
+) -> Polygon | MultiPolygon | Feature:
     """Convert dict geometry to geojson-pydantic type"""
     if geometry.get("type") == "Feature":
         return Feature.model_validate(geometry)

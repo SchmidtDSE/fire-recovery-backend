@@ -10,6 +10,7 @@ This script:
 
 This catches frontend/backend drift before deployment.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -45,7 +46,8 @@ def load_examples(examples_dir: Path) -> List[Dict[str, Any]]:
 
     # Filter out README and other non-example files
     example_files = [
-        f for f in example_files
+        f
+        for f in example_files
         if not f.name.startswith("_") and f.name != "README.json"
     ]
 
@@ -59,7 +61,9 @@ def load_examples(examples_dir: Path) -> List[Dict[str, Any]]:
                 example["_source_file"] = example_file.name
                 examples.append(example)
             except json.JSONDecodeError as e:
-                print(f"{Color.RED}ERROR: Invalid JSON in {example_file.name}: {e}{Color.END}")
+                print(
+                    f"{Color.RED}ERROR: Invalid JSON in {example_file.name}: {e}{Color.END}"
+                )
                 sys.exit(1)
 
     return examples
@@ -152,9 +156,7 @@ def validate_example(
     except ValidationError as e:
         # Format error message nicely
         error_path = " -> ".join(str(p) for p in e.path) if e.path else "root"
-        errors.append(
-            f"{source_file}: Validation error at '{error_path}': {e.message}"
-        )
+        errors.append(f"{source_file}: Validation error at '{error_path}': {e.message}")
 
     return errors
 
@@ -186,7 +188,9 @@ def main():
         sys.exit(1)
 
     if not args.examples_dir.exists():
-        print(f"{Color.RED}ERROR: Examples directory not found: {args.examples_dir}{Color.END}")
+        print(
+            f"{Color.RED}ERROR: Examples directory not found: {args.examples_dir}{Color.END}"
+        )
         sys.exit(1)
 
     # Load schema and examples
@@ -198,7 +202,9 @@ def main():
         sys.exit(1)
 
     if not examples:
-        print(f"{Color.YELLOW}WARNING: No example files found in {args.examples_dir}{Color.END}")
+        print(
+            f"{Color.YELLOW}WARNING: No example files found in {args.examples_dir}{Color.END}"
+        )
         print(f"{Color.GREEN}✓ Validation passed (no examples to validate){Color.END}")
         sys.exit(0)
 
@@ -226,16 +232,24 @@ def main():
     print()
 
     if all_errors:
-        print(f"{Color.RED}✗ Validation failed with {len(all_errors)} error(s):{Color.END}\n")
+        print(
+            f"{Color.RED}✗ Validation failed with {len(all_errors)} error(s):{Color.END}\n"
+        )
         for error in all_errors:
             print(f"  {Color.RED}• {error}{Color.END}")
         print()
-        print(f"{Color.YELLOW}These errors indicate frontend/backend API drift.{Color.END}")
-        print(f"{Color.YELLOW}Either update the frontend examples or fix the backend API.{Color.END}")
+        print(
+            f"{Color.YELLOW}These errors indicate frontend/backend API drift.{Color.END}"
+        )
+        print(
+            f"{Color.YELLOW}Either update the frontend examples or fix the backend API.{Color.END}"
+        )
         sys.exit(1)
     else:
         print(f"{Color.GREEN}✓ All examples validated successfully!{Color.END}")
-        print(f"{Color.GREEN}✓ Frontend examples match backend OpenAPI schema{Color.END}")
+        print(
+            f"{Color.GREEN}✓ Frontend examples match backend OpenAPI schema{Color.END}"
+        )
         sys.exit(0)
 
 

@@ -645,7 +645,9 @@ class TestBackwardCompatibility:
             "type": "Feature",
             "geometry": {
                 "type": "Polygon",
-                "coordinates": [[[-120, 35], [-119, 35], [-119, 36], [-120, 36], [-120, 35]]],
+                "coordinates": [
+                    [[-120, 35], [-119, 35], [-119, 36], [-120, 36], [-120, 35]]
+                ],
             },
             "properties": {"datetime": "2024-01-15T12:00:00Z"},
             "bbox": [-120.0, 35.0, -119.0, 36.0],

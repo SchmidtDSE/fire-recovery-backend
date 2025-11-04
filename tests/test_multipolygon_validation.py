@@ -157,7 +157,9 @@ class TestValidatePolygonWithMultiPolygon:
         bounds = result.bounds
         assert -121.0 < bounds[0] < -120.0  # minx (westernmost)
         assert 38.0 < bounds[1] < 39.0  # miny (southernmost)
-        assert -121.0 < bounds[2] < -119.0  # maxx (easternmost) - wider range for spot fire
+        assert (
+            -121.0 < bounds[2] < -119.0
+        )  # maxx (easternmost) - wider range for spot fire
         assert 38.0 < bounds[3] < 39.0  # maxy (northernmost)
 
     def test_validate_polygon_still_accepts_polygon(
@@ -311,7 +313,9 @@ class TestPolygonToValidGeoJSONWithMultiPolygon:
         assert result.type == "FeatureCollection"
         assert result.features[0].geometry.type == "Polygon"
 
-    def test_geojson_serialization(self, realistic_fire_multipolygon: MultiPolygon) -> None:
+    def test_geojson_serialization(
+        self, realistic_fire_multipolygon: MultiPolygon
+    ) -> None:
         """FeatureCollection can be serialized to JSON"""
         result = polygon_to_valid_geojson(realistic_fire_multipolygon)
 
@@ -495,7 +499,8 @@ class TestEdgeCases:
             )
 
         complex_multipolygon = MultiPolygon(  # type: ignore[arg-type]
-            type="MultiPolygon", coordinates=coordinates  # type: ignore[arg-type]
+            type="MultiPolygon",
+            coordinates=coordinates,  # type: ignore[arg-type]
         )
 
         result = validate_polygon(complex_multipolygon)

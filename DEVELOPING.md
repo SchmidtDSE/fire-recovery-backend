@@ -84,6 +84,42 @@ pixi run python -m scripts.generate_baseline_schema
 2. Confirming changes are intentional
 3. Coordinating with frontend team if breaking
 
+### CI/CD Pipeline
+
+The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd.yml`.
+
+**Pipeline Stages:**
+
+1. **Quality Checks** (parallel execution):
+   - MyPy type checking
+   - Ruff linting and formatting
+   - Pytest (all tests including contract tests)
+
+2. **Schema Publishing** (after quality checks pass):
+   - Generates OpenAPI schema
+   - Uploads to GCS for frontend consumption
+   - Only runs on `dev` and `main` branches
+
+3. **Deployment** (after schema publishing):
+   - Builds Docker image via Cloud Build
+   - Deploys to Cloud Run
+   - `dev` branch: Auto-deploys to dev environment
+   - `main` branch: Requires manual approval for production
+
+**Security:**
+- Pull requests only run quality checks (no deployment, no secrets)
+- Secrets are isolated using GitHub environments
+- Failed tests automatically block deployment
+
+**GitHub Environments:**
+- `dev` environment: Auto-deploy, no approval required
+- `main` environment: Requires 1+ approvals for production deployment
+
+**Triggering Deployments:**
+- Push to `dev` branch: Automatically deploys to dev after tests pass
+- Push to `main` branch: Automatically publishes schema, waits for approval to deploy to production
+- Pull requests: Only run quality checks
+
 ## Environment Variables & Secrets
 
 ### Overview
