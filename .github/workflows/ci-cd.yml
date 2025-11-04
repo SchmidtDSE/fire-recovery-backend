@@ -199,6 +199,7 @@ jobs:
         with:
           path: baseline_schema.json
           destination: fire-recovery-store/openapi-schemas/${{ github.sha }}.json
+          parent: false
           process_gcloudignore: false
           headers: |-
             content-type: application/json
@@ -208,6 +209,7 @@ jobs:
         with:
           path: baseline_schema.json
           destination: fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json
+          parent: false
           process_gcloudignore: false
           headers: |-
             content-type: application/json
