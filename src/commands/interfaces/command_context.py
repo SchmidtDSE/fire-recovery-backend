@@ -21,14 +21,15 @@ class CommandContext:
     job_id: str
     fire_event_name: str
 
-    # Geometry data (GeoJSON format only)
-    geometry: Polygon | MultiPolygon | Feature
-
     # Dependencies (injected by command registry)
     storage: StorageInterface
     storage_factory: StorageFactory
     stac_manager: STACJSONManager
     index_registry: IndexRegistry
+
+    # Geometry data (GeoJSON format only)
+    # Optional to support workflows where geometry is loaded from external sources
+    geometry: Optional[Polygon | MultiPolygon | Feature] = None
 
     # Optional execution parameters
     prefire_date_range: Optional[List[str]] = None
@@ -45,8 +46,7 @@ class CommandContext:
             raise ValueError("job_id is required")
         if not self.fire_event_name:
             raise ValueError("fire_event_name is required")
-        if not self.geometry:
-            raise ValueError("geometry is required")
+        # Note: geometry is optional - commands that require it validate in validate_context()
         if not self.storage:
             raise ValueError("storage interface is required")
         if not self.storage_factory:

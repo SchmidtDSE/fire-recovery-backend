@@ -95,6 +95,82 @@ jobs:
           RUN_LOCAL: "True"
         run: pixi run pytest --verbose
 
+      # Note: Contract tests are included in the main pytest run above
+      # They validate OpenAPI schema stability and endpoint contracts
+
+      - name: Generate OpenAPI schema
+        if: always()
+        env:
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
+          RUN_LOCAL: "True"
+        run: |
+          echo "Generating OpenAPI schema for frontend consumption..."
+          pixi run python -m scripts.generate_baseline_schema
+
+      - name: Authenticate with Google Cloud
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          project_id: 'dse-nps'
+
+      - name: Upload schema to GCP bucket
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload branch-specific schema (dev)
+        if: github.ref == 'refs/heads/dev'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/dev.json
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload branch-specific schema (production)
+        if: github.ref == 'refs/heads/main'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/production.json
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload commit-specific schema
+        if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: tests/contract/baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/${{ github.sha }}.json
+          parent: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload contract test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-test-results-${{ github.sha }}
+          path: |
+            tests/contract/schemas/
+          retention-days: 7
+
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()

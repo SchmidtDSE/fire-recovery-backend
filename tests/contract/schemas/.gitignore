@@ -1,0 +1,4 @@
+# Ignore generated schema snapshots
+*.json
+*.txt
+!.gitignore

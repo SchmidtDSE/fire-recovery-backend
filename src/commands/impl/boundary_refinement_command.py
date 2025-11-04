@@ -110,6 +110,9 @@ class BoundaryRefinementCommand(Command):
                     error_message=f"Context validation failed: {error_msg}",
                 )
 
+            # Assert geometry is not None (validated above)
+            assert context.geometry is not None, "geometry validated but is None"
+
             logger.info(f"Starting boundary refinement for job {context.job_id}")
 
             # Step 1: Process and upload the refined boundary GeoJSON

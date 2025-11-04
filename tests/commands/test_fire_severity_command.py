@@ -288,8 +288,10 @@ class TestFireSeverityAnalysisCommand:
         mock_stackstac.stack.return_value = mock_data
 
         # Test the method
+        assert command_context.geometry is not None
         result = await command._fetch_satellite_data(
             command_context,
+            command_context.geometry,
             ["2023-06-01", "2023-06-15"],
             ["2023-07-01", "2023-07-15"],
             "sentinel-2-l2a",
@@ -324,10 +326,12 @@ class TestFireSeverityAnalysisCommand:
         }
 
         # Test calculation
+        assert command_context.geometry is not None
         result = await command._calculate_burn_indices(
             command_context,
-            stac_data,
-            ["nbr", "dnbr"],  # type: ignore
+            command_context.geometry,
+            stac_data,  # type: ignore
+            ["nbr", "dnbr"],
         )
 
         # Verify results
@@ -366,8 +370,10 @@ class TestFireSeverityAnalysisCommand:
 
         asset_urls = {"nbr": "mock://nbr.tif", "dnbr": "mock://dnbr.tif"}
 
+        assert command_context.geometry is not None
         result = await command._create_stac_metadata(
             command_context,
+            command_context.geometry,
             asset_urls,
             ["2023-06-01", "2023-06-15"],
             ["2023-07-01", "2023-07-15"],

@@ -46,7 +46,9 @@ from src.models.responses import (
 )
 
 
-def convert_geometry_to_pydantic(geometry: dict[str, Any]) -> Polygon | MultiPolygon | Feature:
+def convert_geometry_to_pydantic(
+    geometry: dict[str, Any],
+) -> Polygon | MultiPolygon | Feature:
     """Convert dict geometry to geojson-pydantic type"""
     if geometry.get("type") == "Feature":
         return Feature.model_validate(geometry)
@@ -766,19 +768,13 @@ async def execute_vegetation_resolution_command(
     )
 
     try:
-        # Create placeholder geometry (actual boundary comes from geojson_url)
-        # Pydantic will validate the coordinates automatically
-        placeholder_geometry = Polygon(
-            type="Polygon",
-            coordinates=[[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]]
-        )
-
         # Create command context with vegetation resolution parameters
+        # Note: geometry is None here as the actual boundary comes from geojson_url
         logger.debug("Creating CommandContext for vegetation resolution")
         context = CommandContext(
             job_id=job_id,
             fire_event_name=fire_event_name,
-            geometry=placeholder_geometry,
+            geometry=None,
             storage=storage_factory.get_temp_storage(),
             storage_factory=storage_factory,
             stac_manager=stac_manager,

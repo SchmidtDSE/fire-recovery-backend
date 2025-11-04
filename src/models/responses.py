@@ -43,7 +43,9 @@ class UploadedGeoJSONResponse(BaseResponse):
 
 class UploadedShapefileZipResponse(BaseResponse):
     shapefile_url: str = Field(..., description="URL to the uploaded shapefile zip")
-    boundary_geojson_url: str = Field(..., description="URL to extracted boundary GeoJSON")
+    boundary_geojson_url: str = Field(
+        ..., description="URL to extracted boundary GeoJSON"
+    )
     boundary_type: str = Field(..., description="Type of boundary (coarse or refined)")
 
 

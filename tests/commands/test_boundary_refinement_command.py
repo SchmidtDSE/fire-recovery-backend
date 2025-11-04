@@ -208,7 +208,9 @@ class TestBoundaryRefinementCommand:
 
         is_valid, error_msg = command.validate_context(valid_context)
         assert is_valid is False
-        assert "geometry must be a Polygon, MultiPolygon, or Feature object" in error_msg
+        assert (
+            "geometry must be a Polygon, MultiPolygon, or Feature object" in error_msg
+        )
 
     @pytest.mark.asyncio
     @patch("src.commands.impl.boundary_refinement_command.process_and_upload_geojson")
