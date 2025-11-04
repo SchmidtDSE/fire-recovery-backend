@@ -1,0 +1,309 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  # Job 1: Type checking (runs in parallel, no secrets)
+  mypy:
+    name: MyPy Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
+      - name: Run mypy
+        run: pixi run mypy --config-file mypy.ini src/
+
+  # Job 2: Linting and formatting (runs in parallel, no secrets)
+  ruff:
+    name: Ruff Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
+      - name: Run ruff check
+        run: pixi run ruff-check
+
+      - name: Run ruff format check
+        run: pixi run ruff-format --check
+
+  # Job 3: Tests including contract tests (runs in parallel, no secrets)
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+
+    services:
+      minio:
+        image: bitnamilegacy/minio:latest
+        ports:
+          - 9000:9000
+          - 9001:9001
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: test-bucket:download
+          MINIO_SCHEME: http
+          BITNAMI_DEBUG: false
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/ready || curl -f http://localhost:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+
+      - name: Create test environment files
+        run: |
+          mkdir -p .devcontainer
+
+          # Create test.env with S3_* variables (new standard)
+          cat > .devcontainer/test.env << EOF
+          S3_ENDPOINT=localhost:9000
+          S3_ACCESS_KEY_ID=minioadmin
+          S3_SECRET_ACCESS_KEY=minioadmin
+          S3_SECURE=False
+          S3_BUCKET=test-bucket
+          EOF
+
+          # Create .env with S3_* variables (new standard)
+          cat > .devcontainer/.env << EOF
+          S3_ACCESS_KEY_ID=minioadmin
+          S3_SECRET_ACCESS_KEY=minioadmin
+          RUN_LOCAL=True
+          EOF
+
+      - name: Verify MinIO is ready
+        run: |
+          for i in {1..30}; do
+            if curl -f http://localhost:9000/minio/health/ready; then
+              echo "MinIO is ready!"
+              break
+            fi
+            echo "Waiting for MinIO... (attempt $i/30)"
+            sleep 2
+          done
+
+      - name: Initialize STAC catalog
+        env:
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
+        run: pixi run python -m src.scripts.init_stac_catalog
+
+      - name: Run all tests (including contract tests)
+        env:
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
+          RUN_LOCAL: "True"
+        run: pixi run pytest --verbose
+
+      - name: Generate baseline schema for artifact
+        if: always()
+        env:
+          S3_ENDPOINT: localhost:9000
+          S3_ACCESS_KEY_ID: minioadmin
+          S3_SECRET_ACCESS_KEY: minioadmin
+          S3_SECURE: "False"
+          S3_BUCKET: test-bucket
+          RUN_LOCAL: "True"
+        run: pixi run python -m scripts.generate_baseline_schema
+
+      - name: Upload baseline schema as artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: openapi-schema
+          path: tests/contract/baseline_schema.json
+          retention-days: 1  # Short retention, will be uploaded to GCP
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pytest-results
+          path: |
+            .pytest_cache/
+            **/*.log
+          retention-days: 7
+
+  # Job 4: Publish OpenAPI schema to GCP (needs all quality checks to pass)
+  # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
+  publish-schema:
+    name: Publish OpenAPI Schema
+    runs-on: ubuntu-latest
+    needs: [mypy, ruff, pytest]  # Waits for ALL quality checks to succeed
+    # Only run on push to dev/main (not PRs)
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+
+    # SECURITY: This job uses environment-scoped secrets (GCP_SA_KEY)
+    # PRs cannot access this job due to the if condition above
+    environment:
+      name: ${{ github.ref_name }}  # 'dev' or 'main' environment
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download schema artifact from pytest job
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-schema
+
+      - name: Verify schema file exists
+        run: |
+          if [ ! -f baseline_schema.json ]; then
+            echo "Schema file not found!"
+            exit 1
+          fi
+          echo "Schema file found ($(wc -c < baseline_schema.json) bytes)"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: dse-nps
+
+      - name: Upload commit-specific schema to GCP
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/${{ github.sha }}.json
+          process_gcloudignore: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Upload branch-specific schema to GCP
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: baseline_schema.json
+          destination: fire-recovery-temp/openapi-schemas/${{ github.ref_name }}.json
+          process_gcloudignore: false
+          predefinedAcl: publicRead
+          headers: |-
+            content-type: application/json
+
+      - name: Display schema URLs
+        run: |
+          echo "OpenAPI schema published:"
+          echo "  Commit: https://storage.googleapis.com/fire-recovery-temp/openapi-schemas/${{ github.sha }}.json"
+          echo "  Branch: https://storage.googleapis.com/fire-recovery-temp/openapi-schemas/${{ github.ref_name }}.json"
+
+  # Job 5: Deploy to Cloud Run (needs schema publish to succeed)
+  # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: [publish-schema]  # Waits for schema publishing to succeed
+    # Only run on push to dev/main (not PRs)
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+
+    # SECURITY: This job uses environment-scoped secrets (GCP_SA_KEY)
+    # The 'main' environment should require manual approval
+    environment:
+      name: ${{ github.ref_name }}  # 'dev' or 'main' environment
+      url: ${{ steps.deploy.outputs.url }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: dse-nps
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: dse-nps
+
+      - name: Verify authentication
+        run: gcloud auth list
+
+      - name: Set environment variable for branch
+        run: echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Build and Deploy to Cloud Run
+        id: deploy
+        run: |
+          if [ "${{ env.BRANCH_NAME }}" = "main" ]; then
+            echo "Deploying to PRODUCTION..."
+
+            gcloud builds submit \
+              --config deployment/prod-cloudbuild.yml \
+              --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
+              .
+
+            gcloud run deploy fire-recovery-backend-prod \
+              --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
+              --platform managed \
+              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --region us-central1 \
+              --min-instances 1 \
+              --max-instances 1 \
+              --allow-unauthenticated
+
+            echo "url=https://fire-recovery-backend-prod-<hash>-uc.a.run.app" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
+            echo "Deploying to DEV..."
+
+            gcloud builds submit \
+              --config deployment/dev-cloudbuild.yml \
+              --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
+              .
+
+            gcloud run deploy fire-recovery-backend-dev \
+              --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
+              --platform managed \
+              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --region us-central1 \
+              --min-instances 1 \
+              --max-instances 1 \
+              --allow-unauthenticated
+
+            echo "url=https://fire-recovery-backend-dev-<hash>-uc.a.run.app" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Display deployment URL
+        run: |
+          echo "Deployment complete:"
+          echo "  URL: ${{ steps.deploy.outputs.url }}"

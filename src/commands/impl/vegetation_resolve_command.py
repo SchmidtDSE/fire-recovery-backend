@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 import xvec  # noqa: F401 - Required for xarray.xvec accessor
+from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
@@ -899,7 +900,9 @@ class VegetationResolveCommand(Command):
                     total_valid_pixels = np.sum(valid_counts)
 
                     if total_valid_pixels > 0:
-                        weighted_mean = float(np.sum(valid_counts * valid_means) / total_valid_pixels)
+                        weighted_mean = float(
+                            np.sum(valid_counts * valid_means) / total_valid_pixels
+                        )
                     else:
                         weighted_mean = 0.0
 
@@ -950,7 +953,9 @@ class VegetationResolveCommand(Command):
                     total_valid_pixels = np.sum(valid_counts)
 
                     if total_valid_pixels > 0:
-                        weighted_mean = float(np.sum(valid_counts * valid_means) / total_valid_pixels)
+                        weighted_mean = float(
+                            np.sum(valid_counts * valid_means) / total_valid_pixels
+                        )
                     else:
                         weighted_mean = 0.0
 
@@ -1231,10 +1236,8 @@ class VegetationResolveCommand(Command):
                 datetime_str = fire_stac_item["properties"]["datetime"]
 
             # Convert geometry dict to proper type if needed
+            geojson_geometry: Polygon | MultiPolygon | Feature
             if isinstance(geometry, dict):
-                # Import necessary types
-                from geojson_pydantic import Polygon, MultiPolygon, Feature
-
                 # Use model_validate instead of unpacking
                 geom_type = geometry.get("type")
                 if geom_type == "MultiPolygon":
@@ -1315,7 +1318,7 @@ class VegetationResolveCommand(Command):
     ) -> Tuple[Dict[str, Any], List[float], str]:
         """Create fallback metadata when STAC item is not found"""
         # Use the geometry from context, or create a minimal bounding box
-        if hasattr(context.geometry, "coordinates"):
+        if context.geometry is not None and hasattr(context.geometry, "coordinates"):
             # Extract bounding box from geometry
             coords = (
                 context.geometry.coordinates[0] if context.geometry.coordinates else []
@@ -1334,12 +1337,15 @@ class VegetationResolveCommand(Command):
         else:
             # Minimal fallback geometry
             bbox = cast(List[float], [-180, -90, 180, 90])
-            geometry = cast(Dict[str, Any], {
-                "type": "Polygon",
-                "coordinates": [
-                    [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
-                ],
-            })
+            geometry = cast(
+                Dict[str, Any],
+                {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]
+                    ],
+                },
+            )
 
         # Use current datetime as fallback
         datetime_str = datetime.now(timezone.utc).isoformat() + "Z"

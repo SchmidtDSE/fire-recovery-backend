@@ -125,7 +125,7 @@ class STACJSONManager:
         job_id: str,
         fire_veg_matrix_csv_url: str,
         fire_veg_matrix_json_url: str,
-        geometry: Polygon | Feature,
+        geometry: Polygon | MultiPolygon | Feature,
         bbox: List[float],
         classification_breaks: List[float],
         datetime_str: str,

@@ -155,6 +155,9 @@ class UploadAOICommand(Command):
                     f"Invalid boundary_type '{boundary_type}'. Must be 'coarse' or 'refined'"
                 )
 
+            # Assert geometry is not None (validated in validate_context for geojson uploads)
+            assert context.geometry is not None, "geometry required for GeoJSON upload"
+
             # Get geometry from context and convert to dict format for processing
             geometry_obj = context.geometry
             if hasattr(geometry_obj, "model_dump"):
@@ -479,10 +482,15 @@ class UploadAOICommand(Command):
                     "Invalid zip file or no .shp file found in zip. "
                     "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
                 )
-            elif "Cannot open" in error_msg or "not recognized as being in a supported file format" in error_msg:
+            elif (
+                "Cannot open" in error_msg
+                or "not recognized as being in a supported file format" in error_msg
+            ):
                 raise ValueError(
                     "Invalid zip file or no .shp file found in zip. "
                     "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
                 )
             else:
-                raise ValueError(f"Failed to extract geometry from shapefile: {error_msg}")
+                raise ValueError(
+                    f"Failed to extract geometry from shapefile: {error_msg}"
+                )

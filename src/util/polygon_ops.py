@@ -55,7 +55,8 @@ def validate_polygon(
                 polygon_json = json.dumps(polygon_data["geometry"])
             # If we have a direct geometry
             elif (
-                polygon_data.get("type") in ["Polygon", "MultiPolygon"] and "coordinates" in polygon_data
+                polygon_data.get("type") in ["Polygon", "MultiPolygon"]
+                and "coordinates" in polygon_data
             ):
                 polygon_json = json.dumps(polygon_data)
             else:
@@ -73,7 +74,9 @@ def validate_polygon(
 
         # Verify it's a polygon or multipolygon
         if shapely_geom.geom_type not in ["Polygon", "MultiPolygon"]:
-            raise ValueError(f"Expected Polygon or MultiPolygon geometry, got {shapely_geom.geom_type}")
+            raise ValueError(
+                f"Expected Polygon or MultiPolygon geometry, got {shapely_geom.geom_type}"
+            )
 
         return shapely_geom
     except Exception as e:
@@ -81,7 +84,14 @@ def validate_polygon(
 
 
 def polygon_to_feature(
-    polygon: Union[ShapelyPolygon, ShapelyMultiPolygon, Polygon, MultiPolygon, Feature, Dict[str, Any]],
+    polygon: Union[
+        ShapelyPolygon,
+        ShapelyMultiPolygon,
+        Polygon,
+        MultiPolygon,
+        Feature,
+        Dict[str, Any],
+    ],
     properties: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """

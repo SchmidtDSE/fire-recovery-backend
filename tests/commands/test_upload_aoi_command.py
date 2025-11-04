@@ -525,7 +525,9 @@ class TestShapefileExtraction:
         """Test extracting geometry from valid shapefile"""
         command = UploadAOICommand()
 
-        geometry = command._extract_geometry_from_shapefile_zip(sample_shapefile_zip_bytes)
+        geometry = command._extract_geometry_from_shapefile_zip(
+            sample_shapefile_zip_bytes
+        )
 
         assert geometry["type"] in ["Polygon", "MultiPolygon"]
         assert "coordinates" in geometry
