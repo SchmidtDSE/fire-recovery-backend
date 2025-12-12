@@ -1,6 +1,9 @@
 # Using pixi image as a base
 FROM ghcr.io/prefix-dev/pixi:0.45.0-bullseye-slim
 
+# Install CA certificates for TLS (required by obstore/rustls)
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Copy pixi environment files
 COPY pixi.toml pixi.toml
 COPY pixi.lock pixi.lock
