@@ -278,7 +278,13 @@ jobs:
               --region us-central1 \
               --min-instances 1 \
               --max-instances 1 \
-              --allow-unauthenticated
+              --allow-unauthenticated \
+              --tag "sha-${{ github.sha }}"
+
+            # Ensure 100% traffic goes to the new revision
+            gcloud run services update-traffic fire-recovery-backend-prod \
+              --region us-central1 \
+              --to-latest
 
             echo "url=https://fire-recovery-backend-prod-<hash>-uc.a.run.app" >> $GITHUB_OUTPUT
           fi
@@ -298,7 +304,13 @@ jobs:
               --region us-central1 \
               --min-instances 1 \
               --max-instances 1 \
-              --allow-unauthenticated
+              --allow-unauthenticated \
+              --tag "sha-${{ github.sha }}"
+
+            # Ensure 100% traffic goes to the new revision
+            gcloud run services update-traffic fire-recovery-backend-dev \
+              --region us-central1 \
+              --to-latest
 
             echo "url=https://fire-recovery-backend-dev-<hash>-uc.a.run.app" >> $GITHUB_OUTPUT
           fi
