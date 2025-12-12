@@ -193,9 +193,8 @@ def calculate_burn_indices(
     # Calculate dNBR
     dnbr = prefire_nbr - postfire_nbr
 
-    # Calculate RdNBR
+    # Calculate RdNBR, avoiding division by zero
     abs_sqrt_prefire_nbr = abs(prefire_nbr) ** 0.5
-    # Avoid division by zero
     abs_sqrt_prefire_nbr = abs_sqrt_prefire_nbr.where(abs_sqrt_prefire_nbr != 0, 0.001)
     rdnbr = dnbr / abs_sqrt_prefire_nbr
 
