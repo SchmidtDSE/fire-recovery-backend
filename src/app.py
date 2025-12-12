@@ -55,13 +55,19 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Note: allow_credentials=True is incompatible with allow_origins=["*"]
+# When credentials are needed, explicit origins must be specified
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "https://storage.googleapis.com"],
-    allow_origins=["*"],  # Allow all origins for development; restrict in production
+    allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
+        "http://localhost:3000",
+        "https://storage.googleapis.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers\
+    allow_headers=["*"],  # Allow all headers
     expose_headers=["*"],  # Expose all headers to client
 )
 
