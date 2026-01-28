@@ -180,14 +180,12 @@
         "description": "Response containing fire severity analysis results.",
         "example": {
           "coarse_severity_cog_urls": {
-            "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../dnbr.tif",
-            "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../postfire_nbr.tif",
-            "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../prefire_nbr.tif",
-            "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rbr.tif",
-            "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rdnbr.tif"
+            "dnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/dnbr.tif",
+            "rbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/rbr.tif",
+            "rdnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/rdnbr.tif"
           },
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
           "status": "complete"
         },
         "properties": {
@@ -195,7 +193,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "URLs to the COGs for each severity metric (prefire_nbr, postfire_nbr, dnbr, rdnbr, rbr)",
+            "description": "URLs to the COGs for each severity metric (dnbr, rdnbr, rbr)",
             "title": "Coarse Severity Cog Urls",
             "type": "object"
           },
@@ -1117,7 +1115,7 @@
         "description": "Response when async processing has been initiated.",
         "example": {
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
           "status": "Processing started"
         },
         "properties": {
@@ -1149,7 +1147,7 @@
         "description": "Request model for boundary refinement.",
         "example": {
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
           "refined_geojson": {
             "coordinates": [
               [
@@ -1217,12 +1215,12 @@
         "description": "Response containing refined boundary and cropped severity COGs.",
         "example": {
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
-          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
+          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/boundary/refined_boundary.geojson",
           "refined_severity_cog_urls": {
-            "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_dnbr.tif",
-            "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
-            "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rdnbr.tif"
+            "dnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/refined_dnbr.tif",
+            "rbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/refined_rbr.tif",
+            "rdnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/refined_rdnbr.tif"
           },
           "status": "complete"
         },
@@ -1270,7 +1268,7 @@
         "description": "Response for when a task is still being processed.",
         "example": {
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
           "status": "pending"
         },
         "properties": {
@@ -1303,8 +1301,8 @@
         "example": {
           "boundary_type": "refined",
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
-          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.geojson",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
+          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/boundary/refined_boundary.geojson",
           "status": "complete"
         },
         "properties": {
@@ -1347,11 +1345,11 @@
       "UploadedShapefileZipResponse": {
         "description": "Response for successful shapefile upload.",
         "example": {
-          "boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.geojson",
+          "boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/boundary/boundary.geojson",
           "boundary_type": "refined",
           "fire_event_name": "Geology_Fire",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
-          "shapefile_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.zip",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
+          "shapefile_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/boundary/boundary.zip",
           "status": "complete"
         },
         "properties": {
@@ -1434,9 +1432,9 @@
         "description": "Response containing vegetation impact analysis results.",
         "example": {
           "fire_event_name": "Geology_Fire",
-          "fire_veg_matrix_csv_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../veg_matrix.csv",
-          "fire_veg_matrix_json_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../veg_matrix.json",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "fire_veg_matrix_csv_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/veg_analysis/fire_veg_matrix.csv",
+          "fire_veg_matrix_json_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/veg_analysis/fire_veg_matrix.json",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
           "status": "complete"
         },
         "properties": {
@@ -1491,10 +1489,10 @@
       "VegMapResolveRequest": {
         "description": "Request model for vegetation impact analysis.",
         "example": {
-          "fire_cog_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
+          "fire_cog_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/refined_rbr.tif",
           "fire_event_name": "Geology_Fire",
-          "geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
-          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "geojson_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/boundary/refined_boundary.geojson",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
           "park_unit_id": "JOTR",
           "severity_breaks": [
             0.1,

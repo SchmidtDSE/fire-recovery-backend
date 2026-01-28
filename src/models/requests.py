@@ -50,7 +50,7 @@ class RefineRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "fire_event_name": "Geology_Fire",
-                "job_id": "550e8400-e29b-41d4-a716-446655440000",
+                "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
                 "refined_geojson": {
                     "type": "Polygon",
                     "coordinates": [
@@ -84,10 +84,10 @@ class VegMapResolveRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "fire_event_name": "Geology_Fire",
-                "job_id": "550e8400-e29b-41d4-a716-446655440000",
+                "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
                 "veg_gpkg_url": "https://storage.googleapis.com/nps-veg-data/JOTR_vegetation.gpkg",
-                "fire_cog_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
-                "geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
+                "fire_cog_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/refined_rbr.tif",
+                "geojson_url": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/boundary/refined_boundary.geojson",
                 "severity_breaks": [0.1, 0.27, 0.44, 0.66],
                 "park_unit_id": "JOTR",
             }
