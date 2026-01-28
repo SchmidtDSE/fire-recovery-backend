@@ -180,13 +180,13 @@
         "description": "Response containing fire severity analysis results.",
         "example": {
           "coarse_severity_cog_urls": {
-            "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../dnbr.tif",
-            "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../postfire_nbr.tif",
-            "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../prefire_nbr.tif",
-            "rbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../rbr.tif",
-            "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../rdnbr.tif"
+            "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../dnbr.tif",
+            "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../postfire_nbr.tif",
+            "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../prefire_nbr.tif",
+            "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rbr.tif",
+            "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rdnbr.tif"
           },
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
           "status": "complete"
         },
@@ -228,29 +228,29 @@
         "description": "Request model for GeoJSON boundary upload.",
         "example": {
           "boundary_type": "refined",
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "geojson": {
             "coordinates": [
               [
                 [
-                  -116.9,
-                  33.8
+                  -116.098276,
+                  33.929925
                 ],
                 [
-                  -116.7,
-                  33.8
+                  -116.098276,
+                  33.880794
                 ],
                 [
-                  -116.7,
-                  34.0
+                  -116.019318,
+                  33.880794
                 ],
                 [
-                  -116.9,
-                  34.0
+                  -116.019318,
+                  33.929925
                 ],
                 [
-                  -116.9,
-                  33.8
+                  -116.098276,
+                  33.929925
                 ]
               ]
             ],
@@ -1033,37 +1033,37 @@
             "coordinates": [
               [
                 [
-                  -116.9,
-                  33.8
+                  -116.098276,
+                  33.929925
                 ],
                 [
-                  -116.7,
-                  33.8
+                  -116.098276,
+                  33.880794
                 ],
                 [
-                  -116.7,
-                  34.0
+                  -116.019318,
+                  33.880794
                 ],
                 [
-                  -116.9,
-                  34.0
+                  -116.019318,
+                  33.929925
                 ],
                 [
-                  -116.9,
-                  33.8
+                  -116.098276,
+                  33.929925
                 ]
               ]
             ],
             "type": "Polygon"
           },
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "postfire_date_range": [
-            "2024-09-15",
-            "2024-09-30"
+            "2023-06-17",
+            "2023-06-22"
           ],
           "prefire_date_range": [
-            "2024-01-01",
-            "2024-01-15"
+            "2023-06-01",
+            "2023-06-09"
           ]
         },
         "properties": {
@@ -1116,7 +1116,7 @@
       "ProcessingStartedResponse": {
         "description": "Response when async processing has been initiated.",
         "example": {
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
           "status": "Processing started"
         },
@@ -1148,30 +1148,30 @@
       "RefineRequest": {
         "description": "Request model for boundary refinement.",
         "example": {
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
           "refined_geojson": {
             "coordinates": [
               [
                 [
-                  -116.85,
-                  33.85
+                  -116.08,
+                  33.92
                 ],
                 [
-                  -116.75,
-                  33.85
+                  -116.08,
+                  33.89
                 ],
                 [
-                  -116.75,
-                  33.95
+                  -116.03,
+                  33.89
                 ],
                 [
-                  -116.85,
-                  33.95
+                  -116.03,
+                  33.92
                 ],
                 [
-                  -116.85,
-                  33.85
+                  -116.08,
+                  33.92
                 ]
               ]
             ],
@@ -1216,13 +1216,13 @@
       "RefinedBoundaryResponse": {
         "description": "Response containing refined boundary and cropped severity COGs.",
         "example": {
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
-          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_boundary.geojson",
+          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
           "refined_severity_cog_urls": {
-            "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_dnbr.tif",
-            "rbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_rbr.tif",
-            "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_rdnbr.tif"
+            "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_dnbr.tif",
+            "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
+            "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rdnbr.tif"
           },
           "status": "complete"
         },
@@ -1269,7 +1269,7 @@
       "TaskPendingResponse": {
         "description": "Response for when a task is still being processed.",
         "example": {
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
           "status": "pending"
         },
@@ -1302,9 +1302,9 @@
         "description": "Response for successful GeoJSON upload.",
         "example": {
           "boundary_type": "refined",
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
-          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../boundary.geojson",
+          "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.geojson",
           "status": "complete"
         },
         "properties": {
@@ -1347,11 +1347,11 @@
       "UploadedShapefileZipResponse": {
         "description": "Response for successful shapefile upload.",
         "example": {
-          "boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../boundary.geojson",
+          "boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.geojson",
           "boundary_type": "refined",
-          "fire_event_name": "Bridge_Fire_2024",
+          "fire_event_name": "Geology_Fire",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
-          "shapefile_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../boundary.zip",
+          "shapefile_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.zip",
           "status": "complete"
         },
         "properties": {
@@ -1433,9 +1433,9 @@
       "VegMapMatrixResponse": {
         "description": "Response containing vegetation impact analysis results.",
         "example": {
-          "fire_event_name": "Bridge_Fire_2024",
-          "fire_veg_matrix_csv_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../veg_matrix.csv",
-          "fire_veg_matrix_json_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../veg_matrix.json",
+          "fire_event_name": "Geology_Fire",
+          "fire_veg_matrix_csv_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../veg_matrix.csv",
+          "fire_veg_matrix_json_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../veg_matrix.json",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
           "status": "complete"
         },
@@ -1491,9 +1491,9 @@
       "VegMapResolveRequest": {
         "description": "Request model for vegetation impact analysis.",
         "example": {
-          "fire_cog_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_rbr.tif",
-          "fire_event_name": "Bridge_Fire_2024",
-          "geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_boundary.geojson",
+          "fire_cog_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
+          "fire_event_name": "Geology_Fire",
+          "geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
           "job_id": "550e8400-e29b-41d4-a716-446655440000",
           "park_unit_id": "JOTR",
           "severity_breaks": [
@@ -1644,7 +1644,7 @@
     },
     "/fire-recovery/healthz": {
       "get": {
-        "description": "System health check endpoint.\n\nVerifies connectivity to storage, STAC catalog, and other dependencies.\n\nSee [docs/ENDPOINTS.md#get-healthz](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-healthz) for details.",
+        "description": "System health check endpoint.\n\nVerifies connectivity to storage, STAC catalog, and other dependencies.\n\nSee [docs/ENDPOINTS.md#get-healthz](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-healthz) for details.",
         "operationId": "health_check_fire_recovery_healthz_get",
         "responses": {
           "200": {
@@ -1670,7 +1670,7 @@
     },
     "/fire-recovery/process/analyze_fire_severity": {
       "post": {
-        "description": "Initiate fire severity analysis using Sentinel-2 satellite imagery.\n\nCalculates NBR, dNBR, RdNBR, and RBR indices. Returns immediately with a job ID for polling.\n\nSee [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.",
+        "description": "Initiate fire severity analysis using Sentinel-2 satellite imagery.\n\nCalculates NBR, dNBR, RdNBR, and RBR indices. Returns immediately with a job ID for polling.\n\nSee [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.",
         "operationId": "analyze_fire_severity_fire_recovery_process_analyze_fire_severity_post",
         "requestBody": {
           "content": {
@@ -1716,7 +1716,7 @@
     },
     "/fire-recovery/process/refine": {
       "post": {
-        "description": "Refine fire boundary and crop severity COGs to new geometry.\n\nUses user-drawn refined boundary to crop existing coarse COGs.\n\nSee [docs/ENDPOINTS.md#post-processrefine](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processrefine) for details.",
+        "description": "Refine fire boundary and crop severity COGs to new geometry.\n\nUses user-drawn refined boundary to crop existing coarse COGs.\n\nSee [docs/ENDPOINTS.md#post-processrefine](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processrefine) for details.",
         "operationId": "refine_fire_boundary_fire_recovery_process_refine_post",
         "requestBody": {
           "content": {
@@ -1762,7 +1762,7 @@
     },
     "/fire-recovery/process/resolve_against_veg_map": {
       "post": {
-        "description": "Analyze fire severity impacts on vegetation communities.\n\nPerforms zonal statistics to calculate area affected by severity class per vegetation type.\n\nSee [docs/ENDPOINTS.md#post-processresolve_against_veg_map](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processresolve_against_veg_map) for details.",
+        "description": "Analyze fire severity impacts on vegetation communities.\n\nPerforms zonal statistics to calculate area affected by severity class per vegetation type.\n\nSee [docs/ENDPOINTS.md#post-processresolve_against_veg_map](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processresolve_against_veg_map) for details.",
         "operationId": "resolve_against_veg_map_fire_recovery_process_resolve_against_veg_map_post",
         "requestBody": {
           "content": {
@@ -1808,7 +1808,7 @@
     },
     "/fire-recovery/result/analyze_fire_severity/{fire_event_name}/{job_id}": {
       "get": {
-        "description": "Retrieve fire severity analysis results.\n\nPoll until status is 'complete'. Returns URLs to severity COGs.\n\nSee [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.",
+        "description": "Retrieve fire severity analysis results.\n\nPoll until status is 'complete'. Returns URLs to severity COGs.\n\nSee [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.",
         "operationId": "get_fire_severity_result_fire_recovery_result_analyze_fire_severity__fire_event_name___job_id__get",
         "parameters": [
           {
@@ -1872,7 +1872,7 @@
     },
     "/fire-recovery/result/refine/{fire_event_name}/{job_id}": {
       "get": {
-        "description": "Retrieve boundary refinement results.\n\nPoll until status is 'complete'. Returns URLs to refined boundary and cropped COGs.\n\nSee [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.",
+        "description": "Retrieve boundary refinement results.\n\nPoll until status is 'complete'. Returns URLs to refined boundary and cropped COGs.\n\nSee [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.",
         "operationId": "get_refine_result_fire_recovery_result_refine__fire_event_name___job_id__get",
         "parameters": [
           {
@@ -1936,7 +1936,7 @@
     },
     "/fire-recovery/result/resolve_against_veg_map/{fire_event_name}/{job_id}": {
       "get": {
-        "description": "Retrieve vegetation impact analysis results.\n\nPoll until status is 'complete'. Returns URLs to CSV and JSON impact matrices.\n\nSee [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.",
+        "description": "Retrieve vegetation impact analysis results.\n\nPoll until status is 'complete'. Returns URLs to CSV and JSON impact matrices.\n\nSee [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.",
         "operationId": "get_veg_map_result_fire_recovery_result_resolve_against_veg_map__fire_event_name___job_id__get",
         "parameters": [
           {
@@ -2020,7 +2020,7 @@
     },
     "/fire-recovery/upload/geojson": {
       "post": {
-        "description": "Upload a GeoJSON boundary for a fire event.\n\nSee [docs/ENDPOINTS.md#post-uploadgeojson](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadgeojson) for details.",
+        "description": "Upload a GeoJSON boundary for a fire event.\n\nSee [docs/ENDPOINTS.md#post-uploadgeojson](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadgeojson) for details.",
         "operationId": "upload_geojson_fire_recovery_upload_geojson_post",
         "requestBody": {
           "content": {
@@ -2066,7 +2066,7 @@
     },
     "/fire-recovery/upload/shapefile": {
       "post": {
-        "description": "Upload a zipped shapefile boundary for a fire event.\n\nAccepts multipart/form-data with shapefile zip and extracts boundary GeoJSON.\n\nSee [docs/ENDPOINTS.md#post-uploadshapefile](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadshapefile) for details.",
+        "description": "Upload a zipped shapefile boundary for a fire event.\n\nAccepts multipart/form-data with shapefile zip and extracts boundary GeoJSON.\n\nSee [docs/ENDPOINTS.md#post-uploadshapefile](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadshapefile) for details.",
         "operationId": "upload_shapefile_fire_recovery_upload_shapefile_post",
         "requestBody": {
           "content": {

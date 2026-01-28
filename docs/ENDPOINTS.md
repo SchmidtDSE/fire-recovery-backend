@@ -54,19 +54,19 @@ Initiates fire severity analysis using Sentinel-2 satellite imagery. This is an 
 curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity" \
   -H "Content-Type: application/json" \
   -d '{
-    "fire_event_name": "Bridge_Fire_2024",
+    "fire_event_name": "Geology_Fire",
     "coarse_geojson": {
       "type": "Polygon",
       "coordinates": [[
-        [-116.9, 33.8],
-        [-116.7, 33.8],
-        [-116.7, 34.0],
-        [-116.9, 34.0],
-        [-116.9, 33.8]
+        [-116.098276, 33.929925],
+        [-116.098276, 33.880794],
+        [-116.019318, 33.880794],
+        [-116.019318, 33.929925],
+        [-116.098276, 33.929925]
       ]]
     },
-    "prefire_date_range": ["2024-01-01", "2024-01-15"],
-    "postfire_date_range": ["2024-09-15", "2024-09-30"]
+    "prefire_date_range": ["2023-06-01", "2023-06-09"],
+    "postfire_date_range": ["2023-06-17", "2023-06-22"]
   }'
 ```
 
@@ -83,7 +83,7 @@ curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity"
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "Processing started",
   "job_id": "550e8400-e29b-41d4-a716-446655440000"
 }
@@ -98,14 +98,14 @@ Retrieves results of a fire severity analysis. Poll this endpoint until `status`
 #### Request
 
 ```bash
-curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Bridge_Fire_2024/550e8400-e29b-41d4-a716-446655440000"
+curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Geology_Fire/550e8400-e29b-41d4-a716-446655440000"
 ```
 
 #### Response (Pending)
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "pending",
   "job_id": "550e8400-e29b-41d4-a716-446655440000"
 }
@@ -115,15 +115,15 @@ curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Bridge_Fi
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "complete",
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
   "coarse_severity_cog_urls": {
-    "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../prefire_nbr.tif",
-    "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../postfire_nbr.tif",
-    "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../dnbr.tif",
-    "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../rdnbr.tif",
-    "rbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../rbr.tif"
+    "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../prefire_nbr.tif",
+    "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../postfire_nbr.tif",
+    "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../dnbr.tif",
+    "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rdnbr.tif",
+    "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rbr.tif"
   }
 }
 ```
@@ -150,16 +150,16 @@ After viewing the coarse fire severity results, users draw a more precise bounda
 curl -X POST "http://localhost:8000/fire-recovery/process/refine" \
   -H "Content-Type: application/json" \
   -d '{
-    "fire_event_name": "Bridge_Fire_2024",
+    "fire_event_name": "Geology_Fire",
     "job_id": "550e8400-e29b-41d4-a716-446655440000",
     "refined_geojson": {
       "type": "Polygon",
       "coordinates": [[
-        [-116.85, 33.85],
-        [-116.75, 33.85],
-        [-116.75, 33.95],
-        [-116.85, 33.95],
-        [-116.85, 33.85]
+        [-116.08, 33.92],
+        [-116.08, 33.89],
+        [-116.03, 33.89],
+        [-116.03, 33.92],
+        [-116.08, 33.92]
       ]]
     }
   }'
@@ -177,7 +177,7 @@ curl -X POST "http://localhost:8000/fire-recovery/process/refine" \
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "Processing started",
   "job_id": "550e8400-e29b-41d4-a716-446655440000"
 }
@@ -192,14 +192,14 @@ Retrieves boundary refinement results.
 #### Request
 
 ```bash
-curl "http://localhost:8000/fire-recovery/result/refine/Bridge_Fire_2024/550e8400-e29b-41d4-a716-446655440000"
+curl "http://localhost:8000/fire-recovery/result/refine/Geology_Fire/550e8400-e29b-41d4-a716-446655440000"
 ```
 
 #### Response (Complete)
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "complete",
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
   "refined_boundary_geojson_url": "https://storage.googleapis.com/.../refined_boundary.geojson",
@@ -234,7 +234,7 @@ Analyzes fire severity impacts on vegetation communities using zonal statistics.
 curl -X POST "http://localhost:8000/fire-recovery/process/resolve_against_veg_map" \
   -H "Content-Type: application/json" \
   -d '{
-    "fire_event_name": "Bridge_Fire_2024",
+    "fire_event_name": "Geology_Fire",
     "job_id": "550e8400-e29b-41d4-a716-446655440000",
     "veg_gpkg_url": "https://storage.googleapis.com/nps-veg-data/JOTR_vegetation.gpkg",
     "fire_cog_url": "https://storage.googleapis.com/.../refined_rbr.tif",
@@ -272,7 +272,7 @@ The `severity_breaks` array defines thresholds for classifying continuous RBR va
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "Processing started",
   "job_id": "550e8400-e29b-41d4-a716-446655440000"
 }
@@ -287,7 +287,7 @@ Retrieves vegetation impact analysis results.
 #### Request
 
 ```bash
-curl "http://localhost:8000/fire-recovery/result/resolve_against_veg_map/Bridge_Fire_2024/550e8400-e29b-41d4-a716-446655440000?severity_breaks=0.1&severity_breaks=0.27&severity_breaks=0.44&severity_breaks=0.66"
+curl "http://localhost:8000/fire-recovery/result/resolve_against_veg_map/Geology_Fire/550e8400-e29b-41d4-a716-446655440000?severity_breaks=0.1&severity_breaks=0.27&severity_breaks=0.44&severity_breaks=0.66"
 ```
 
 #### Query Parameters
@@ -300,7 +300,7 @@ curl "http://localhost:8000/fire-recovery/result/resolve_against_veg_map/Bridge_
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "complete",
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
   "fire_veg_matrix_csv_url": "https://storage.googleapis.com/.../veg_matrix.csv",
@@ -351,15 +351,15 @@ Uploads a GeoJSON boundary directly.
 curl -X POST "http://localhost:8000/fire-recovery/upload/geojson" \
   -H "Content-Type: application/json" \
   -d '{
-    "fire_event_name": "Bridge_Fire_2024",
+    "fire_event_name": "Geology_Fire",
     "geojson": {
       "type": "Polygon",
       "coordinates": [[
-        [-116.9, 33.8],
-        [-116.7, 33.8],
-        [-116.7, 34.0],
-        [-116.9, 34.0],
-        [-116.9, 33.8]
+        [-116.098276, 33.929925],
+        [-116.098276, 33.880794],
+        [-116.019318, 33.880794],
+        [-116.019318, 33.929925],
+        [-116.098276, 33.929925]
       ]]
     },
     "boundary_type": "refined"
@@ -378,7 +378,7 @@ curl -X POST "http://localhost:8000/fire-recovery/upload/geojson" \
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "complete",
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
   "refined_boundary_geojson_url": "https://storage.googleapis.com/.../boundary.geojson",
@@ -396,7 +396,7 @@ Uploads a zipped shapefile for boundary definition.
 
 ```bash
 curl -X POST "http://localhost:8000/fire-recovery/upload/shapefile" \
-  -F "fire_event_name=Bridge_Fire_2024" \
+  -F "fire_event_name=Geology_Fire" \
   -F "shapefile=@fire_boundary.zip" \
   -F "boundary_type=refined"
 ```
@@ -413,7 +413,7 @@ curl -X POST "http://localhost:8000/fire-recovery/upload/shapefile" \
 
 ```json
 {
-  "fire_event_name": "Bridge_Fire_2024",
+  "fire_event_name": "Geology_Fire",
   "status": "complete",
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
   "shapefile_url": "https://storage.googleapis.com/.../boundary.zip",

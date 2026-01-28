@@ -23,14 +23,14 @@ The API calculates multiple severity metrics, but **RBR (Relativized Burn Ratio)
 curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity" \
   -H "Content-Type: application/json" \
   -d '{
-    "fire_event_name": "Bridge_Fire_2024",
-    "coarse_geojson": {"type": "Polygon", "coordinates": [[[-116.9, 33.8], [-116.7, 33.8], [-116.7, 34.0], [-116.9, 34.0], [-116.9, 33.8]]]},
-    "prefire_date_range": ["2024-01-01", "2024-01-15"],
-    "postfire_date_range": ["2024-09-15", "2024-09-30"]
+    "fire_event_name": "Geology_Fire",
+    "coarse_geojson": {"type": "Polygon", "coordinates": [[[-116.098276, 33.929925], [-116.098276, 33.880794], [-116.019318, 33.880794], [-116.019318, 33.929925], [-116.098276, 33.929925]]]},
+    "prefire_date_range": ["2023-06-01", "2023-06-09"],
+    "postfire_date_range": ["2023-06-17", "2023-06-22"]
   }'
 
 # Poll for results
-curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Bridge_Fire_2024/{job_id}"
+curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Geology_Fire/{job_id}"
 ```
 
 ## Documentation

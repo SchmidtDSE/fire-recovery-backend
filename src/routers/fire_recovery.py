@@ -169,7 +169,7 @@ async def health_check(
 
     Verifies connectivity to storage, STAC catalog, and other dependencies.
 
-    See [docs/ENDPOINTS.md#get-healthz](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-healthz) for details.
+    See [docs/ENDPOINTS.md#get-healthz](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-healthz) for details.
     """
     # Generate a unique job ID for the health check
     job_id = str(uuid.uuid4())
@@ -247,7 +247,7 @@ async def analyze_fire_severity(
 
     Calculates NBR, dNBR, RdNBR, and RBR indices. Returns immediately with a job ID for polling.
 
-    See [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.
+    See [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.
     """
     job_id = str(uuid.uuid4())
     job_timestamps[job_id] = time.time()
@@ -353,7 +353,7 @@ async def get_fire_severity_result(
 
     Poll until status is 'complete'. Returns URLs to severity COGs.
 
-    See [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.
+    See [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.
     """
     # Look up the STAC item
     stac_item = await stac_manager.get_item_by_id(
@@ -402,7 +402,7 @@ async def refine_fire_boundary(
 
     Uses user-drawn refined boundary to crop existing coarse COGs.
 
-    See [docs/ENDPOINTS.md#post-processrefine](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processrefine) for details.
+    See [docs/ENDPOINTS.md#post-processrefine](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processrefine) for details.
     """
 
     # Start the processing task in the background
@@ -485,7 +485,7 @@ async def get_refine_result(
 
     Poll until status is 'complete'. Returns URLs to refined boundary and cropped COGs.
 
-    See [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.
+    See [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.
     """
     # Look up the STAC item
     boundary_stac_item = await stac_manager.get_items_by_id_and_coarseness(
@@ -554,7 +554,7 @@ async def upload_geojson(
     """
     Upload a GeoJSON boundary for a fire event.
 
-    See [docs/ENDPOINTS.md#post-uploadgeojson](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadgeojson) for details.
+    See [docs/ENDPOINTS.md#post-uploadgeojson](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadgeojson) for details.
     """
     # Validate boundary_type from request model
     if request.boundary_type not in ["coarse", "refined"]:
@@ -636,7 +636,7 @@ async def upload_shapefile(
 
     Accepts multipart/form-data with shapefile zip and extracts boundary GeoJSON.
 
-    See [docs/ENDPOINTS.md#post-uploadshapefile](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadshapefile) for details.
+    See [docs/ENDPOINTS.md#post-uploadshapefile](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadshapefile) for details.
     """
     # Validate boundary_type
     if boundary_type not in ["coarse", "refined"]:
@@ -735,7 +735,7 @@ async def resolve_against_veg_map(
 
     Performs zonal statistics to calculate area affected by severity class per vegetation type.
 
-    See [docs/ENDPOINTS.md#post-processresolve_against_veg_map](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processresolve_against_veg_map) for details.
+    See [docs/ENDPOINTS.md#post-processresolve_against_veg_map](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processresolve_against_veg_map) for details.
     """
     logger = logging.getLogger(__name__)
     logger.debug(f"Received resolve_against_veg_map request for job {request.job_id}")
@@ -862,7 +862,7 @@ async def get_veg_map_result(
 
     Poll until status is 'complete'. Returns URLs to CSV and JSON impact matrices.
 
-    See [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.
+    See [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.
     """
     # Look up the STAC item
     stac_item = await stac_manager.get_items_by_id_and_classification_breaks(

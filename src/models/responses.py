@@ -16,7 +16,7 @@ class TaskPendingResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "pending",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
             }
@@ -30,7 +30,7 @@ class ProcessingStartedResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "Processing started",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
             }
@@ -44,14 +44,14 @@ class RefinedBoundaryResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "complete",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
-                "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_boundary.geojson",
+                "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
                 "refined_severity_cog_urls": {
-                    "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_dnbr.tif",
-                    "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_rdnbr.tif",
-                    "rbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_rbr.tif",
+                    "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_dnbr.tif",
+                    "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rdnbr.tif",
+                    "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
                 },
             }
         }
@@ -71,15 +71,15 @@ class FireSeverityResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "complete",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
                 "coarse_severity_cog_urls": {
-                    "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../prefire_nbr.tif",
-                    "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../postfire_nbr.tif",
-                    "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../dnbr.tif",
-                    "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../rdnbr.tif",
-                    "rbr": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../rbr.tif",
+                    "prefire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../prefire_nbr.tif",
+                    "postfire_nbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../postfire_nbr.tif",
+                    "dnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../dnbr.tif",
+                    "rdnbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rdnbr.tif",
+                    "rbr": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../rbr.tif",
                 },
             }
         }
@@ -96,11 +96,11 @@ class VegMapMatrixResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "complete",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
-                "fire_veg_matrix_csv_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../veg_matrix.csv",
-                "fire_veg_matrix_json_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../veg_matrix.json",
+                "fire_veg_matrix_csv_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../veg_matrix.csv",
+                "fire_veg_matrix_json_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../veg_matrix.json",
             }
         }
     )
@@ -119,10 +119,10 @@ class UploadedGeoJSONResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "complete",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
-                "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../boundary.geojson",
+                "refined_boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.geojson",
                 "boundary_type": "refined",
             }
         }
@@ -140,11 +140,11 @@ class UploadedShapefileZipResponse(BaseResponse):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "status": "complete",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
-                "shapefile_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../boundary.zip",
-                "boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../boundary.geojson",
+                "shapefile_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.zip",
+                "boundary_geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../boundary.geojson",
                 "boundary_type": "refined",
             }
         }

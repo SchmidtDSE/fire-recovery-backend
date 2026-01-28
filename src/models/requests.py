@@ -9,21 +9,21 @@ class ProcessingRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "coarse_geojson": {
                     "type": "Polygon",
                     "coordinates": [
                         [
-                            [-116.9, 33.8],
-                            [-116.7, 33.8],
-                            [-116.7, 34.0],
-                            [-116.9, 34.0],
-                            [-116.9, 33.8],
+                            [-116.098276, 33.929925],
+                            [-116.098276, 33.880794],
+                            [-116.019318, 33.880794],
+                            [-116.019318, 33.929925],
+                            [-116.098276, 33.929925],
                         ]
                     ],
                 },
-                "prefire_date_range": ["2024-01-01", "2024-01-15"],
-                "postfire_date_range": ["2024-09-15", "2024-09-30"],
+                "prefire_date_range": ["2023-06-01", "2023-06-09"],
+                "postfire_date_range": ["2023-06-17", "2023-06-22"],
             }
         }
     )
@@ -49,17 +49,17 @@ class RefineRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
                 "refined_geojson": {
                     "type": "Polygon",
                     "coordinates": [
                         [
-                            [-116.85, 33.85],
-                            [-116.75, 33.85],
-                            [-116.75, 33.95],
-                            [-116.85, 33.95],
-                            [-116.85, 33.85],
+                            [-116.08, 33.92],
+                            [-116.08, 33.89],
+                            [-116.03, 33.89],
+                            [-116.03, 33.92],
+                            [-116.08, 33.92],
                         ]
                     ],
                 },
@@ -83,11 +83,11 @@ class VegMapResolveRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
                 "veg_gpkg_url": "https://storage.googleapis.com/nps-veg-data/JOTR_vegetation.gpkg",
-                "fire_cog_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_rbr.tif",
-                "geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Bridge_Fire_2024/550e8400.../refined_boundary.geojson",
+                "fire_cog_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_rbr.tif",
+                "geojson_url": "https://storage.googleapis.com/fire-recovery-temp/Geology_Fire/550e8400.../refined_boundary.geojson",
                 "severity_breaks": [0.1, 0.27, 0.44, 0.66],
                 "park_unit_id": "JOTR",
             }
@@ -119,16 +119,16 @@ class GeoJSONUploadRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "fire_event_name": "Bridge_Fire_2024",
+                "fire_event_name": "Geology_Fire",
                 "geojson": {
                     "type": "Polygon",
                     "coordinates": [
                         [
-                            [-116.9, 33.8],
-                            [-116.7, 33.8],
-                            [-116.7, 34.0],
-                            [-116.9, 34.0],
-                            [-116.9, 33.8],
+                            [-116.098276, 33.929925],
+                            [-116.098276, 33.880794],
+                            [-116.019318, 33.880794],
+                            [-116.019318, 33.929925],
+                            [-116.098276, 33.929925],
                         ]
                     ],
                 },
