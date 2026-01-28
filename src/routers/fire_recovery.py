@@ -165,10 +165,11 @@ async def health_check(
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> HealthCheckResponse:
     """
-    Health check endpoint using command pattern.
+    System health check endpoint.
 
-    This endpoint demonstrates the command pattern for a simple operation
-    and serves as a template for other endpoints.
+    Verifies connectivity to storage, STAC catalog, and other dependencies.
+
+    See [docs/ENDPOINTS.md#get-healthz](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-healthz) for details.
     """
     # Generate a unique job ID for the health check
     job_id = str(uuid.uuid4())
@@ -242,7 +243,11 @@ async def analyze_fire_severity(
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> ProcessingStartedResponse:
     """
-    Analyze fire severity using remote sensing data.
+    Initiate fire severity analysis using Sentinel-2 satellite imagery.
+
+    Calculates NBR, dNBR, RdNBR, and RBR indices. Returns immediately with a job ID for polling.
+
+    See [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.
     """
     job_id = str(uuid.uuid4())
     job_timestamps[job_id] = time.time()
@@ -344,7 +349,11 @@ async def get_fire_severity_result(
     stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> Union[TaskPendingResponse, FireSeverityResponse]:
     """
-    Get the result of the fire severity analysis.
+    Retrieve fire severity analysis results.
+
+    Poll until status is 'complete'. Returns URLs to severity COGs.
+
+    See [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.
     """
     # Look up the STAC item
     stac_item = await stac_manager.get_item_by_id(
@@ -389,7 +398,11 @@ async def refine_fire_boundary(
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> Dict[str, Any]:
     """
-    Refine the fire boundary to the provided GeoJSON.
+    Refine fire boundary and crop severity COGs to new geometry.
+
+    Uses user-drawn refined boundary to crop existing coarse COGs.
+
+    See [docs/ENDPOINTS.md#post-processrefine](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processrefine) for details.
     """
 
     # Start the processing task in the background
@@ -468,7 +481,11 @@ async def get_refine_result(
     stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> Union[TaskPendingResponse, RefinedBoundaryResponse]:
     """
-    Get the result of the fire boundary refinement.
+    Retrieve boundary refinement results.
+
+    Poll until status is 'complete'. Returns URLs to refined boundary and cropped COGs.
+
+    See [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.
     """
     # Look up the STAC item
     boundary_stac_item = await stac_manager.get_items_by_id_and_coarseness(
@@ -535,10 +552,9 @@ async def upload_geojson(
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> UploadedGeoJSONResponse:
     """
-    Upload GeoJSON data for a fire event.
+    Upload a GeoJSON boundary for a fire event.
 
-    Args:
-        request: GeoJSON upload request (includes geojson and boundary_type)
+    See [docs/ENDPOINTS.md#post-uploadgeojson](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadgeojson) for details.
     """
     # Validate boundary_type from request model
     if request.boundary_type not in ["coarse", "refined"]:
@@ -604,20 +620,23 @@ async def upload_geojson(
     "/upload/shapefile", response_model=UploadedShapefileZipResponse, tags=["Upload"]
 )
 async def upload_shapefile(
-    fire_event_name: str = Form(...),
-    shapefile: UploadFile = File(...),
-    boundary_type: str = Form(default="refined"),
+    fire_event_name: str = Form(..., description="Name of the fire event"),
+    shapefile: UploadFile = File(
+        ..., description="Zipped shapefile (.zip containing .shp, .shx, .dbf, .prj)"
+    ),
+    boundary_type: str = Form(
+        default="refined", description="Boundary type: 'coarse' or 'refined'"
+    ),
     stac_manager: STACJSONManager = Depends(get_stac_manager),
     storage_factory: StorageFactory = Depends(get_storage_factory),
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> UploadedShapefileZipResponse:
     """
-    Upload a zipped shapefile for a fire event.
+    Upload a zipped shapefile boundary for a fire event.
 
-    Args:
-        fire_event_name: Name of the fire event
-        shapefile: Zipped shapefile upload
-        boundary_type: Type of boundary - either "coarse" or "refined" (default: "refined")
+    Accepts multipart/form-data with shapefile zip and extracts boundary GeoJSON.
+
+    See [docs/ENDPOINTS.md#post-uploadshapefile](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadshapefile) for details.
     """
     # Validate boundary_type
     if boundary_type not in ["coarse", "refined"]:
@@ -712,7 +731,11 @@ async def resolve_against_veg_map(
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> ProcessingStartedResponse:
     """
-    Resolve fire severity against vegetation map to create a matrix of affected areas.
+    Analyze fire severity impacts on vegetation communities.
+
+    Performs zonal statistics to calculate area affected by severity class per vegetation type.
+
+    See [docs/ENDPOINTS.md#post-processresolve_against_veg_map](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processresolve_against_veg_map) for details.
     """
     logger = logging.getLogger(__name__)
     logger.debug(f"Received resolve_against_veg_map request for job {request.job_id}")
@@ -835,8 +858,11 @@ async def get_veg_map_result(
     stac_manager: STACJSONManager = Depends(get_stac_manager),
 ) -> Union[TaskPendingResponse, VegMapMatrixResponse]:
     """
-    Get the result of the vegetation map resolution against fire severity.
-    Use query parameter: ?severity_breaks=0.1&severity_breaks=0.2&severity_breaks=0.3
+    Retrieve vegetation impact analysis results.
+
+    Poll until status is 'complete'. Returns URLs to CSV and JSON impact matrices.
+
+    See [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/YOUR_ORG/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.
     """
     # Look up the STAC item
     stac_item = await stac_manager.get_items_by_id_and_classification_breaks(
