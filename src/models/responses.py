@@ -107,7 +107,8 @@ class VegMapMatrixResponse(BaseResponse):
         None, description="URL to vegetation impact matrix CSV"
     )
     fire_veg_matrix_json_url: Optional[str] = Field(
-        None, description="URL to vegetation impact matrix JSON (for dashboard visualization)"
+        None,
+        description="URL to vegetation impact matrix JSON (for dashboard visualization)",
     )
 
 
@@ -129,7 +130,9 @@ class UploadedGeoJSONResponse(BaseResponse):
     refined_boundary_geojson_url: str = Field(
         ..., description="URL to the uploaded boundary GeoJSON"
     )
-    boundary_type: str = Field(..., description="Type of boundary ('coarse' or 'refined')")
+    boundary_type: str = Field(
+        ..., description="Type of boundary ('coarse' or 'refined')"
+    )
 
 
 class UploadedShapefileZipResponse(BaseResponse):
@@ -152,7 +155,9 @@ class UploadedShapefileZipResponse(BaseResponse):
     boundary_geojson_url: str = Field(
         ..., description="URL to the extracted boundary GeoJSON"
     )
-    boundary_type: str = Field(..., description="Type of boundary ('coarse' or 'refined')")
+    boundary_type: str = Field(
+        ..., description="Type of boundary ('coarse' or 'refined')"
+    )
 
 
 class HealthCheckResponse(BaseResponse):
@@ -175,7 +180,9 @@ class HealthCheckResponse(BaseResponse):
         }
     )
 
-    overall_status: str = Field(..., description="Overall system health status ('healthy' or 'unhealthy')")
+    overall_status: str = Field(
+        ..., description="Overall system health status ('healthy' or 'unhealthy')"
+    )
     timestamp: float = Field(..., description="Unix timestamp of the health check")
     checks: Dict[str, Dict[str, Any]] = Field(
         ..., description="Individual component health check results"
