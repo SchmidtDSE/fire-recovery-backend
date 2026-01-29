@@ -279,7 +279,7 @@ jobs:
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
-              --tag "sha-${{ github.sha }}"
+              --tag "sha-${GITHUB_SHA:0:7}"
 
             # Ensure 100% traffic goes to the new revision
             gcloud run services update-traffic fire-recovery-backend-prod \
@@ -305,7 +305,7 @@ jobs:
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
-              --tag "sha-${{ github.sha }}"
+              --tag "sha-${GITHUB_SHA:0:7}"
 
             # Ensure 100% traffic goes to the new revision
             gcloud run services update-traffic fire-recovery-backend-dev \
