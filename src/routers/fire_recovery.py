@@ -36,6 +36,7 @@ from src.models.requests import (
 )
 from src.models.responses import (
     TaskPendingResponse,
+    TaskFailedResponse,
     ProcessingStartedResponse,
     RefinedBoundaryResponse,
     FireSeverityResponse,
@@ -44,6 +45,8 @@ from src.models.responses import (
     UploadedShapefileZipResponse,
     HealthCheckResponse,
 )
+from src.commands.interfaces.command_result import CommandResult
+from src.util.job_result_persistence import persist_job_result, get_job_result
 
 
 def convert_geometry_to_pydantic(
@@ -282,6 +285,9 @@ async def process_fire_severity(
     storage_factory: StorageFactory,
     index_registry: IndexRegistry,
 ) -> None:
+    logger = logging.getLogger(__name__)
+    start_time = time.time()
+
     try:
         # Create command context for fire severity analysis
         context = CommandContext(
@@ -305,11 +311,14 @@ async def process_fire_severity(
         command = FireSeverityAnalysisCommand()
         result = await command.execute(context)
 
+        # Persist the job result regardless of success/failure
+        await persist_job_result(result, storage_factory)
+
         if result.is_failure():
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error processing fire severity: {result.error_message}",
+            logger.error(
+                f"Fire severity analysis failed for job {job_id}: {result.error_message}"
             )
+            return  # Don't proceed to STAC creation
 
         # Process and upload the boundary GeoJSON
         boundary_geojson_url, _, bbox = await process_and_upload_geojson(
@@ -332,29 +341,56 @@ async def process_fire_severity(
         )
 
     except Exception as e:
-        # Log error with proper logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Error processing fire severity: {str(e)}")
-        # Set job status to failed
+        # Create and persist a failure result
+        execution_time_ms = (time.time() - start_time) * 1000
+        failure_result = CommandResult.failure(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            command_name="fire_severity_analysis",
+            execution_time_ms=execution_time_ms,
+            error_message=str(e),
+            error_details={
+                "stage": "background_task",
+                "exception_type": type(e).__name__,
+            },
+        )
+        await persist_job_result(failure_result, storage_factory)
 
 
 @router.get(
     "/result/analyze_fire_severity/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, FireSeverityResponse],
+    response_model=Union[TaskPendingResponse, TaskFailedResponse, FireSeverityResponse],
     tags=["Fire Severity"],
 )
 async def get_fire_severity_result(
     fire_event_name: str,
     job_id: str,
     stac_manager: STACJSONManager = Depends(get_stac_manager),
-) -> Union[TaskPendingResponse, FireSeverityResponse]:
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> Union[TaskPendingResponse, TaskFailedResponse, FireSeverityResponse]:
     """
     Retrieve fire severity analysis results.
 
-    Poll until status is 'complete'. Returns URLs to severity COGs.
+    Poll until status is 'complete' or 'failed'. Returns URLs to severity COGs on success,
+    or error details on failure.
 
     See [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.
     """
+    # Check for job result first (handles both success and failure)
+    job_result = await get_job_result(job_id, storage_factory)
+
+    if job_result is not None and job_result.is_failure():
+        return TaskFailedResponse(
+            fire_event_name=fire_event_name,
+            status="failed",
+            job_id=job_id,
+            error_message=job_result.error_message or "Unknown error",
+            error_details=job_result.error_details,
+            execution_time_ms=job_result.execution_time_ms,
+            command_name=job_result.command_name,
+        )
+
     # Look up the STAC item
     stac_item = await stac_manager.get_item_by_id(
         f"{fire_event_name}-severity-{job_id}"
@@ -434,6 +470,9 @@ async def process_boundary_refinement(
     """
     Process boundary refinement using command pattern.
     """
+    logger = logging.getLogger(__name__)
+    start_time = time.time()
+
     try:
         # Create command context for boundary refinement
         context = CommandContext(
@@ -451,42 +490,65 @@ async def process_boundary_refinement(
         command = BoundaryRefinementCommand()
         result = await command.execute(context)
 
+        # Persist the job result regardless of success/failure
+        await persist_job_result(result, storage_factory)
+
         if result.is_failure():
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error processing boundary refinement: {result.error_message}",
+            logger.error(
+                f"Boundary refinement failed for job {job_id}: {result.error_message}"
             )
 
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
     except Exception as e:
-        # Log error with proper logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Error processing boundary refinement: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal error during boundary refinement: {str(e)}",
+        # Create and persist a failure result
+        execution_time_ms = (time.time() - start_time) * 1000
+        failure_result = CommandResult.failure(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            command_name="boundary_refinement",
+            execution_time_ms=execution_time_ms,
+            error_message=str(e),
+            error_details={
+                "stage": "background_task",
+                "exception_type": type(e).__name__,
+            },
         )
+        await persist_job_result(failure_result, storage_factory)
 
 
 @router.get(
     "/result/refine/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, RefinedBoundaryResponse],
+    response_model=Union[TaskPendingResponse, TaskFailedResponse, RefinedBoundaryResponse],
     tags=["Boundary Refinement"],
 )
 async def get_refine_result(
     fire_event_name: str,
     job_id: str,
     stac_manager: STACJSONManager = Depends(get_stac_manager),
-) -> Union[TaskPendingResponse, RefinedBoundaryResponse]:
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> Union[TaskPendingResponse, TaskFailedResponse, RefinedBoundaryResponse]:
     """
     Retrieve boundary refinement results.
 
-    Poll until status is 'complete'. Returns URLs to refined boundary and cropped COGs.
+    Poll until status is 'complete' or 'failed'. Returns URLs to refined boundary and
+    cropped COGs on success, or error details on failure.
 
     See [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.
     """
+    # Check for job result first (handles both success and failure)
+    job_result = await get_job_result(job_id, storage_factory)
+
+    if job_result is not None and job_result.is_failure():
+        return TaskFailedResponse(
+            fire_event_name=fire_event_name,
+            status="failed",
+            job_id=job_id,
+            error_message=job_result.error_message or "Unknown error",
+            error_details=job_result.error_details,
+            execution_time_ms=job_result.execution_time_ms,
+            command_name=job_result.command_name,
+        )
+
     # Look up the STAC item
     boundary_stac_item = await stac_manager.get_items_by_id_and_coarseness(
         f"{fire_event_name}-boundary-{job_id}",
@@ -782,6 +844,7 @@ async def execute_vegetation_resolution_command(
     all filesystem dependencies by using the VegetationResolveCommand.
     """
     logger = logging.getLogger(__name__)
+    start_time = time.time()
     logger.debug(f"Starting execute_vegetation_resolution_command for job {job_id}")
     logger.debug(
         f"Parameters: veg_gpkg_url={veg_gpkg_url}, fire_cog_url={fire_cog_url}"
@@ -820,6 +883,9 @@ async def execute_vegetation_resolution_command(
             f"Command execution completed with status: success={result.is_success()}, failure={result.is_failure()}"
         )
 
+        # Persist the job result regardless of success/failure
+        await persist_job_result(result, storage_factory)
+
         if result.is_success():
             result_data = result.data or {}
             logger.info(
@@ -844,11 +910,25 @@ async def execute_vegetation_resolution_command(
             f"Error executing vegetation resolution command for job {job_id}: {str(e)}",
             exc_info=True,
         )
+        # Create and persist a failure result
+        execution_time_ms = (time.time() - start_time) * 1000
+        failure_result = CommandResult.failure(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            command_name="vegetation_resolution",
+            execution_time_ms=execution_time_ms,
+            error_message=str(e),
+            error_details={
+                "stage": "background_task",
+                "exception_type": type(e).__name__,
+            },
+        )
+        await persist_job_result(failure_result, storage_factory)
 
 
 @router.get(
     "/result/resolve_against_veg_map/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
+    response_model=Union[TaskPendingResponse, TaskFailedResponse, VegMapMatrixResponse],
     tags=["Vegetation Map Analysis"],
 )
 async def get_veg_map_result(
@@ -856,14 +936,30 @@ async def get_veg_map_result(
     job_id: str,
     severity_breaks: Optional[List[float]] = None,
     stac_manager: STACJSONManager = Depends(get_stac_manager),
-) -> Union[TaskPendingResponse, VegMapMatrixResponse]:
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> Union[TaskPendingResponse, TaskFailedResponse, VegMapMatrixResponse]:
     """
     Retrieve vegetation impact analysis results.
 
-    Poll until status is 'complete'. Returns URLs to CSV and JSON impact matrices.
+    Poll until status is 'complete' or 'failed'. Returns URLs to CSV and JSON impact
+    matrices on success, or error details on failure.
 
     See [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.
     """
+    # Check for job result first (handles both success and failure)
+    job_result = await get_job_result(job_id, storage_factory)
+
+    if job_result is not None and job_result.is_failure():
+        return TaskFailedResponse(
+            fire_event_name=fire_event_name,
+            status="failed",
+            job_id=job_id,
+            error_message=job_result.error_message or "Unknown error",
+            error_details=job_result.error_details,
+            execution_time_ms=job_result.execution_time_ms,
+            command_name=job_result.command_name,
+        )
+
     # Look up the STAC item
     stac_item = await stac_manager.get_items_by_id_and_classification_breaks(
         f"{fire_event_name}-veg-matrix-{job_id}",

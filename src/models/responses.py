@@ -24,6 +24,42 @@ class TaskPendingResponse(BaseResponse):
     )
 
 
+class TaskFailedResponse(BaseResponse):
+    """Response when a job has failed."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "fire_event_name": "Geology_Fire",
+                "status": "failed",
+                "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
+                "error_message": "Failed to retrieve satellite imagery: no scenes found for date range",
+                "error_details": {
+                    "stage": "satellite_data_retrieval",
+                    "exception_type": "NoScenesFoundError",
+                    "inputs": {
+                        "prefire_date_range": ["2023-01-01", "2023-01-05"],
+                        "postfire_date_range": ["2023-01-20", "2023-01-25"],
+                    },
+                },
+                "execution_time_ms": 1234.56,
+                "command_name": "fire_severity_analysis",
+            }
+        }
+    )
+
+    error_message: str = Field(..., description="Human-readable error description")
+    error_details: Optional[Dict[str, Any]] = Field(
+        None, description="Detailed error information including stage, exception type, and inputs"
+    )
+    execution_time_ms: Optional[float] = Field(
+        None, description="Time taken before failure in milliseconds"
+    )
+    command_name: Optional[str] = Field(
+        None, description="Name of the command that failed"
+    )
+
+
 class ProcessingStartedResponse(BaseResponse):
     """Response when async processing has been initiated."""
 

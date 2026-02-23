@@ -165,3 +165,49 @@ class CommandResult:
         if self.metadata is None:
             self.metadata = {}
         self.metadata[key] = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Serialize to dictionary for JSON storage.
+
+        Returns:
+            Dictionary representation suitable for JSON serialization
+        """
+        return {
+            "status": self.status.value,
+            "job_id": self.job_id,
+            "fire_event_name": self.fire_event_name,
+            "command_name": self.command_name,
+            "execution_time_ms": self.execution_time_ms,
+            "timestamp": self.timestamp.isoformat(),
+            "data": self.data,
+            "asset_urls": self.asset_urls,
+            "error_message": self.error_message,
+            "error_details": self.error_details,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CommandResult":
+        """
+        Deserialize from dictionary.
+
+        Args:
+            data: Dictionary from JSON storage
+
+        Returns:
+            CommandResult instance
+        """
+        return cls(
+            status=CommandStatus(data["status"]),
+            job_id=data["job_id"],
+            fire_event_name=data["fire_event_name"],
+            command_name=data["command_name"],
+            execution_time_ms=data["execution_time_ms"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            data=data.get("data"),
+            asset_urls=data.get("asset_urls"),
+            error_message=data.get("error_message"),
+            error_details=data.get("error_details"),
+            metadata=data.get("metadata"),
+        )
