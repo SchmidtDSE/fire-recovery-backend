@@ -1264,6 +1264,98 @@
         "title": "RefinedBoundaryResponse",
         "type": "object"
       },
+      "TaskFailedResponse": {
+        "description": "Response when a job has failed.",
+        "example": {
+          "command_name": "fire_severity_analysis",
+          "error_details": {
+            "exception_type": "NoScenesFoundError",
+            "inputs": {
+              "postfire_date_range": [
+                "2023-01-20",
+                "2023-01-25"
+              ],
+              "prefire_date_range": [
+                "2023-01-01",
+                "2023-01-05"
+              ]
+            },
+            "stage": "satellite_data_retrieval"
+          },
+          "error_message": "Failed to retrieve satellite imagery: no scenes found for date range",
+          "execution_time_ms": 1234.56,
+          "fire_event_name": "Geology_Fire",
+          "job_id": "223c86f1-377f-4640-ba88-ced1277f3831",
+          "status": "failed"
+        },
+        "properties": {
+          "command_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Name of the command that failed",
+            "title": "Command Name"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Detailed error information including stage, exception type, and inputs",
+            "title": "Error Details"
+          },
+          "error_message": {
+            "description": "Human-readable error description",
+            "title": "Error Message",
+            "type": "string"
+          },
+          "execution_time_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time taken before failure in milliseconds",
+            "title": "Execution Time Ms"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "job_id": {
+            "description": "Unique job identifier for tracking",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "Status of the operation",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "status",
+          "job_id",
+          "error_message"
+        ],
+        "title": "TaskFailedResponse",
+        "type": "object"
+      },
       "TaskPendingResponse": {
         "description": "Response for when a task is still being processed.",
         "example": {
@@ -1806,7 +1898,7 @@
     },
     "/fire-recovery/result/analyze_fire_severity/{fire_event_name}/{job_id}": {
       "get": {
-        "description": "Retrieve fire severity analysis results.\n\nPoll until status is 'complete'. Returns URLs to severity COGs.\n\nSee [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.",
+        "description": "Retrieve fire severity analysis results.\n\nPoll until status is 'complete' or 'failed'. Returns URLs to severity COGs on success,\nor error details on failure.\n\nSee [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.",
         "operationId": "get_fire_severity_result_fire_recovery_result_analyze_fire_severity__fire_event_name___job_id__get",
         "parameters": [
           {
@@ -1836,6 +1928,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/TaskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskFailedResponse"
                     },
                     {
                       "$ref": "#/components/schemas/FireSeverityResponse"
@@ -1870,7 +1965,7 @@
     },
     "/fire-recovery/result/refine/{fire_event_name}/{job_id}": {
       "get": {
-        "description": "Retrieve boundary refinement results.\n\nPoll until status is 'complete'. Returns URLs to refined boundary and cropped COGs.\n\nSee [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.",
+        "description": "Retrieve boundary refinement results.\n\nPoll until status is 'complete' or 'failed'. Returns URLs to refined boundary and\ncropped COGs on success, or error details on failure.\n\nSee [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.",
         "operationId": "get_refine_result_fire_recovery_result_refine__fire_event_name___job_id__get",
         "parameters": [
           {
@@ -1900,6 +1995,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/TaskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskFailedResponse"
                     },
                     {
                       "$ref": "#/components/schemas/RefinedBoundaryResponse"
@@ -1934,7 +2032,7 @@
     },
     "/fire-recovery/result/resolve_against_veg_map/{fire_event_name}/{job_id}": {
       "get": {
-        "description": "Retrieve vegetation impact analysis results.\n\nPoll until status is 'complete'. Returns URLs to CSV and JSON impact matrices.\n\nSee [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.",
+        "description": "Retrieve vegetation impact analysis results.\n\nPoll until status is 'complete' or 'failed'. Returns URLs to CSV and JSON impact\nmatrices on success, or error details on failure.\n\nSee [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.",
         "operationId": "get_veg_map_result_fire_recovery_result_resolve_against_veg_map__fire_event_name___job_id__get",
         "parameters": [
           {
@@ -1984,6 +2082,9 @@
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/TaskPendingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskFailedResponse"
                     },
                     {
                       "$ref": "#/components/schemas/VegMapMatrixResponse"
