@@ -342,17 +342,19 @@ async def create_veg_fire_matrix(
             ).round(2),
             "Mean Severity": result["mean_severity"].round(3),
             "Std Dev": result.apply(
-                lambda row: np.sqrt(
-                    (
-                        row["unburned_ha"] * (0.0 - row["mean_severity"]) ** 2
-                        + row["low_ha"] * (0.185 - row["mean_severity"]) ** 2
-                        + row["moderate_ha"] * (0.465 - row["mean_severity"]) ** 2
-                        + row["high_ha"] * (0.83 - row["mean_severity"]) ** 2
+                lambda row: (
+                    np.sqrt(
+                        (
+                            row["unburned_ha"] * (0.0 - row["mean_severity"]) ** 2
+                            + row["low_ha"] * (0.185 - row["mean_severity"]) ** 2
+                            + row["moderate_ha"] * (0.465 - row["mean_severity"]) ** 2
+                            + row["high_ha"] * (0.83 - row["mean_severity"]) ** 2
+                        )
+                        / row["total_ha"]
                     )
-                    / row["total_ha"]
-                )
-                if row["total_ha"] > 0
-                else 0,
+                    if row["total_ha"] > 0
+                    else 0
+                ),
                 axis=1,
             ).round(3),
         }
