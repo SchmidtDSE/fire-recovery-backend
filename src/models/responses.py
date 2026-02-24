@@ -50,7 +50,8 @@ class TaskFailedResponse(BaseResponse):
 
     error_message: str = Field(..., description="Human-readable error description")
     error_details: Optional[Dict[str, Any]] = Field(
-        None, description="Detailed error information including stage, exception type, and inputs"
+        None,
+        description="Detailed error information including stage, exception type, and inputs",
     )
     execution_time_ms: Optional[float] = Field(
         None, description="Time taken before failure in milliseconds"

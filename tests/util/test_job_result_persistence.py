@@ -25,9 +25,7 @@ class MockStorage(StorageInterface):
     def get_obstore(self) -> Mock:
         return Mock()
 
-    async def save_bytes(
-        self, data: bytes, path: str, temporary: bool = False
-    ) -> str:
+    async def save_bytes(self, data: bytes, path: str, temporary: bool = False) -> str:
         self._bytes_data[path] = data
         return f"mock://{path}"
 

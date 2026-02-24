@@ -518,7 +518,9 @@ async def process_boundary_refinement(
 
 @router.get(
     "/result/refine/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, TaskFailedResponse, RefinedBoundaryResponse],
+    response_model=Union[
+        TaskPendingResponse, TaskFailedResponse, RefinedBoundaryResponse
+    ],
     tags=["Boundary Refinement"],
 )
 async def get_refine_result(
