@@ -185,19 +185,25 @@ class STACJSONManager:
         return await self._repository.get_items_by_fire_event(fire_event_name)
 
     async def get_items_by_id_and_coarseness(
-        self, item_id: str, boundary_type: str
+        self,
+        item_id: str,
+        boundary_type: str,
+        fire_event_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Get a STAC item by ID and boundary type"""
         return await self._repository.get_items_by_id_and_coarseness(
-            item_id, boundary_type
+            item_id, boundary_type, fire_event_name
         )
 
     async def get_items_by_id_and_classification_breaks(
-        self, item_id: str, classification_breaks: Optional[List[float]] = None
+        self,
+        item_id: str,
+        classification_breaks: Optional[List[float]] = None,
+        fire_event_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Get a STAC item by ID and classification breaks"""
         return await self._repository.get_items_by_id_and_classification_breaks(
-            item_id, classification_breaks
+            item_id, classification_breaks, fire_event_name
         )
 
     async def search_items(

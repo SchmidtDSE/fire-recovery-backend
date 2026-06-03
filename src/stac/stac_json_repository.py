@@ -149,13 +149,19 @@ class STACJSONRepository:
         return items
 
     async def get_items_by_id_and_coarseness(
-        self, item_id: str, boundary_type: str
+        self,
+        item_id: str,
+        boundary_type: str,
+        fire_event_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Retrieve a specific STAC item by ID and boundary type
+
+        When fire_event_name is provided, the search is scoped to that fire event's
+        prefix instead of scanning the entire catalog.
         """
-        # This requires searching through files - could be optimized with indexing later
-        all_files = await self.storage.list_files("stac/")
+        prefix = f"stac/{fire_event_name}/" if fire_event_name else "stac/"
+        all_files = await self.storage.list_files(prefix)
 
         for file_path in all_files:
             if file_path.endswith(".json"):
@@ -173,12 +179,19 @@ class STACJSONRepository:
         return None
 
     async def get_items_by_id_and_classification_breaks(
-        self, item_id: str, classification_breaks: Optional[List[float]] = None
+        self,
+        item_id: str,
+        classification_breaks: Optional[List[float]] = None,
+        fire_event_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Retrieve a specific STAC item by ID and classification breaks
+
+        When fire_event_name is provided, the search is scoped to that fire event's
+        prefix instead of scanning the entire catalog.
         """
-        all_files = await self.storage.list_files("stac/")
+        prefix = f"stac/{fire_event_name}/" if fire_event_name else "stac/"
+        all_files = await self.storage.list_files(prefix)
 
         for file_path in all_files:
             if file_path.endswith(".json"):
