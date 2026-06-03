@@ -1,6 +1,6 @@
 # Fire Recovery Backend
 
-A FastAPI service for fire severity analysis, boundary refinement, and vegetation impact assessment using Sentinel-2 satellite imagery.
+A FastAPI service for fire severity analysis, boundary refinement, and vegetation impact assessment using Sentinel-2 satellite imagery. 
 
 Part of the [DSE Disturbance Toolbox](https://dse-disturbance-toolbox.org/tools/disturbance-severity/methodology/).
 
