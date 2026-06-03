@@ -391,9 +391,9 @@ async def get_fire_severity_result(
             command_name=job_result.command_name,
         )
 
-    # Look up the STAC item
-    stac_item = await stac_manager.get_item_by_id(
-        f"{fire_event_name}-severity-{job_id}"
+    # Look up the STAC item (scoped to this fire event to avoid a full-bucket scan)
+    stac_item = await stac_manager.get_item_by_fire_event_and_id(
+        fire_event_name, f"{fire_event_name}-severity-{job_id}"
     )
 
     if not stac_item:
@@ -551,10 +551,11 @@ async def get_refine_result(
             command_name=job_result.command_name,
         )
 
-    # Look up the STAC item
+    # Look up the STAC item (scoped to this fire event to avoid a full-bucket scan)
     boundary_stac_item = await stac_manager.get_items_by_id_and_coarseness(
         f"{fire_event_name}-boundary-{job_id}",
         "refined",
+        fire_event_name=fire_event_name,
     )
 
     if not boundary_stac_item:
@@ -579,6 +580,7 @@ async def get_refine_result(
     severity_stac_item = await stac_manager.get_items_by_id_and_coarseness(
         f"{fire_event_name}-severity-{job_id}",
         "refined",
+        fire_event_name=fire_event_name,
     )
 
     if not severity_stac_item:
@@ -962,10 +964,11 @@ async def get_veg_map_result(
             command_name=job_result.command_name,
         )
 
-    # Look up the STAC item
+    # Look up the STAC item (scoped to this fire event to avoid a full-bucket scan)
     stac_item = await stac_manager.get_items_by_id_and_classification_breaks(
         f"{fire_event_name}-veg-matrix-{job_id}",
         classification_breaks=severity_breaks,
+        fire_event_name=fire_event_name,
     )
 
     if not stac_item:
