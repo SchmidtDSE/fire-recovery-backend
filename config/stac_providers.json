@@ -25,18 +25,18 @@
     "landsat": {
       "providers": [
         {
-          "id": "ELEMENT_84",
-          "name": "Element 84",
-          "url": "https://earth-search.aws.element84.com/v1/",
+          "id": "MICROSOFT_PLANETARY_COMPUTER",
+          "name": "Microsoft Planetary Computer",
+          "url": "https://planetarycomputer.microsoft.com/api/stac/v1",
           "collection": "landsat-c2-l2",
           "swir_band": "swir22",
           "nir_band": "nir08",
           "epsg_code": 4326
         },
         {
-          "id": "MICROSOFT_PLANETARY_COMPUTER",
-          "name": "Microsoft Planetary Computer",
-          "url": "https://planetarycomputer.microsoft.com/api/stac/v1",
+          "id": "ELEMENT_84",
+          "name": "Element 84",
+          "url": "https://earth-search.aws.element84.com/v1/",
           "collection": "landsat-c2-l2",
           "swir_band": "swir22",
           "nir_band": "nir08",
