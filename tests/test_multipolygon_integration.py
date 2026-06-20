@@ -210,7 +210,6 @@ class TestFireSeverityAnalysisWithMultiPolygon:
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
-        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         mock_data = xr.DataArray(
             np.random.random((4, 2, 10, 10)),
@@ -561,7 +560,6 @@ class TestBackwardCompatibility:
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
-        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         mock_data = xr.DataArray(
             np.random.random((2, 2, 10, 10)),

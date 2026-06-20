@@ -231,10 +231,9 @@ class FireSeverityAnalysisCommand(Command):
 
             logger.info(f"Found {len(items)} STAC items for analysis")
 
-            # Get band configuration and reflectance scaling for the matched provider
+            # Get band configuration for the matched provider
             nir_band, swir_band = stac_handler.get_band_names(endpoint_config)
             epsg_code = stac_handler.get_epsg_code(endpoint_config)
-            scale, offset = stac_handler.get_reflectance_scaling(endpoint_config)
 
             logger.info(
                 f"Resolved collection: {endpoint_config.collection} | bands - "
@@ -249,23 +248,23 @@ class FireSeverityAnalysisCommand(Command):
                 geometry_dict: Dict[str, Any] = geometry  # type: ignore
             buffered_bounds = self._get_buffered_bounds(geometry_dict, buffer_meters)
 
-            # Stack data using stackstac
+            # Stack data using stackstac. rescale=True (stackstac's default, made
+            # explicit here because we depend on it) applies the per-asset
+            # scale/offset from each item's `raster:bands` STAC metadata, yielding
+            # surface reflectance, and masks nodata to NaN. This is what makes
+            # Landsat C2 L2 — stored as scaled integers with a -0.2 offset —
+            # comparable to Sentinel-2: NBR's normalized difference cancels a
+            # multiplicative scale but NOT the additive offset, so the offset must
+            # be applied. We rely on the providers' published metadata to do this
+            # rather than hardcoding per-sensor reflectance constants.
             stacked_data = stackstac.stack(
                 items,
                 epsg=epsg_code,
                 assets=[swir_band, nir_band],
                 bounds=buffered_bounds,
                 chunksize=(-1, 1, 512, 512),
+                rescale=True,
             )
-
-            # Convert stored DN values to surface reflectance for sensors that
-            # store scaled integers (e.g. Landsat C2 L2). NBR is a normalized
-            # difference, so the multiplicative scale cancels but the additive
-            # offset does NOT — without this, Landsat dNBR/RBR are not comparable
-            # to Sentinel-2. Defaults (1.0, 0.0) make this a no-op for Sentinel-2.
-            if scale != 1.0 or offset != 0.0:
-                logger.info(f"Applying reflectance scaling: value * {scale} + {offset}")
-                stacked_data = stacked_data * scale + offset
 
             # Split into pre and post fire datasets
             prefire_data = self._subset_data_by_date_range(

@@ -247,13 +247,12 @@ def realistic_stac_endpoint_mock():
         mock_handler.search_items = AsyncMock(side_effect=mock_search_items)
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
-        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         # Create combined date range for synthetic data
         all_dates = prefire_dates + postfire_dates
 
         # Mock stackstac.stack to return realistic synthetic data
-        def mock_stackstac_stack(items, epsg, assets, bounds, chunksize):
+        def mock_stackstac_stack(items, epsg, assets, bounds, chunksize, rescale=True):
             return create_realistic_satellite_data(
                 geometry_bounds, all_dates, burn_pattern
             )

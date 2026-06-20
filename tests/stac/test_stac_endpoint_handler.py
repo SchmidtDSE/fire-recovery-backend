@@ -4,6 +4,10 @@ These tests exercise configuration parsing and the per-provider accessors only
 (no network calls): the shipped config is loaded and inspected, the model is
 validated directly, and the unknown-sensor / unknown-provider error paths are
 covered with synthetic configs.
+
+Reflectance scaling is deliberately NOT tested here because it is not our
+concern: stackstac applies the per-asset scale/offset from each item's
+``raster:bands`` metadata at stack time (``rescale=True``).
 """
 
 import json
@@ -41,19 +45,13 @@ class TestStacProviderConfigLoading:
         assert len(providers) == 2
         for provider in providers:
             assert provider.collection == "sentinel-2-l2a"
-            # Sentinel-2 L2A is already surface reflectance: no rescaling.
-            assert provider.scale == 1.0
-            assert provider.offset == 0.0
 
-    def test_landsat_providers_use_landsat_collection_and_scaling(self) -> None:
+    def test_landsat_providers_use_landsat_collection_and_bands(self) -> None:
         config = StacProviderConfig.load_from_file()
         providers = config.get_providers("landsat")
         assert len(providers) >= 1
         for provider in providers:
             assert provider.collection == "landsat-c2-l2"
-            # USGS Collection-2 Level-2 surface-reflectance scaling.
-            assert provider.scale == pytest.approx(0.0000275)
-            assert provider.offset == pytest.approx(-0.2)
             # NBR uses NIR (B5, ~0.86um) and SWIR (B7, ~2.2um).
             assert provider.nir_band == "nir08"
             assert provider.swir_band == "swir22"
@@ -113,18 +111,6 @@ class TestStacEndpointHandler:
         assert nir == "nir08"
         assert swir == "swir22"
 
-    def test_reflectance_scaling_sentinel2_is_noop(self) -> None:
-        handler = StacEndpointHandler()
-        provider = handler.config.get_providers("sentinel-2")[0]
-        assert handler.get_reflectance_scaling(provider) == (1.0, 0.0)
-
-    def test_reflectance_scaling_landsat(self) -> None:
-        handler = StacEndpointHandler()
-        provider = handler.config.get_providers("landsat")[0]
-        scale, offset = handler.get_reflectance_scaling(provider)
-        assert scale == pytest.approx(0.0000275)
-        assert offset == pytest.approx(-0.2)
-
     def test_epsg_accessor(self) -> None:
         handler = StacEndpointHandler()
         provider = handler.config.get_providers("sentinel-2")[0]
@@ -134,7 +120,7 @@ class TestStacEndpointHandler:
 class TestSensorConfigModel:
     """Direct validation of the pydantic models."""
 
-    def test_stac_mapping_defaults_scale_offset(self) -> None:
+    def test_stac_mapping_fields(self) -> None:
         mapping = StacMapping(
             id=StacProvider.ELEMENT_84,
             name="Element 84",
@@ -144,8 +130,8 @@ class TestSensorConfigModel:
             nir_band="nir08",
             epsg_code=4326,
         )
-        assert mapping.scale == 1.0
-        assert mapping.offset == 0.0
+        assert mapping.collection == "sentinel-2-l2a"
+        assert mapping.id is StacProvider.ELEMENT_84
 
     def test_sensor_config_holds_providers(self) -> None:
         sensor_config = SensorConfig(
@@ -158,8 +144,6 @@ class TestSensorConfigModel:
                     swir_band="swir22",
                     nir_band="nir08",
                     epsg_code=4326,
-                    scale=0.0000275,
-                    offset=-0.2,
                 )
             ]
         )

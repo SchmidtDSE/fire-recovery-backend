@@ -31,9 +31,7 @@
           "collection": "landsat-c2-l2",
           "swir_band": "swir22",
           "nir_band": "nir08",
-          "epsg_code": 4326,
-          "scale": 0.0000275,
-          "offset": -0.2
+          "epsg_code": 4326
         },
         {
           "id": "MICROSOFT_PLANETARY_COMPUTER",
@@ -42,9 +40,7 @@
           "collection": "landsat-c2-l2",
           "swir_band": "swir22",
           "nir_band": "nir08",
-          "epsg_code": 4326,
-          "scale": 0.0000275,
-          "offset": -0.2
+          "epsg_code": 4326
         }
       ]
     }

@@ -27,10 +27,13 @@ class StacMapping(BaseModel):
     Model for a single (sensor, provider) STAC mapping.
 
     The collection ID and band names are properties of the *(sensor, provider)*
-    pair, not of the provider alone, so they live together on this model. The
-    reflectance ``scale``/``offset`` default to a no-op; sensors whose surface
-    reflectance is stored as scaled integers (e.g. Landsat Collection-2 Level-2)
-    override them so values become comparable across sensors.
+    pair, not of the provider alone, so they live together on this model.
+
+    Reflectance scaling is intentionally NOT modeled here. stackstac applies the
+    per-asset ``scale``/``offset`` from each item's ``raster:bands`` metadata at
+    stack time (``rescale=True``), so reflectance correction — including
+    Landsat C2 L2's additive offset — comes from the providers' published
+    metadata rather than hardcoded per-sensor constants.
     """
 
     id: StacProvider
@@ -40,8 +43,6 @@ class StacMapping(BaseModel):
     swir_band: str
     nir_band: str
     epsg_code: int
-    scale: float = 1.0
-    offset: float = 0.0
 
 
 class SensorConfig(BaseModel):
@@ -113,8 +114,9 @@ class StacEndpointHandler:
     Handles interactions with STAC endpoints with fallback support.
 
     Tries multiple STAC endpoints in order of priority when data is not
-    available. Providers, their collection IDs, band names, and reflectance
-    scaling are all resolved per sensor from configuration.
+    available. Providers, their collection IDs, and band names are resolved
+    per sensor from configuration. Reflectance scaling is left to stackstac
+    (via each item's ``raster:bands`` metadata at stack time).
     """
 
     def __init__(
@@ -250,20 +252,3 @@ class StacEndpointHandler:
             EPSG code as integer
         """
         return provider.epsg_code
-
-    def get_reflectance_scaling(self, provider: StacMapping) -> Tuple[float, float]:
-        """
-        Get the (scale, offset) needed to convert stored values to reflectance.
-
-        Surface-reflectance products are sometimes stored as scaled integers
-        (``reflectance = value * scale + offset``). Sentinel-2 L2A is already
-        reflectance, so its providers use the default no-op ``(1.0, 0.0)``.
-        Landsat Collection-2 Level-2 uses ``scale=0.0000275``, ``offset=-0.2``.
-
-        Args:
-            provider: The provider configuration
-
-        Returns:
-            Tuple of (scale, offset)
-        """
-        return provider.scale, provider.offset
