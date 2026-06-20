@@ -112,7 +112,7 @@ def command_context(
         computation_config={
             "prefire_date_range": ["2023-06-01", "2023-06-15"],
             "postfire_date_range": ["2023-07-01", "2023-07-15"],
-            "collection": "sentinel-2-l2a",
+            "sensor": "sentinel-2",
             "buffer_meters": 100,
             "indices": ["nbr", "dnbr"],
         },
@@ -265,11 +265,12 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],  # Mock STAC items
-                {"nir_band": "B08", "swir_band": "B12", "epsg": 4326},  # Mock config
+                Mock(collection="sentinel-2-l2a"),  # Mock matched-provider config
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
+        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         # Mock stackstac.stack
         mock_data = xr.DataArray(
@@ -294,7 +295,7 @@ class TestFireSeverityAnalysisCommand:
             command_context.geometry,
             ["2023-06-01", "2023-06-15"],
             ["2023-07-01", "2023-07-15"],
-            "sentinel-2-l2a",
+            "sentinel-2",
             100.0,
         )
 
@@ -402,11 +403,12 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],
-                {"nir_band": "B08", "swir_band": "B12", "epsg": 4326},
+                Mock(collection="sentinel-2-l2a"),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
+        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         mock_data = xr.DataArray(
             np.random.random((4, 2, 10, 10)),

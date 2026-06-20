@@ -193,7 +193,7 @@ class TestFireSeverityAnalysisWithMultiPolygon:
             computation_config={
                 "prefire_date_range": ["2023-06-01", "2023-06-15"],
                 "postfire_date_range": ["2023-07-01", "2023-07-15"],
-                "collection": "sentinel-2-l2a",
+                "sensor": "sentinel-2",
                 "buffer_meters": 100,
                 "indices": ["nbr", "dnbr"],
             },
@@ -205,11 +205,12 @@ class TestFireSeverityAnalysisWithMultiPolygon:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],
-                {"nir_band": "B08", "swir_band": "B12", "epsg": 4326},
+                Mock(collection="sentinel-2-l2a"),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
+        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         mock_data = xr.DataArray(
             np.random.random((4, 2, 10, 10)),
@@ -543,7 +544,7 @@ class TestBackwardCompatibility:
             computation_config={
                 "prefire_date_range": ["2023-06-01", "2023-06-15"],
                 "postfire_date_range": ["2023-07-01", "2023-07-15"],
-                "collection": "sentinel-2-l2a",
+                "sensor": "sentinel-2",
                 "buffer_meters": 100,
                 "indices": ["nbr"],
             },
@@ -555,11 +556,12 @@ class TestBackwardCompatibility:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1"],
-                {"nir_band": "B08", "swir_band": "B12", "epsg": 4326},
+                Mock(collection="sentinel-2-l2a"),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
+        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         mock_data = xr.DataArray(
             np.random.random((2, 2, 10, 10)),

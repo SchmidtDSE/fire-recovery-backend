@@ -34,11 +34,11 @@ All endpoints are prefixed with `/fire-recovery/`.
 
 ### POST /process/analyze_fire_severity
 
-Initiates fire severity analysis using Sentinel-2 satellite imagery. This is an async operation that returns immediately with a job ID for polling.
+Initiates fire severity analysis using Sentinel-2 (default) or Landsat satellite imagery, selectable via the `sensor` field. This is an async operation that returns immediately with a job ID for polling.
 
 #### Processing Pipeline
 
-1. Queries Sentinel-2 L2A data from Microsoft Planetary Computer STAC
+1. Queries the selected sensor's collection — Sentinel-2 L2A or Landsat C2 L2 — from STAC (Element 84 primary, Microsoft Planetary Computer fallback)
 2. Creates temporal median composites for pre-fire and post-fire periods
 3. Calculates spectral indices:
    - **NBR** (Normalized Burn Ratio): `(NIR - SWIR) / (NIR + SWIR)`
@@ -66,7 +66,8 @@ curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity"
       ]]
     },
     "prefire_date_range": ["2023-06-01", "2023-06-09"],
-    "postfire_date_range": ["2023-06-17", "2023-06-22"]
+    "postfire_date_range": ["2023-06-17", "2023-06-22"],
+    "sensor": "sentinel-2"
   }'
 ```
 
@@ -78,6 +79,7 @@ curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity"
 | `coarse_geojson` | GeoJSON | Yes | Polygon, MultiPolygon, or Feature defining the area of interest |
 | `prefire_date_range` | string[] | Yes | Two ISO dates `[start, end]` for pre-fire imagery (2-3 weeks before ignition) |
 | `postfire_date_range` | string[] | Yes | Two ISO dates `[start, end]` for post-fire imagery (2-3 weeks after containment) |
+| `sensor` | string | No | Satellite source: `sentinel-2` (default) or `landsat` |
 
 #### Response (202 Accepted)
 

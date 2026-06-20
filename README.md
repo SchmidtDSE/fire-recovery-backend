@@ -1,6 +1,6 @@
 # Fire Recovery Backend
 
-A FastAPI service for fire severity analysis, boundary refinement, and vegetation impact assessment using Sentinel-2 satellite imagery. 
+A FastAPI service for fire severity analysis, boundary refinement, and vegetation impact assessment using Sentinel-2 or Landsat satellite imagery. 
 
 Part of the [DSE Disturbance Toolbox](https://dse-disturbance-toolbox.org/tools/disturbance-severity/methodology/).
 
@@ -8,7 +8,7 @@ Part of the [DSE Disturbance Toolbox](https://dse-disturbance-toolbox.org/tools/
 
 This API processes satellite imagery to help assess wildfire impacts:
 
-1. **Fire Severity Analysis** - Calculates burn severity indices (NBR, dNBR, RdNBR, RBR) from Sentinel-2 imagery
+1. **Fire Severity Analysis** - Calculates burn severity indices (NBR, dNBR, RdNBR, RBR) from Sentinel-2 or Landsat imagery
 2. **Boundary Refinement** - Crops analysis to user-drawn boundaries for precise impact areas
 3. **Vegetation Impact** - Generates statistics on fire effects across vegetation communities
 
@@ -76,7 +76,7 @@ Interactive API docs available at `/docs` (Swagger UI) or `/redoc` when running 
 ## Technology Stack
 
 - **FastAPI** - Async Python web framework
-- **Sentinel-2 L2A** - Satellite imagery via Microsoft Planetary Computer
+- **Sentinel-2 L2A & Landsat C2 L2** - Satellite imagery via Element 84 and Microsoft Planetary Computer
 - **Cloud Optimized GeoTIFF** - Web-optimized raster format
 - **STAC** - SpatioTemporal Asset Catalog for metadata
 - **Google Cloud Storage** - Asset storage (S3-compatible)

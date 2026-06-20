@@ -233,20 +233,21 @@ def realistic_stac_endpoint_mock():
         mock_handler = Mock()
 
         # Mock search_items to return realistic STAC items
-        async def mock_search_items(geometry, date_range, collections):
+        async def mock_search_items(geometry, date_range, sensor):
             # Create synthetic STAC items
             items = [
                 {"id": f"sentinel-2-l2a-{i}", "datetime": date}
                 for i, date in enumerate([*prefire_dates, *postfire_dates])
             ]
 
-            endpoint_config = {"nir_band": "B08", "swir_band": "B12", "epsg": 4326}
+            endpoint_config = Mock(collection="sentinel-2-l2a")
 
             return items, endpoint_config
 
         mock_handler.search_items = AsyncMock(side_effect=mock_search_items)
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
+        mock_handler.get_reflectance_scaling.return_value = (1.0, 0.0)
 
         # Create combined date range for synthetic data
         all_dates = prefire_dates + postfire_dates
@@ -305,7 +306,7 @@ def create_integration_context(
         computation_config={
             "prefire_date_range": prefire_dates,
             "postfire_date_range": postfire_dates,
-            "collection": "sentinel-2-l2a",
+            "sensor": "sentinel-2",
             "buffer_meters": 100,
             "indices": ["dnbr", "rdnbr", "rbr"],
         },

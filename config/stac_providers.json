@@ -1,20 +1,52 @@
 {
-  "providers": [
-    {
-      "id": "ELEMENT_84",
-      "name": "Element 84",
-      "url": "https://earth-search.aws.element84.com/v1/",
-      "swir_band": "swir22",
-      "nir_band": "nir08",
-      "epsg_code": 4326
+  "sensors": {
+    "sentinel-2": {
+      "providers": [
+        {
+          "id": "ELEMENT_84",
+          "name": "Element 84",
+          "url": "https://earth-search.aws.element84.com/v1/",
+          "collection": "sentinel-2-l2a",
+          "swir_band": "swir22",
+          "nir_band": "nir08",
+          "epsg_code": 4326
+        },
+        {
+          "id": "MICROSOFT_PLANETARY_COMPUTER",
+          "name": "Microsoft Planetary Computer",
+          "url": "https://planetarycomputer.microsoft.com/api/stac/v1",
+          "collection": "sentinel-2-l2a",
+          "swir_band": "B12",
+          "nir_band": "B8A",
+          "epsg_code": 4326
+        }
+      ]
     },
-    {
-      "id": "MICROSOFT_PLANETARY_COMPUTER",
-      "name": "Microsoft Planetary Computer",
-      "url": "https://planetarycomputer.microsoft.com/api/stac/v1",
-      "swir_band": "B12",
-      "nir_band": "B8A",
-      "epsg_code": 4326
+    "landsat": {
+      "providers": [
+        {
+          "id": "ELEMENT_84",
+          "name": "Element 84",
+          "url": "https://earth-search.aws.element84.com/v1/",
+          "collection": "landsat-c2-l2",
+          "swir_band": "swir22",
+          "nir_band": "nir08",
+          "epsg_code": 4326,
+          "scale": 0.0000275,
+          "offset": -0.2
+        },
+        {
+          "id": "MICROSOFT_PLANETARY_COMPUTER",
+          "name": "Microsoft Planetary Computer",
+          "url": "https://planetarycomputer.microsoft.com/api/stac/v1",
+          "collection": "landsat-c2-l2",
+          "swir_band": "swir22",
+          "nir_band": "nir08",
+          "epsg_code": 4326,
+          "scale": 0.0000275,
+          "offset": -0.2
+        }
+      ]
     }
-  ]
+  }
 }
