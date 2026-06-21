@@ -246,9 +246,10 @@ async def analyze_fire_severity(
     index_registry: IndexRegistry = Depends(get_index_registry),
 ) -> ProcessingStartedResponse:
     """
-    Initiate fire severity analysis using Sentinel-2 satellite imagery.
+    Initiate fire severity analysis using Sentinel-2 (default) or Landsat satellite imagery.
 
-    Calculates NBR, dNBR, RdNBR, and RBR indices. Returns immediately with a job ID for polling.
+    Select the source via the optional `sensor` body field. Calculates NBR, dNBR,
+    RdNBR, and RBR indices. Returns immediately with a job ID for polling.
 
     See [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.
     """
@@ -263,6 +264,7 @@ async def analyze_fire_severity(
         geometry=request.coarse_geojson,
         prefire_date_range=request.prefire_date_range,
         postfire_date_range=request.postfire_date_range,
+        sensor=request.sensor,
         stac_manager=stac_manager,
         storage_factory=storage_factory,
         index_registry=index_registry,
@@ -284,6 +286,7 @@ async def process_fire_severity(
     stac_manager: STACJSONManager,
     storage_factory: StorageFactory,
     index_registry: IndexRegistry,
+    sensor: str = "sentinel-2",
 ) -> None:
     logger = logging.getLogger(__name__)
     start_time = time.time()
@@ -301,7 +304,7 @@ async def process_fire_severity(
             computation_config={
                 "prefire_date_range": prefire_date_range,
                 "postfire_date_range": postfire_date_range,
-                "collection": "sentinel-2-l2a",
+                "sensor": sensor,
                 "buffer_meters": 100,
                 "indices": ["dnbr", "rdnbr", "rbr"],
             },

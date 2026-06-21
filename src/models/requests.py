@@ -1,6 +1,11 @@
-from typing import List, Union, Optional
+from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 from geojson_pydantic import Polygon, MultiPolygon, Feature
+
+# Supported satellite sources for fire severity analysis. Adding a value here
+# (plus a matching sensor entry in config/stac_providers.json) is all that is
+# needed to expose a new sensor through the API.
+Sensor = Literal["sentinel-2", "landsat"]
 
 
 class ProcessingRequest(BaseModel):
@@ -24,6 +29,7 @@ class ProcessingRequest(BaseModel):
                 },
                 "prefire_date_range": ["2023-06-01", "2023-06-09"],
                 "postfire_date_range": ["2023-06-17", "2023-06-22"],
+                "sensor": "sentinel-2",
             }
         }
     )
@@ -40,6 +46,10 @@ class ProcessingRequest(BaseModel):
     postfire_date_range: list[str] = Field(
         ...,
         description="Date range for postfire imagery [start, end] (2-3 weeks after containment)",
+    )
+    sensor: Sensor = Field(
+        default="sentinel-2",
+        description="Satellite source to analyze: 'sentinel-2' (default) or 'landsat'",
     )
 
 

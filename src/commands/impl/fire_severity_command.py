@@ -115,7 +115,7 @@ class FireSeverityAnalysisCommand(Command):
             # Extract configuration
             prefire_date_range = context.get_computation_config("prefire_date_range")
             postfire_date_range = context.get_computation_config("postfire_date_range")
-            collection = context.get_computation_config("collection", "sentinel-2-l2a")
+            sensor = context.get_computation_config("sensor", "sentinel-2")
             buffer_meters = context.get_computation_config("buffer_meters", 100)
             indices = context.get_computation_config(
                 "indices",
@@ -132,7 +132,7 @@ class FireSeverityAnalysisCommand(Command):
 
             logger.info(
                 f"Configuration - Prefire: {prefire_date_range}, "
-                f"Postfire: {postfire_date_range}, Collection: {collection}, "
+                f"Postfire: {postfire_date_range}, Sensor: {sensor}, "
                 f"Buffer: {buffer_meters}m, Indices: {indices}"
             )
 
@@ -142,7 +142,7 @@ class FireSeverityAnalysisCommand(Command):
                 geometry,
                 prefire_date_range,
                 postfire_date_range,
-                collection,
+                sensor,
                 buffer_meters,
             )
 
@@ -204,7 +204,7 @@ class FireSeverityAnalysisCommand(Command):
         geometry: Polygon | MultiPolygon | Feature,
         prefire_date_range: List[str],
         postfire_date_range: List[str],
-        collection: str,
+        sensor: str,
         buffer_meters: float,
     ) -> STACDataPayload:
         """Fetch satellite data for pre and post-fire periods"""
@@ -217,11 +217,11 @@ class FireSeverityAnalysisCommand(Command):
             # Calculate full date range for single query
             full_date_range = [prefire_date_range[0], postfire_date_range[1]]
 
-            # Search for items
+            # Search for items (provider chain + collection resolved per sensor)
             items, endpoint_config = await stac_handler.search_items(
                 geometry=geometry,
                 date_range=full_date_range,
-                collections=[collection],
+                sensor=sensor,
             )
 
             if not items:
@@ -231,12 +231,13 @@ class FireSeverityAnalysisCommand(Command):
 
             logger.info(f"Found {len(items)} STAC items for analysis")
 
-            # Get band configuration
+            # Get band configuration for the matched provider
             nir_band, swir_band = stac_handler.get_band_names(endpoint_config)
             epsg_code = stac_handler.get_epsg_code(endpoint_config)
 
             logger.info(
-                f"Using bands - NIR: {nir_band}, SWIR: {swir_band}, EPSG: {epsg_code}"
+                f"Resolved collection: {endpoint_config.collection} | bands - "
+                f"NIR: {nir_band}, SWIR: {swir_band}, EPSG: {epsg_code}"
             )
 
             # Calculate buffered bounds
@@ -247,13 +248,22 @@ class FireSeverityAnalysisCommand(Command):
                 geometry_dict: Dict[str, Any] = geometry  # type: ignore
             buffered_bounds = self._get_buffered_bounds(geometry_dict, buffer_meters)
 
-            # Stack data using stackstac
+            # Stack data using stackstac. rescale=True (stackstac's default, made
+            # explicit here because we depend on it) applies the per-asset
+            # scale/offset from each item's `raster:bands` STAC metadata, yielding
+            # surface reflectance, and masks nodata to NaN. This is what makes
+            # Landsat C2 L2 — stored as scaled integers with a -0.2 offset —
+            # comparable to Sentinel-2: NBR's normalized difference cancels a
+            # multiplicative scale but NOT the additive offset, so the offset must
+            # be applied. We rely on the providers' published metadata to do this
+            # rather than hardcoding per-sensor reflectance constants.
             stacked_data = stackstac.stack(
                 items,
                 epsg=epsg_code,
                 assets=[swir_band, nir_band],
                 bounds=buffered_bounds,
                 chunksize=(-1, 1, 512, 512),
+                rescale=True,
             )
 
             # Split into pre and post fire datasets
