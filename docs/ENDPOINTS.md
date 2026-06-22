@@ -38,7 +38,7 @@ Initiates fire severity analysis using Sentinel-2 (default) or Landsat satellite
 
 #### Processing Pipeline
 
-1. Queries the selected sensor's collection — Sentinel-2 L2A or Landsat C2 L2 — from STAC (Element 84 primary, Microsoft Planetary Computer fallback)
+1. Queries the selected sensor's collection from STAC, with per-sensor provider fallback: Sentinel-2 L2A via Element 84 (then Microsoft Planetary Computer); Landsat C2 L2 via Microsoft Planetary Computer (then Element 84)
 2. Creates temporal median composites for pre-fire and post-fire periods
 3. Calculates spectral indices:
    - **NBR** (Normalized Burn Ratio): `(NIR - SWIR) / (NIR + SWIR)`
