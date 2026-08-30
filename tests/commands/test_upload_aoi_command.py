@@ -580,13 +580,17 @@ class TestShapefileExtraction:
         """Shapefile nested one level deep in a subdirectory should be accepted"""
         command = UploadAOICommand()
 
-        geometry = command._extract_geometry_from_shapefile_zip(nested_shapefile_zip_bytes)
+        geometry = command._extract_geometry_from_shapefile_zip(
+            nested_shapefile_zip_bytes
+        )
 
         assert geometry["type"] in ["Polygon", "MultiPolygon"]
         assert "coordinates" in geometry
         assert len(geometry["coordinates"]) > 0
 
-    def test_extract_multiple_shp_files_rejected(self, multi_shp_zip_bytes: bytes) -> None:
+    def test_extract_multiple_shp_files_rejected(
+        self, multi_shp_zip_bytes: bytes
+    ) -> None:
         """Zip with more than one .shp file should be rejected as ambiguous"""
         command = UploadAOICommand()
 
@@ -600,7 +604,9 @@ class TestShapefileExtraction:
         command = UploadAOICommand()
 
         with pytest.raises(ValueError, match="levels deep"):
-            command._extract_geometry_from_shapefile_zip(deeply_nested_shapefile_zip_bytes)
+            command._extract_geometry_from_shapefile_zip(
+                deeply_nested_shapefile_zip_bytes
+            )
 
 
 class TestBoundaryTypeParameter:

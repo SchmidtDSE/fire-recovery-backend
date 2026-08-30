@@ -447,21 +447,23 @@ class UploadAOICommand(Command):
 
             # Exactly one subdirectory level — re-zip with files at root
             prefix = shp_path.rsplit("/", 1)[0] + "/"
-            siblings = [n for n in names if n.startswith(prefix) and not n.endswith("/")]
+            siblings = [
+                n for n in names if n.startswith(prefix) and not n.endswith("/")
+            ]
 
             stem = shp_path[len(prefix) : -4].lower()
-            present = {n[len(prefix):].lower() for n in siblings}
+            present = {n[len(prefix) :].lower() for n in siblings}
             for required in (stem + ".shx", stem + ".dbf"):
                 if required not in present:
                     raise ValueError(
-                        f"Missing required shapefile component '{required[len(stem):]}'. "
+                        f"Missing required shapefile component '{required[len(stem) :]}'. "
                         "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
                     )
 
             out = io.BytesIO()
             with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as out_zf:
                 for name in siblings:
-                    out_zf.writestr(name[len(prefix):], zf.read(name))
+                    out_zf.writestr(name[len(prefix) :], zf.read(name))
 
             out.seek(0)
             return out.read()
