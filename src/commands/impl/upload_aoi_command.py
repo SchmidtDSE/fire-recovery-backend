@@ -2,6 +2,7 @@ import io
 import json
 import logging
 import time
+import zipfile
 from typing import Any, Dict, List, Tuple
 
 import geopandas as gpd
@@ -399,6 +400,72 @@ class UploadAOICommand(Command):
             setattr(e, "_upload_stage", "stac_creation")
             raise
 
+    def _normalize_shapefile_zip(self, zip_bytes: bytes) -> bytes:
+        """
+        Ensure shapefile components sit at the root of the ZIP archive.
+
+        Accepts files already at root (returned unchanged) or files nested
+        exactly one level deep inside a single subdirectory (re-zipped flat).
+        Raises ValueError for anything ambiguous: no .shp found, multiple .shp
+        files, missing required siblings, or deeper nesting.
+        """
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+        except zipfile.BadZipFile:
+            raise ValueError(
+                "Invalid zip file or no .shp file found in zip. "
+                "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
+            )
+
+        with zf:
+            names = zf.namelist()
+            shp_files = [n for n in names if n.lower().endswith(".shp")]
+
+            if not shp_files:
+                raise ValueError(
+                    "Invalid zip file or no .shp file found in zip. "
+                    "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
+                )
+
+            if len(shp_files) > 1:
+                raise ValueError(
+                    f"Multiple .shp files found in zip: {shp_files}. "
+                    "Zip should contain exactly one shapefile."
+                )
+
+            shp_path = shp_files[0]
+            depth = shp_path.count("/")
+
+            if depth == 0:
+                return zip_bytes
+
+            if depth > 1:
+                raise ValueError(
+                    f"Shapefile is nested {depth} levels deep in zip. "
+                    "Files must be at the root or one level deep in a single subdirectory."
+                )
+
+            # Exactly one subdirectory level — re-zip with files at root
+            prefix = shp_path.rsplit("/", 1)[0] + "/"
+            siblings = [n for n in names if n.startswith(prefix) and not n.endswith("/")]
+
+            stem = shp_path[len(prefix) : -4].lower()
+            present = {n[len(prefix):].lower() for n in siblings}
+            for required in (stem + ".shx", stem + ".dbf"):
+                if required not in present:
+                    raise ValueError(
+                        f"Missing required shapefile component '{required[len(stem):]}'. "
+                        "Ensure the zip contains all shapefile components (.shp, .dbf, .shx, .prj)"
+                    )
+
+            out = io.BytesIO()
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as out_zf:
+                for name in siblings:
+                    out_zf.writestr(name[len(prefix):], zf.read(name))
+
+            out.seek(0)
+            return out.read()
+
     def _extract_geometry_from_shapefile_zip(self, zip_bytes: bytes) -> Dict[str, Any]:
         """
         Extract GeoJSON geometry from a zipped shapefile using in-memory processing.
@@ -417,6 +484,8 @@ class UploadAOICommand(Command):
             ValueError: If shapefile is invalid, empty, or contains unsupported geometry
         """
         logger.info("Extracting geometry from shapefile zip")
+
+        zip_bytes = self._normalize_shapefile_zip(zip_bytes)
 
         try:
             # Wrap bytes in BytesIO for in-memory processing
