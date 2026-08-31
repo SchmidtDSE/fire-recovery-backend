@@ -195,7 +195,6 @@ class TestFireSeverityAnalysisWithMultiPolygon:
                 "prefire_date_range": ["2023-06-01", "2023-06-15"],
                 "postfire_date_range": ["2023-07-01", "2023-07-15"],
                 "sensor": "sentinel-2",
-                "buffer_meters": 100,
                 "indices": ["nbr", "dnbr"],
             },
         )
@@ -545,7 +544,6 @@ class TestBackwardCompatibility:
                 "prefire_date_range": ["2023-06-01", "2023-06-15"],
                 "postfire_date_range": ["2023-07-01", "2023-07-15"],
                 "sensor": "sentinel-2",
-                "buffer_meters": 100,
                 "indices": ["nbr"],
             },
         )

@@ -3,8 +3,16 @@ from unittest.mock import Mock, AsyncMock, patch
 from typing import Dict, Any
 import xarray as xr
 import numpy as np
+from pyproj import Geod
 
-from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
+from geojson_pydantic import Polygon
+
+from src.commands.impl.fire_severity_command import (
+    DEFAULT_BUFFER_FRACTION,
+    DEFAULT_MAX_BUFFER_METERS,
+    DEFAULT_MIN_BUFFER_METERS,
+    FireSeverityAnalysisCommand,
+)
 from src.commands.interfaces.command_context import CommandContext
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_manager import STACJSONManager
@@ -115,7 +123,6 @@ def command_context(
             "prefire_date_range": ["2023-06-01", "2023-06-15"],
             "postfire_date_range": ["2023-07-01", "2023-07-15"],
             "sensor": "sentinel-2",
-            "buffer_meters": 100,
             "indices": ["nbr", "dnbr"],
         },
         metadata={"test_metadata": "fire_severity_test"},
@@ -202,6 +209,163 @@ class TestFireSeverityAnalysisCommand:
         assert miny < 35
         assert maxx > -119
         assert maxy > 36
+
+    @pytest.mark.parametrize(
+        "half_extent_deg",
+        [
+            pytest.param(0.0005, id="sub_acre"),
+            pytest.param(0.15, id="large_fire"),
+        ],
+    )
+    def test_buffer_is_the_requested_distance_at_any_fire_size(
+        self, half_extent_deg: float
+    ) -> None:
+        """The buffer is a fixed metric distance, not a share of the extent.
+
+        Regression test: the buffer used to be 20% of the bounding box, so a
+        sub-acre perimeter got a few metres while a large fire got kilometres.
+        Distances are measured with pyproj here, independently of the
+        rasterio reprojection the implementation uses.
+        """
+        buffer_meters = 250.0
+        centre_lon, centre_lat = -118.7, 34.14
+        west, east = centre_lon - half_extent_deg, centre_lon + half_extent_deg
+        south, north = centre_lat - half_extent_deg, centre_lat + half_extent_deg
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [west, south],
+                    [east, south],
+                    [east, north],
+                    [west, north],
+                    [west, south],
+                ]
+            ],
+        }
+
+        command = FireSeverityAnalysisCommand()
+        minx, miny, maxx, maxy = command._get_buffered_bounds(geometry, buffer_meters)
+
+        geod = Geod(ellps="WGS84")
+        # Distance from each original edge out to the buffered edge.
+        _, _, west_margin = geod.inv(minx, south, west, south)
+        _, _, east_margin = geod.inv(maxx, south, east, south)
+        _, _, south_margin = geod.inv(west, miny, west, south)
+        _, _, north_margin = geod.inv(west, maxy, west, north)
+
+        # Reprojecting a padded rectangle back to lat/lon densifies its edges,
+        # so a wide box can end up slightly over-padded. Overshoot is safe;
+        # falling short of the requested buffer is not.
+        for margin in (west_margin, east_margin, south_margin, north_margin):
+            assert margin >= buffer_meters
+            assert margin <= buffer_meters * 1.25
+
+    def _metric_box(self, width_km: float, height_km: float) -> Dict[str, Any]:
+        """A lon/lat box of the given ground size, centred near Los Angeles."""
+        geod = Geod(ellps="WGS84")
+        centre_lon, centre_lat = -118.7, 34.14
+        east, _, _ = geod.fwd(centre_lon, centre_lat, 90, width_km * 500)
+        west, _, _ = geod.fwd(centre_lon, centre_lat, 270, width_km * 500)
+        _, north, _ = geod.fwd(centre_lon, centre_lat, 0, height_km * 500)
+        _, south, _ = geod.fwd(centre_lon, centre_lat, 180, height_km * 500)
+        return {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [west, south],
+                    [east, south],
+                    [east, north],
+                    [west, north],
+                    [west, south],
+                ]
+            ],
+        }
+
+    @pytest.mark.parametrize(
+        ("width_km", "height_km", "expected_m", "reason"),
+        [
+            pytest.param(0.06, 0.06, 100.0, "floor", id="sub_acre_takes_the_floor"),
+            pytest.param(3.0, 3.0, 600.0, "fraction", id="mid_size_takes_the_fraction"),
+            pytest.param(32.0, 32.0, 1000.0, "ceiling", id="huge_takes_the_ceiling"),
+        ],
+    )
+    def test_buffer_is_a_clamped_fraction_of_perimeter_size(
+        self, width_km: float, height_km: float, expected_m: float, reason: str
+    ) -> None:
+        """A fraction of the perimeter, floored and capped.
+
+        A bare fraction collapses to metres on a sub-acre perimeter and blows
+        out to kilometres on a large fire, so it is clamped at both ends.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        buffer_meters = command._resolve_buffer_meters(
+            self._metric_box(width_km, height_km),
+            fraction=0.2,
+            minimum=100.0,
+            maximum=1000.0,
+        )
+
+        assert buffer_meters == pytest.approx(expected_m, rel=0.02), reason
+
+    def test_buffer_uses_the_longer_side_of_a_narrow_perimeter(self) -> None:
+        """Perimeter imprecision is isotropic, so one distance covers all sides.
+
+        Scaling each axis on its own would give a long, narrow fire a generous
+        margin along its length and almost none across it.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        buffer_meters = command._resolve_buffer_meters(
+            self._metric_box(4.0, 0.5), fraction=0.2, minimum=1.0, maximum=100_000.0
+        )
+
+        # 20% of the 4 km side, not of the 0.5 km side.
+        assert buffer_meters == pytest.approx(800.0, rel=0.02)
+
+    def test_buffer_accepts_a_geojson_pydantic_geometry(self) -> None:
+        """The command holds pydantic geometries, not raw mappings."""
+        command = FireSeverityAnalysisCommand()
+        raw = self._metric_box(3.0, 3.0)
+
+        assert command._resolve_buffer_meters(
+            Polygon(**raw), fraction=0.2, minimum=100.0, maximum=1000.0
+        ) == pytest.approx(
+            command._resolve_buffer_meters(
+                raw, fraction=0.2, minimum=100.0, maximum=1000.0
+            )
+        )
+
+    def test_buffer_policy_defaults_are_coherent(self) -> None:
+        """The shipped defaults have to be usable as a clamp."""
+        assert 0 < DEFAULT_BUFFER_FRACTION < 1
+        assert 0 < DEFAULT_MIN_BUFFER_METERS < DEFAULT_MAX_BUFFER_METERS
+
+    def test_buffer_scales_with_the_requested_distance(self) -> None:
+        """A larger buffer_meters produces a proportionally larger margin."""
+        command = FireSeverityAnalysisCommand()
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-118.70, 34.14],
+                    [-118.69, 34.14],
+                    [-118.69, 34.15],
+                    [-118.70, 34.15],
+                    [-118.70, 34.14],
+                ]
+            ],
+        }
+
+        geod = Geod(ellps="WGS84")
+
+        def west_margin(buffer_meters: float) -> float:
+            minx = command._get_buffered_bounds(geometry, buffer_meters)[0]
+            _, _, distance = geod.inv(minx, 34.14, -118.70, 34.14)
+            return distance
+
+        assert west_margin(1000.0) == pytest.approx(4 * west_margin(250.0), rel=0.05)
 
     def test_subset_data_by_date_range(self) -> None:
         """Test data subsetting by date range"""
