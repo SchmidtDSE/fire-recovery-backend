@@ -25,6 +25,7 @@ from src.core.storage.interface import StorageInterface
 from src.core.storage.storage_factory import StorageFactory
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
+from tests.factories import make_stac_mapping
 
 
 # Test fixtures for MultiPolygon integration tests
@@ -205,7 +206,7 @@ class TestFireSeverityAnalysisWithMultiPolygon:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],
-                Mock(collection="sentinel-2-l2a"),
+                make_stac_mapping(),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
@@ -555,7 +556,7 @@ class TestBackwardCompatibility:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1"],
-                Mock(collection="sentinel-2-l2a"),
+                make_stac_mapping(),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")

@@ -124,9 +124,31 @@ curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Geology_F
     "rbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/rbr.tif",
     "dnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/dnbr.tif",
     "rdnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/rdnbr.tif"
+  },
+  "source_data": {
+    "provider": "Microsoft Planetary Computer",
+    "provider_id": "MICROSOFT_PLANETARY_COMPUTER",
+    "collection": "sentinel-2-l2a",
+    "sensor": "sentinel-2",
+    "prefire_scene_count": 2,
+    "postfire_scene_count": 7
   }
 }
 ```
+
+#### `source_data`
+
+Which provider actually served the imagery, and how many scenes went into each
+composite.
+
+The provider chain is tried in order and the first provider holding scenes in
+*both* the prefire and postfire windows wins, so the same request can resolve to
+different providers as archives change — the choice is not derivable from the
+request alone. Scene counts matter because each composite is a per-pixel median:
+a one-scene composite carries no cloud or noise mitigation, so counts are worth
+checking before comparing severity across fires or across window lengths.
+
+`source_data` is `null` for analyses run before provenance was recorded.
 
 ---
 

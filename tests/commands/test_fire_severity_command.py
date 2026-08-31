@@ -9,6 +9,8 @@ from src.commands.interfaces.command_context import CommandContext
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
+from src.models.provenance import SourceDataProvenance
+from tests.factories import make_stac_mapping
 
 
 class MockIndexCalculator:
@@ -271,6 +273,66 @@ class TestFireSeverityAnalysisCommand:
     @pytest.mark.asyncio
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
     @patch("src.commands.impl.fire_severity_command.stackstac")
+    async def test_fetch_satellite_data_records_source_data(
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
+        """The resolved provider and per-window scene counts are captured.
+
+        Scene counts come from the windows after subsetting, not from the
+        combined search, since that is what each composite is built from.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        mock_handler = Mock()
+        mock_stac_handler_class.return_value = mock_handler
+        mock_handler.search_items = AsyncMock(
+            return_value=(["i1", "i2", "i3", "i4"], make_stac_mapping())
+        )
+        mock_handler.get_band_names.return_value = ("B08", "B12")
+        mock_handler.get_epsg_code.return_value = 4326
+        mock_stackstac.stack.return_value = xr.DataArray(
+            np.random.random((4, 2, 10, 10)),
+            dims=["time", "band", "y", "x"],
+            coords={
+                "time": np.array(
+                    [
+                        "2023-06-02T18:00:00",
+                        "2023-07-02T18:00:00",
+                        "2023-07-07T18:00:00",
+                        "2023-07-12T18:00:00",
+                    ],
+                    dtype="datetime64[ns]",
+                ),
+                "band": ["B08", "B12"],
+                "y": range(10),
+                "x": range(10),
+            },
+        )
+
+        assert command_context.geometry is not None
+        result = await command._fetch_satellite_data(
+            command_context,
+            command_context.geometry,
+            ["2023-06-01", "2023-06-15"],
+            ["2023-07-01", "2023-07-15"],
+            "sentinel-2",
+            100.0,
+        )
+
+        source_data = result["source_data"]
+        assert source_data.provider == "Element 84"
+        assert source_data.provider_id == "ELEMENT_84"
+        assert source_data.collection == "sentinel-2-l2a"
+        assert source_data.sensor == "sentinel-2"
+        assert source_data.prefire_scene_count == 1
+        assert source_data.postfire_scene_count == 3
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
+    @patch("src.commands.impl.fire_severity_command.stackstac")
     async def test_fetch_satellite_data_rejects_empty_window(
         self,
         mock_stackstac: Mock,
@@ -290,7 +352,7 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1"],
-                Mock(collection="sentinel-2-l2a", name="Element 84"),
+                make_stac_mapping(),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
@@ -334,7 +396,7 @@ class TestFireSeverityAnalysisCommand:
         mock_handler = Mock()
         mock_stac_handler_class.return_value = mock_handler
         mock_handler.search_items = AsyncMock(
-            return_value=(["item1", "item2"], Mock(collection="sentinel-2-l2a"))
+            return_value=(["item1", "item2"], make_stac_mapping())
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
         mock_handler.get_epsg_code.return_value = 4326
@@ -386,7 +448,7 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],  # Mock STAC items
-                Mock(collection="sentinel-2-l2a"),  # Mock matched-provider config
+                make_stac_mapping(),  # matched-provider config
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
@@ -491,6 +553,15 @@ class TestFireSeverityAnalysisCommand:
 
         asset_urls = {"nbr": "mock://nbr.tif", "dnbr": "mock://dnbr.tif"}
 
+        source_data = SourceDataProvenance(
+            provider="Element 84",
+            provider_id="ELEMENT_84",
+            collection="sentinel-2-l2a",
+            sensor="sentinel-2",
+            prefire_scene_count=2,
+            postfire_scene_count=7,
+        )
+
         assert command_context.geometry is not None
         result = await command._create_stac_metadata(
             command_context,
@@ -498,11 +569,16 @@ class TestFireSeverityAnalysisCommand:
             asset_urls,
             ["2023-06-01", "2023-06-15"],
             ["2023-07-01", "2023-07-15"],
+            source_data,
         )
 
         # Verify STAC item was created
         assert result == "mock://stac/item.json"
-        command_context.stac_manager.create_fire_severity_item.assert_called_once()  # type: ignore
+        create_item = command_context.stac_manager.create_fire_severity_item  # type: ignore
+        create_item.assert_called_once()
+        # Provenance must reach the stored item, since the API rebuilds its
+        # response from the STAC item rather than from the command result.
+        assert create_item.call_args.kwargs["source_data"] == source_data
 
     @pytest.mark.asyncio
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
@@ -523,7 +599,7 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],
-                Mock(collection="sentinel-2-l2a"),
+                make_stac_mapping(),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")

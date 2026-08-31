@@ -18,6 +18,8 @@ from typing_extensions import TypedDict, Literal, NotRequired
 import xarray as xr
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
+from src.models.provenance import SourceDataProvenance
+
 
 # =============================================================================
 # GeoJSON and Geometry Types
@@ -46,6 +48,7 @@ class STACDataPayload(TypedDict):
     postfire_data: xr.DataArray
     nir_band: str
     swir_band: str
+    source_data: SourceDataProvenance
 
 
 class BandConfiguration(TypedDict):
@@ -115,6 +118,7 @@ class FireSeveritySTACItem(TypedDict):
     datetime_str: str
     boundary_type: NotRequired[str]  # Optional, defaults to "coarse"
     skip_validation: NotRequired[bool]  # Optional, defaults to False
+    source_data: NotRequired[SourceDataProvenance]  # Optional for derived items
 
 
 class BoundarySTACItem(TypedDict):

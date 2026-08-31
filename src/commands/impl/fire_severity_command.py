@@ -13,6 +13,7 @@ from src.commands.interfaces.command_result import CommandResult
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
+from src.models.provenance import SourceDataProvenance
 from src.models.types import STACDataPayload, FireSeveritySTACItem
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,12 @@ class FireSeverityAnalysisCommand(Command):
 
             # Step 4: Update STAC metadata
             stac_item_url = await self._create_stac_metadata(
-                context, geometry, asset_urls, prefire_date_range, postfire_date_range
+                context,
+                geometry,
+                asset_urls,
+                prefire_date_range,
+                postfire_date_range,
+                stac_data["source_data"],
             )
 
             execution_time = (time.time() - start_time) * 1000
@@ -175,6 +181,7 @@ class FireSeverityAnalysisCommand(Command):
                     "indices_calculated": list(index_results.keys()),
                     "stac_item_url": stac_item_url,
                     "analysis_complete": True,
+                    "source_data": stac_data["source_data"].model_dump(),
                 },
                 asset_urls=asset_urls,
             )
@@ -312,6 +319,14 @@ class FireSeverityAnalysisCommand(Command):
                 postfire_data=postfire_data,
                 nir_band=nir_band,
                 swir_band=swir_band,
+                source_data=SourceDataProvenance(
+                    provider=endpoint_config.name,
+                    provider_id=endpoint_config.id.name,
+                    collection=endpoint_config.collection,
+                    sensor=sensor,
+                    prefire_scene_count=int(prefire_data.sizes["time"]),
+                    postfire_scene_count=int(postfire_data.sizes["time"]),
+                ),
             )
 
         except Exception as e:
@@ -417,6 +432,7 @@ class FireSeverityAnalysisCommand(Command):
         asset_urls: Dict[str, str],
         prefire_date_range: List[str],
         postfire_date_range: List[str],
+        source_data: SourceDataProvenance,
     ) -> str:
         """Create STAC metadata for the fire severity analysis results"""
         logger.info("Creating STAC metadata for fire severity analysis")
@@ -431,6 +447,7 @@ class FireSeverityAnalysisCommand(Command):
                 datetime_str=postfire_date_range[1],
                 boundary_type="coarse",
                 skip_validation=False,
+                source_data=source_data,
             )
 
             # Create STAC item via STAC manager

@@ -4,6 +4,8 @@ from src.stac.stac_json_repository import STACJSONRepository
 from src.stac.stac_item_factory import STACItemFactory
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
+from src.models.provenance import SourceDataProvenance
+
 
 class STACJSONManager:
     """Manager class for STAC operations using individual JSON files and pystac validation"""
@@ -46,6 +48,7 @@ class STACJSONManager:
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
+        source_data: Optional[SourceDataProvenance] = None,
     ) -> str:
         """
         Create and store a fire severity STAC item
@@ -57,6 +60,7 @@ class STACJSONManager:
             geometry: GeoJSON geometry object (Polygon, MultiPolygon, or Feature)
             datetime_str: Timestamp for the item
             boundary_type: Type of boundary ('coarse' or 'refined')
+            source_data: Provider and scene counts the analysis was computed from
 
         Returns:
             The created STAC item
@@ -70,6 +74,7 @@ class STACJSONManager:
             datetime_str=datetime_str,
             boundary_type=boundary_type,
             skip_validation=skip_validation,
+            source_data=source_data,
         )
 
         # Store the item and return the storage URL

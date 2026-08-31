@@ -5,6 +5,7 @@ from typing import List, Tuple
 
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
+from src.models.provenance import SourceDataProvenance
 from src.commands.interfaces.command import Command
 from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult
@@ -203,6 +204,12 @@ class BoundaryRefinementCommand(Command):
                         geometry=context.geometry,
                         datetime_str=original_cog_item["properties"]["datetime"],
                         boundary_type="refined",
+                        # These COGs are crops of the coarse analysis, so they
+                        # inherit its scenes; re-deriving provenance here would
+                        # be guesswork.
+                        source_data=SourceDataProvenance.from_stac_properties(
+                            original_cog_item.get("properties")
+                        ),
                     )
                 )
                 logger.info(f"✓ Fire severity item created: {severity_item_url}")

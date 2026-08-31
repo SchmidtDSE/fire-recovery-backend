@@ -34,6 +34,7 @@ from src.models.requests import (
     VegMapResolveRequest,
     GeoJSONUploadRequest,
 )
+from src.models.provenance import SourceDataProvenance
 from src.models.responses import (
     TaskPendingResponse,
     TaskFailedResponse,
@@ -416,6 +417,9 @@ async def get_fire_severity_result(
         status="complete",
         job_id=job_id,
         coarse_severity_cog_urls=response_cog_urls,
+        source_data=SourceDataProvenance.from_stac_properties(
+            stac_item.get("properties")
+        ),
     )
 
 
@@ -610,6 +614,9 @@ async def get_refine_result(
         job_id=job_id,
         refined_boundary_geojson_url=geojson_url,
         refined_severity_cog_urls=response_cog_urls,
+        source_data=SourceDataProvenance.from_stac_properties(
+            severity_stac_item.get("properties")
+        ),
     )
 
 

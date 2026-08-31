@@ -14,6 +14,7 @@ from src.core.storage.storage_factory import StorageFactory
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
 from src.commands.interfaces.command_context import CommandContext
+from tests.factories import make_stac_mapping
 
 
 # Test geometry definitions with realistic sizes
@@ -242,7 +243,7 @@ def realistic_stac_endpoint_mock():
                 for i, date in enumerate([*prefire_dates, *postfire_dates])
             ]
 
-            endpoint_config = Mock(collection="sentinel-2-l2a")
+            endpoint_config = make_stac_mapping()
 
             return items, endpoint_config
 

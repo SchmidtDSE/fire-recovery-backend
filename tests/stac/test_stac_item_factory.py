@@ -2,6 +2,7 @@ import pytest
 import pystac
 from geojson_pydantic import Polygon
 
+from src.models.provenance import SourceDataProvenance
 from src.stac.stac_item_factory import STACItemFactory
 
 
@@ -40,6 +41,54 @@ class TestSTACItemFactory:
         assert "rbr" in stac_item["assets"]
         assert "dnbr" in stac_item["assets"]
         assert "rdnbr" in stac_item["assets"]
+
+    def test_fire_severity_item_records_source_data(
+        self, factory: STACItemFactory, sample_geometry: Polygon
+    ) -> None:
+        """Provenance is persisted so the API can report it back later."""
+        provenance = SourceDataProvenance(
+            provider="Microsoft Planetary Computer",
+            provider_id="MICROSOFT_PLANETARY_COMPUTER",
+            collection="sentinel-2-l2a",
+            sensor="sentinel-2",
+            prefire_scene_count=2,
+            postfire_scene_count=7,
+        )
+
+        stac_item = factory.create_fire_severity_item(
+            fire_event_name="test_fire",
+            job_id="job_123",
+            cog_urls={"rbr": "https://storage.example.com/rbr.tif"},
+            geometry=sample_geometry,
+            datetime_str="2023-08-15T12:00:00Z",
+            skip_validation=True,
+            source_data=provenance,
+        )
+
+        assert (
+            SourceDataProvenance.from_stac_properties(stac_item["properties"])
+            == provenance
+        )
+        # Existing properties are untouched by the merge.
+        assert stac_item["properties"]["product_type"] == "fire_severity"
+
+    def test_fire_severity_item_omits_source_data_when_unknown(
+        self, factory: STACItemFactory, sample_geometry: Polygon
+    ) -> None:
+        """Without provenance the item carries no empty placeholder."""
+        stac_item = factory.create_fire_severity_item(
+            fire_event_name="test_fire",
+            job_id="job_123",
+            cog_urls={"rbr": "https://storage.example.com/rbr.tif"},
+            geometry=sample_geometry,
+            datetime_str="2023-08-15T12:00:00Z",
+            skip_validation=True,
+        )
+
+        assert "source_data" not in stac_item["properties"]
+        assert (
+            SourceDataProvenance.from_stac_properties(stac_item["properties"]) is None
+        )
 
     def test_create_fire_severity_item_partial_cogs(
         self, factory: STACItemFactory, sample_geometry: Polygon
