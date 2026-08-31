@@ -12,6 +12,7 @@ from src.commands.interfaces.command_result import CommandResult
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
+from src.util.date_windows import window_bounds
 from src.util.geo_ops import (
     Bounds,
     DEFAULT_BUFFER_FRACTION,
@@ -314,13 +315,13 @@ class FireSeverityAnalysisCommand(Command):
                 if subset.sizes.get("time", 0) == 0
             ]
             if empty_windows:
+                missing = " or ".join(empty_windows)
                 raise ValueError(
-                    f"No {' or '.join(empty_windows)} scenes available from "
-                    f"provider {endpoint_config.name} for this area: "
-                    f"{len(items)} item(s) matched {full_date_range[0]} to "
-                    f"{full_date_range[1]}, but none fall in "
-                    f"{' or '.join(empty_windows)}. Both windows need at least "
-                    f"one scene to compute a burn index."
+                    f"No {missing} scenes available from provider "
+                    f"{endpoint_config.name} for this area: {len(items)} "
+                    f"item(s) matched {full_date_range[0]} to "
+                    f"{full_date_range[1]}, but none fall in {missing}. Both "
+                    f"windows need at least one scene to compute a burn index."
                 )
 
             return STACDataPayload(
@@ -475,21 +476,19 @@ class FireSeverityAnalysisCommand(Command):
         self, stacked_data: xr.DataArray, date_range: List[str]
     ) -> xr.DataArray:
         """Subset stacked data by date range (migrated from original code)"""
-        start_date, end_date = date_range
+        # window_bounds is the shared definition of what a date window covers,
+        # also used to decide STAC provider coverage. It returns a half-open
+        # interval; .sel() slices inclusively at both ends, so step back off
+        # the exclusive end. The times it returns are UTC-aware and the stacked
+        # time axis is not, so drop the tzinfo before comparing.
+        start, end = window_bounds(*date_range)
 
-        # Convert string dates to numpy datetime64. A bare date parses to
-        # midnight, so using end_date directly as the (inclusive) slice stop
-        # drops every scene captured later that same day. Sentinel-2 and
-        # Landsat overpasses are mid-morning to midday, so that silently
-        # discards the whole final day of the window. Extend the stop to the
-        # last instant of end_date. This must stay in sync with
-        # StacEndpointHandler._items_cover_windows, which decides provider
-        # coverage using the same convention.
-        start = np.datetime64(start_date)
-        end = np.datetime64(end_date) + np.timedelta64(1, "D") - np.timedelta64(1, "ns")
-
-        # Subset data by time
-        return stacked_data.sel(time=slice(start, end))
+        return stacked_data.sel(
+            time=slice(
+                np.datetime64(start.replace(tzinfo=None)),
+                np.datetime64(end.replace(tzinfo=None)) - np.timedelta64(1, "ns"),
+            )
+        )
 
     def _prepare_data_for_cog(self, data: xr.DataArray) -> xr.DataArray:
         """Prepare xarray data for COG creation (migrated from original code)"""
