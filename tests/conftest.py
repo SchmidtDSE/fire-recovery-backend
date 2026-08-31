@@ -232,3 +232,80 @@ def zip_without_shp_bytes() -> bytes:
         zf.writestr("test.txt", "Not a shapefile")
     buffer.seek(0)
     return buffer.read()
+
+
+@pytest.fixture
+def nested_shapefile_zip_bytes(tmp_path) -> bytes:
+    """Create a valid shapefile zip with components nested one level deep in a subdirectory"""
+    import tempfile
+
+    polygon = ShapelyPolygon(
+        [
+            (-120.0, 35.0),
+            (-120.0, 36.0),
+            (-119.0, 36.0),
+            (-119.0, 35.0),
+            (-120.0, 35.0),
+        ]
+    )
+
+    gdf = gpd.GeoDataFrame({"geometry": [polygon]}, crs="EPSG:4326")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = os.path.join(tmpdir, "test.shp")
+        gdf.to_file(shp_path, driver="ESRI Shapefile")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                file_path = os.path.join(tmpdir, file)
+                zipf.write(file_path, arcname=f"fire_boundary/{file}")
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
+
+
+@pytest.fixture
+def multi_shp_zip_bytes(tmp_path) -> bytes:
+    """Create zip with two .shp files (ambiguous — should be rejected)"""
+    import tempfile
+
+    polygon = ShapelyPolygon(
+        [(-120.0, 35.0), (-120.0, 36.0), (-119.0, 36.0), (-119.0, 35.0), (-120.0, 35.0)]
+    )
+    gdf = gpd.GeoDataFrame({"geometry": [polygon]}, crs="EPSG:4326")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gdf.to_file(os.path.join(tmpdir, "a.shp"), driver="ESRI Shapefile")
+        gdf.to_file(os.path.join(tmpdir, "b.shp"), driver="ESRI Shapefile")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                zipf.write(os.path.join(tmpdir, file), arcname=file)
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
+
+
+@pytest.fixture
+def deeply_nested_shapefile_zip_bytes(tmp_path) -> bytes:
+    """Create zip with shapefile nested two levels deep (should be rejected)"""
+    import tempfile
+
+    polygon = ShapelyPolygon(
+        [(-120.0, 35.0), (-120.0, 36.0), (-119.0, 36.0), (-119.0, 35.0), (-120.0, 35.0)]
+    )
+    gdf = gpd.GeoDataFrame({"geometry": [polygon]}, crs="EPSG:4326")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shp_path = os.path.join(tmpdir, "test.shp")
+        gdf.to_file(shp_path, driver="ESRI Shapefile")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for file in os.listdir(tmpdir):
+                zipf.write(os.path.join(tmpdir, file), arcname=f"outer/inner/{file}")
+
+        zip_buffer.seek(0)
+        return zip_buffer.read()
