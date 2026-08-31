@@ -1,12 +1,9 @@
 import logging
 import time
-from typing import Dict, List, Any
+from typing import Dict, List
 import xarray as xr
 import stackstac
 import numpy as np
-from rasterio.crs import CRS
-from rasterio.warp import transform_bounds
-from shapely.geometry import shape
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 from src.commands.interfaces.command import Command
@@ -15,22 +12,16 @@ from src.commands.interfaces.command_result import CommandResult
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
+from src.util.date_windows import window_bounds
+from src.util.geo_ops import (
+    Bounds,
+    DEFAULT_BUFFER_FRACTION,
+    DEFAULT_MAX_BUFFER_METERS,
+    DEFAULT_MIN_BUFFER_METERS,
+    buffered_bounds,
+)
 from src.models.provenance import SourceDataProvenance
 from src.models.types import STACDataPayload, FireSeveritySTACItem
-
-WGS84 = CRS.from_epsg(4326)
-
-# Buffer policy. The margin around a perimeter absorbs two kinds of slop: the
-# imprecision of the perimeter itself, and scene-to-scene registration. A bare
-# fraction of the perimeter's size tracks the first reasonably well in the
-# middle of the range but fails at both ends -- a fifth of a sub-acre perimeter
-# is a few metres, far tighter than anyone can draw, while a fifth of a 16 km
-# fire is kilometres of mostly-unburned background that nobody asked for and
-# every pixel of which gets downloaded. So the fraction is clamped at both
-# ends. Overridable per job through computation_config.
-DEFAULT_BUFFER_FRACTION = 0.2
-DEFAULT_MIN_BUFFER_METERS = 100.0
-DEFAULT_MAX_BUFFER_METERS = 1000.0
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +124,7 @@ class FireSeverityAnalysisCommand(Command):
             prefire_date_range = context.get_computation_config("prefire_date_range")
             postfire_date_range = context.get_computation_config("postfire_date_range")
             sensor = context.get_computation_config("sensor", "sentinel-2")
-            buffer_meters = self._resolve_buffer_meters(
+            analysis_bounds, buffer_meters = buffered_bounds(
                 geometry,
                 fraction=context.get_computation_config(
                     "buffer_fraction", DEFAULT_BUFFER_FRACTION
@@ -171,7 +162,7 @@ class FireSeverityAnalysisCommand(Command):
                 prefire_date_range,
                 postfire_date_range,
                 sensor,
-                buffer_meters,
+                analysis_bounds,
             )
 
             # Step 2: Calculate burn indices using strategy pattern
@@ -208,7 +199,6 @@ class FireSeverityAnalysisCommand(Command):
                     "indices_calculated": list(index_results.keys()),
                     "stac_item_url": stac_item_url,
                     "analysis_complete": True,
-                    "source_data": stac_data["source_data"].model_dump(),
                 },
                 asset_urls=asset_urls,
             )
@@ -239,7 +229,7 @@ class FireSeverityAnalysisCommand(Command):
         prefire_date_range: List[str],
         postfire_date_range: List[str],
         sensor: str,
-        buffer_meters: float,
+        analysis_bounds: Bounds,
     ) -> STACDataPayload:
         """Fetch satellite data for pre and post-fire periods"""
         logger.info("Fetching satellite data via STAC")
@@ -279,9 +269,6 @@ class FireSeverityAnalysisCommand(Command):
                 f"NIR: {nir_band}, SWIR: {swir_band}, EPSG: {epsg_code}"
             )
 
-            # Calculate buffered bounds
-            buffered_bounds = self._get_buffered_bounds(geometry, buffer_meters)
-
             # Stack data using stackstac. rescale=True (stackstac's default, made
             # explicit here because we depend on it) applies the per-asset
             # scale/offset from each item's `raster:bands` STAC metadata, yielding
@@ -295,7 +282,7 @@ class FireSeverityAnalysisCommand(Command):
                 items,
                 epsg=epsg_code,
                 assets=[swir_band, nir_band],
-                bounds=buffered_bounds,
+                bounds=analysis_bounds,
                 chunksize=(-1, 1, 512, 512),
                 rescale=True,
             )
@@ -327,13 +314,13 @@ class FireSeverityAnalysisCommand(Command):
                 if subset.sizes.get("time", 0) == 0
             ]
             if empty_windows:
+                missing = " or ".join(empty_windows)
                 raise ValueError(
-                    f"No {' or '.join(empty_windows)} scenes available from "
-                    f"provider {endpoint_config.name} for this area: "
-                    f"{len(items)} item(s) matched {full_date_range[0]} to "
-                    f"{full_date_range[1]}, but none fall in "
-                    f"{' or '.join(empty_windows)}. Both windows need at least "
-                    f"one scene to compute a burn index."
+                    f"No {missing} scenes available from provider "
+                    f"{endpoint_config.name} for this area: {len(items)} "
+                    f"item(s) matched {full_date_range[0]} to "
+                    f"{full_date_range[1]}, but none fall in {missing}. Both "
+                    f"windows need at least one scene to compute a burn index."
                 )
 
             return STACDataPayload(
@@ -484,103 +471,23 @@ class FireSeverityAnalysisCommand(Command):
             logger.error(f"STAC creation failed: {str(e)}", exc_info=True)
             raise
 
-    @staticmethod
-    def _as_geometry_dict(
-        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Normalise a geojson-pydantic model or raw mapping to a dict."""
-        if hasattr(geometry, "model_dump"):
-            return geometry.model_dump()  # type: ignore[union-attr]
-        return geometry  # type: ignore[return-value]
-
-    @staticmethod
-    def _local_metric_crs(bounds: tuple) -> CRS:
-        """
-        An azimuthal equidistant CRS centred on the given bounds.
-
-        Distance from that centre is true in every direction, so metres mean
-        the same thing in every direction regardless of latitude.
-        """
-        minx, miny, maxx, maxy = bounds
-        return CRS.from_proj4(
-            f"+proj=aeqd +lat_0={(miny + maxy) / 2} +lon_0={(minx + maxx) / 2} "
-            f"+datum=WGS84 +units=m +no_defs"
-        )
-
-    def _resolve_buffer_meters(
-        self,
-        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
-        fraction: float,
-        minimum: float,
-        maximum: float,
-    ) -> float:
-        """
-        Buffer distance for a perimeter: a fraction of its size, clamped.
-
-        Size is the longer side of the bounding box. Perimeter imprecision is
-        roughly isotropic, so the same distance is applied on every side rather
-        than scaling each axis independently -- otherwise a long, narrow fire
-        would get a generous margin along its length and almost none across it.
-        """
-        bounds = shape(self._as_geometry_dict(geometry)).bounds
-        metric_bounds = transform_bounds(WGS84, self._local_metric_crs(bounds), *bounds)
-        longest_side = max(
-            metric_bounds[2] - metric_bounds[0],
-            metric_bounds[3] - metric_bounds[1],
-        )
-
-        return min(max(longest_side * fraction, minimum), maximum)
-
-    def _get_buffered_bounds(
-        self,
-        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
-        buffer_meters: float,
-    ) -> tuple:
-        """
-        Expand the geometry's bounds by a true metric buffer.
-
-        Buffering in degrees does not give a constant distance: a degree of
-        longitude shrinks toward the poles, and a buffer expressed as a
-        fraction of the extent scales with the fire rather than staying fixed.
-        So the bounds are projected into an azimuthal equidistant CRS centred
-        on the AOI -- where distance from that centre is true in every
-        direction -- padded there, and projected back.
-
-        Returned in EPSG:4326, the CRS stackstac is asked to stack in.
-        """
-        bounds = shape(self._as_geometry_dict(geometry)).bounds
-        local_metric_crs = self._local_metric_crs(bounds)
-        metric_bounds = transform_bounds(WGS84, local_metric_crs, *bounds)
-        padded = (
-            metric_bounds[0] - buffer_meters,
-            metric_bounds[1] - buffer_meters,
-            metric_bounds[2] + buffer_meters,
-            metric_bounds[3] + buffer_meters,
-        )
-
-        # transform_bounds densifies the edges, so the returned box contains
-        # the projected rectangle rather than just its corners.
-        return transform_bounds(local_metric_crs, WGS84, *padded)
-
     def _subset_data_by_date_range(
         self, stacked_data: xr.DataArray, date_range: List[str]
     ) -> xr.DataArray:
         """Subset stacked data by date range (migrated from original code)"""
-        start_date, end_date = date_range
+        # window_bounds is the shared definition of what a date window covers,
+        # also used to decide STAC provider coverage. It returns a half-open
+        # interval; .sel() slices inclusively at both ends, so step back off
+        # the exclusive end. The times it returns are UTC-aware and the stacked
+        # time axis is not, so drop the tzinfo before comparing.
+        start, end = window_bounds(*date_range)
 
-        # Convert string dates to numpy datetime64. A bare date parses to
-        # midnight, so using end_date directly as the (inclusive) slice stop
-        # drops every scene captured later that same day. Sentinel-2 and
-        # Landsat overpasses are mid-morning to midday, so that silently
-        # discards the whole final day of the window. Extend the stop to the
-        # last instant of end_date. This must stay in sync with
-        # StacEndpointHandler._items_cover_windows, which decides provider
-        # coverage using the same convention.
-        start = np.datetime64(start_date)
-        end = np.datetime64(end_date) + np.timedelta64(1, "D") - np.timedelta64(1, "ns")
-
-        # Subset data by time
-        return stacked_data.sel(time=slice(start, end))
+        return stacked_data.sel(
+            time=slice(
+                np.datetime64(start.replace(tzinfo=None)),
+                np.datetime64(end.replace(tzinfo=None)) - np.timedelta64(1, "ns"),
+            )
+        )
 
     def _prepare_data_for_cog(self, data: xr.DataArray) -> xr.DataArray:
         """Prepare xarray data for COG creation (migrated from original code)"""

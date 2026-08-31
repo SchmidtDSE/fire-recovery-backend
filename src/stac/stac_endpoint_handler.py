@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from pystac import ItemCollection
 from pystac_client import Client as PystacClient
@@ -8,6 +7,8 @@ from pydantic import BaseModel
 import json
 import logging
 from geojson_pydantic import Polygon, MultiPolygon, Feature
+
+from src.util.date_windows import window_bounds
 
 
 # Default sensor used when a caller does not specify one. Kept as a module
@@ -269,16 +270,12 @@ class StacEndpointHandler:
         """
         Check that every window contains at least one item.
 
-        End dates are treated as inclusive of the whole day, matching how the
-        fire severity command slices the stacked time axis; the two must agree,
-        or a provider could be accepted here and then yield an empty window.
+        Window semantics come from util.date_windows, which the fire severity
+        command also slices its time axis with -- the two must agree, or a
+        provider could be accepted here and then yield an empty window.
         """
         for start_date, end_date in windows:
-            start = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-            # Exclusive upper bound at the start of the day after end_date.
-            end = datetime.fromisoformat(end_date).replace(
-                tzinfo=timezone.utc
-            ) + timedelta(days=1)
+            start, end = window_bounds(start_date, end_date)
 
             if not any(
                 item.datetime is not None and start <= item.datetime < end

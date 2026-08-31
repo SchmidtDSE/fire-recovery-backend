@@ -13,9 +13,12 @@ written into STAC item properties and returned from the API, so the field names
 are defined exactly once.
 """
 
+import logging
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+logger = logging.getLogger(__name__)
 
 # Key under which the provenance object is nested in STAC item properties.
 STAC_PROPERTY_KEY = "source_data"
@@ -75,5 +78,9 @@ class SourceDataProvenance(BaseModel):
 
         try:
             return cls.model_validate(raw)
-        except ValidationError:
+        except ValidationError as e:
+            # A legacy item has no key at all, so reaching here means something
+            # wrote a fragment we cannot read -- worth seeing in the logs
+            # rather than silently serving null.
+            logger.warning(f"Ignoring unreadable {STAC_PROPERTY_KEY} fragment: {e}")
             return None

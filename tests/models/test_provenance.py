@@ -1,5 +1,9 @@
 """Tests for source-data provenance, the record of which scenes were used."""
 
+import logging
+
+import pytest
+
 from src.models.provenance import STAC_PROPERTY_KEY, SourceDataProvenance
 
 
@@ -77,3 +81,15 @@ class TestMissingOrUnusableProvenance:
             SourceDataProvenance.from_stac_properties({STAC_PROPERTY_KEY: "Element 84"})
             is None
         )
+
+    def test_unreadable_fragment_is_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A malformed fragment means something wrote badly, not that the item
+        predates provenance -- the two should not look alike in the logs."""
+        with caplog.at_level(logging.WARNING):
+            SourceDataProvenance.from_stac_properties(
+                {STAC_PROPERTY_KEY: {"provider": "Element 84"}}
+            )
+
+        assert STAC_PROPERTY_KEY in caplog.text

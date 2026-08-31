@@ -23,6 +23,11 @@ class StorageInterface(ABC):
         """
         Save binary data to storage and return access URL
 
+        `data` is fully materialised in memory, so implementations should
+        upload it in one shot: there is nothing to stream and no partial state
+        worth resuming. A future streaming upload wants its own method rather
+        than a mode switch inside this one.
+
         Args:
             data: Binary data to save
             path: Storage path (e.g., "fire_event/job_id/filename.tif")

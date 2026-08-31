@@ -103,9 +103,8 @@ floored and capped:
 
 The same distance is applied on every side, since perimeter imprecision is
 roughly isotropic; a per-axis fraction would leave a long, narrow fire with
-almost no margin across its width. Override per job with `buffer_fraction`,
-`min_buffer_meters`, and `max_buffer_meters` in the command's computation
-config.
+almost no margin across its width. These figures are fixed for all jobs;
+the endpoint takes no buffer parameters.
 
 #### Response (202 Accepted)
 

@@ -188,8 +188,8 @@ class TestRequiredWindowCoverage:
     def test_end_date_covers_the_whole_final_day(self) -> None:
         """Mid-morning overpasses on the end date count as inside the window.
 
-        This must match how the fire severity command slices the time axis; if
-        the two disagree, a provider accepted here yields an empty window.
+        Both this and the fire severity command's time slicing read the
+        window through util.date_windows, so they cannot drift apart.
         """
         items = self._items("2017-01-04T18:41:16")
         assert StacEndpointHandler._items_cover_windows(
@@ -200,4 +200,18 @@ class TestRequiredWindowCoverage:
         items = [SimpleNamespace(datetime=None)]
         assert not StacEndpointHandler._items_cover_windows(
             items, [["2016-11-05", "2017-01-04"]]
+        )
+
+    def test_window_offset_is_honoured_not_relabelled(self) -> None:
+        """A window start carrying an offset means that instant, not UTC.
+
+        Regression: the offset used to be overwritten with UTC, so a scene
+        seven hours before the window actually opened counted as covering it.
+        """
+        # The window opens at 07:00Z; this scene lands four hours earlier.
+        items = self._items("2023-06-15T03:00:00")
+
+        assert not StacEndpointHandler._items_cover_windows(
+            items,
+            [["2023-06-15T00:00:00-07:00", "2023-06-20"]],
         )
