@@ -199,7 +199,6 @@ class FireSeverityAnalysisCommand(Command):
                     "indices_calculated": list(index_results.keys()),
                     "stac_item_url": stac_item_url,
                     "analysis_complete": True,
-                    "source_data": stac_data["source_data"].model_dump(),
                 },
                 asset_urls=asset_urls,
             )
