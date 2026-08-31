@@ -4,6 +4,8 @@ from typing import Dict, List, Any
 import xarray as xr
 import stackstac
 import numpy as np
+from rasterio.crs import CRS
+from rasterio.warp import transform_bounds
 from shapely.geometry import shape
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
@@ -15,6 +17,20 @@ from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
 from src.models.provenance import SourceDataProvenance
 from src.models.types import STACDataPayload, FireSeveritySTACItem
+
+WGS84 = CRS.from_epsg(4326)
+
+# Buffer policy. The margin around a perimeter absorbs two kinds of slop: the
+# imprecision of the perimeter itself, and scene-to-scene registration. A bare
+# fraction of the perimeter's size tracks the first reasonably well in the
+# middle of the range but fails at both ends -- a fifth of a sub-acre perimeter
+# is a few metres, far tighter than anyone can draw, while a fifth of a 16 km
+# fire is kilometres of mostly-unburned background that nobody asked for and
+# every pixel of which gets downloaded. So the fraction is clamped at both
+# ends. Overridable per job through computation_config.
+DEFAULT_BUFFER_FRACTION = 0.2
+DEFAULT_MIN_BUFFER_METERS = 100.0
+DEFAULT_MAX_BUFFER_METERS = 1000.0
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +133,18 @@ class FireSeverityAnalysisCommand(Command):
             prefire_date_range = context.get_computation_config("prefire_date_range")
             postfire_date_range = context.get_computation_config("postfire_date_range")
             sensor = context.get_computation_config("sensor", "sentinel-2")
-            buffer_meters = context.get_computation_config("buffer_meters", 100)
+            buffer_meters = self._resolve_buffer_meters(
+                geometry,
+                fraction=context.get_computation_config(
+                    "buffer_fraction", DEFAULT_BUFFER_FRACTION
+                ),
+                minimum=context.get_computation_config(
+                    "min_buffer_meters", DEFAULT_MIN_BUFFER_METERS
+                ),
+                maximum=context.get_computation_config(
+                    "max_buffer_meters", DEFAULT_MAX_BUFFER_METERS
+                ),
+            )
             indices = context.get_computation_config(
                 "indices",
                 ["dnbr", "rdnbr", "rbr"],  # NBR computed internally by dependencies
@@ -253,12 +280,7 @@ class FireSeverityAnalysisCommand(Command):
             )
 
             # Calculate buffered bounds
-            # Convert geometry to dict format for shapely processing
-            if hasattr(geometry, "model_dump"):
-                geometry_dict: Dict[str, Any] = geometry.model_dump()
-            else:
-                geometry_dict: Dict[str, Any] = geometry  # type: ignore
-            buffered_bounds = self._get_buffered_bounds(geometry_dict, buffer_meters)
+            buffered_bounds = self._get_buffered_bounds(geometry, buffer_meters)
 
             # Stack data using stackstac. rescale=True (stackstac's default, made
             # explicit here because we depend on it) applies the per-asset
@@ -462,32 +484,83 @@ class FireSeverityAnalysisCommand(Command):
             logger.error(f"STAC creation failed: {str(e)}", exc_info=True)
             raise
 
-    def _get_buffered_bounds(
-        self, geometry: Dict[str, Any], buffer_meters: float
-    ) -> tuple:
-        """Calculate buffered bounds for the geometry"""
-        # Convert GeoJSON geometry to shapely object
-        geom_shape = shape(geometry)
+    @staticmethod
+    def _as_geometry_dict(
+        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Normalise a geojson-pydantic model or raw mapping to a dict."""
+        if hasattr(geometry, "model_dump"):
+            return geometry.model_dump()  # type: ignore[union-attr]
+        return geometry  # type: ignore[return-value]
 
-        minx, miny, maxx, maxy = geom_shape.bounds
+    @staticmethod
+    def _local_metric_crs(bounds: tuple) -> CRS:
+        """
+        An azimuthal equidistant CRS centred on the given bounds.
 
-        # Calculate width and height in degrees
-        width = maxx - minx
-        height = maxy - miny
-
-        # Calculate buffer size in degrees (20% of width/height or 0.25 degree, whichever is smaller)
-        buffer_x = min(width * 0.2, 0.25)
-        buffer_y = min(height * 0.2, 0.25)
-
-        # Create buffered bounds
-        buffered_bounds = (
-            minx - buffer_x,  # min_x
-            miny - buffer_y,  # min_y
-            maxx + buffer_x,  # max_x
-            maxy + buffer_y,  # max_y
+        Distance from that centre is true in every direction, so metres mean
+        the same thing in every direction regardless of latitude.
+        """
+        minx, miny, maxx, maxy = bounds
+        return CRS.from_proj4(
+            f"+proj=aeqd +lat_0={(miny + maxy) / 2} +lon_0={(minx + maxx) / 2} "
+            f"+datum=WGS84 +units=m +no_defs"
         )
 
-        return buffered_bounds
+    def _resolve_buffer_meters(
+        self,
+        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
+        fraction: float,
+        minimum: float,
+        maximum: float,
+    ) -> float:
+        """
+        Buffer distance for a perimeter: a fraction of its size, clamped.
+
+        Size is the longer side of the bounding box. Perimeter imprecision is
+        roughly isotropic, so the same distance is applied on every side rather
+        than scaling each axis independently -- otherwise a long, narrow fire
+        would get a generous margin along its length and almost none across it.
+        """
+        bounds = shape(self._as_geometry_dict(geometry)).bounds
+        metric_bounds = transform_bounds(WGS84, self._local_metric_crs(bounds), *bounds)
+        longest_side = max(
+            metric_bounds[2] - metric_bounds[0],
+            metric_bounds[3] - metric_bounds[1],
+        )
+
+        return min(max(longest_side * fraction, minimum), maximum)
+
+    def _get_buffered_bounds(
+        self,
+        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
+        buffer_meters: float,
+    ) -> tuple:
+        """
+        Expand the geometry's bounds by a true metric buffer.
+
+        Buffering in degrees does not give a constant distance: a degree of
+        longitude shrinks toward the poles, and a buffer expressed as a
+        fraction of the extent scales with the fire rather than staying fixed.
+        So the bounds are projected into an azimuthal equidistant CRS centred
+        on the AOI -- where distance from that centre is true in every
+        direction -- padded there, and projected back.
+
+        Returned in EPSG:4326, the CRS stackstac is asked to stack in.
+        """
+        bounds = shape(self._as_geometry_dict(geometry)).bounds
+        local_metric_crs = self._local_metric_crs(bounds)
+        metric_bounds = transform_bounds(WGS84, local_metric_crs, *bounds)
+        padded = (
+            metric_bounds[0] - buffer_meters,
+            metric_bounds[1] - buffer_meters,
+            metric_bounds[2] + buffer_meters,
+            metric_bounds[3] + buffer_meters,
+        )
+
+        # transform_bounds densifies the edges, so the returned box contains
+        # the projected rectangle rather than just its corners.
+        return transform_bounds(local_metric_crs, WGS84, *padded)
 
     def _subset_data_by_date_range(
         self, stacked_data: xr.DataArray, date_range: List[str]

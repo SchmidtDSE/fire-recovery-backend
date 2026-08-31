@@ -306,7 +306,6 @@ async def process_fire_severity(
                 "prefire_date_range": prefire_date_range,
                 "postfire_date_range": postfire_date_range,
                 "sensor": sensor,
-                "buffer_meters": 100,
                 "indices": ["dnbr", "rdnbr", "rbr"],
             },
         )
