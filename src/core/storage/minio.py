@@ -109,7 +109,23 @@ class MinioCloudStorage(StorageInterface):
         if temporary and not path.startswith("temp/"):
             path = f"temp/{path}"
 
-        await obs.put_async(self._store, path, data)
+        # Left to itself, obstore picks between a single PUT and a multipart
+        # upload by size, switching over at chunk_size (5 MiB). That switch is
+        # wrong here twice over.
+        #
+        # In production `endpoint` is GCS's S3-compatibility endpoint, which
+        # rejects the multipart-initiate POST with `411 Length Required`, so
+        # every object above the threshold failed to upload while smaller ones
+        # sailed through. Only the largest fire perimeters produced COGs big
+        # enough to hit it, which made it look intermittent.
+        #
+        # Independent of that: multipart exists to stream data you do not hold
+        # and to retry it a part at a time. `data` is a bytes already fully
+        # materialised in memory, so there is nothing to stream and no partial
+        # state to resume -- the mode simply does not apply to this signature.
+        # A future streaming upload should make its own choice rather than
+        # inherit this one.
+        await obs.put_async(self._store, path, data, use_multipart=False)
         return self.get_url(path)
 
     async def get_bytes(self, path: str) -> bytes:
