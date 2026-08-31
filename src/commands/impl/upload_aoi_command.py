@@ -17,6 +17,7 @@ from src.commands.interfaces.command_context import CommandContext
 from src.commands.interfaces.command_result import CommandResult
 
 # GeoJSONGeometry type removed - using Dict[str, Any] for dictionary-based geometry data
+from src.util.geo_ops import as_geometry_dict
 from src.util.polygon_ops import polygon_to_valid_geojson
 from src.util.upload_blob import upload_to_gcs
 
@@ -160,13 +161,7 @@ class UploadAOICommand(Command):
             assert context.geometry is not None, "geometry required for GeoJSON upload"
 
             # Get geometry from context and convert to dict format for processing
-            geometry_obj = context.geometry
-            if hasattr(geometry_obj, "model_dump"):
-                # Handle pydantic models - convert to dict
-                geojson_dict: Dict[str, Any] = geometry_obj.model_dump()
-            else:
-                # Handle dict format (backwards compatibility)
-                geojson_dict: Dict[str, Any] = geometry_obj  # type: ignore
+            geojson_dict: Dict[str, Any] = as_geometry_dict(context.geometry)
 
             # Validate GeoJSON structure using geojson_pydantic
             if geojson_dict.get("type") == "FeatureCollection":
