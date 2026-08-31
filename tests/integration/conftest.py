@@ -233,7 +233,9 @@ def realistic_stac_endpoint_mock():
         mock_handler = Mock()
 
         # Mock search_items to return realistic STAC items
-        async def mock_search_items(geometry, date_range, sensor):
+        async def mock_search_items(
+            geometry, date_range, sensor, required_windows=None
+        ):
             # Create synthetic STAC items
             items = [
                 {"id": f"sentinel-2-l2a-{i}", "datetime": date}

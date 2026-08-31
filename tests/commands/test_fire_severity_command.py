@@ -246,6 +246,127 @@ class TestFireSeverityAnalysisCommand:
         # Should have CRS set
         assert prepared.rio.crs is not None
 
+    def test_subset_data_by_date_range_includes_whole_end_day(self) -> None:
+        """A scene captured during the end date's day must not be dropped.
+
+        Bare dates parse to midnight, so an exclusive-at-midnight stop would
+        discard mid-morning overpasses on the final day of the window -- which
+        is enough to leave a window with no scenes at all.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        time_coords = np.array(
+            ["2023-06-01T18:35:00", "2023-06-15T18:41:16"], dtype="datetime64[ns]"
+        )
+        data = xr.DataArray(
+            np.random.random((2, 10, 10)),
+            dims=["time", "y", "x"],
+            coords={"time": time_coords, "y": range(10), "x": range(10)},
+        )
+
+        subset = command._subset_data_by_date_range(data, ["2023-06-01", "2023-06-15"])
+
+        assert len(subset.time) == 2
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
+    @patch("src.commands.impl.fire_severity_command.stackstac")
+    async def test_fetch_satellite_data_rejects_empty_window(
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
+        """A window with no scenes must fail with an explanatory error.
+
+        Regression test: reducing over a zero-length time axis used to escape
+        as numpy's "'list' object cannot be interpreted as an integer", which
+        named neither the window nor the provider.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        mock_handler = Mock()
+        mock_stac_handler_class.return_value = mock_handler
+        mock_handler.search_items = AsyncMock(
+            return_value=(
+                ["item1"],
+                Mock(collection="sentinel-2-l2a", name="Element 84"),
+            )
+        )
+        mock_handler.get_band_names.return_value = ("B08", "B12")
+        mock_handler.get_epsg_code.return_value = 4326
+
+        # The single scene lands in the postfire window, leaving prefire empty.
+        mock_stackstac.stack.return_value = xr.DataArray(
+            np.random.random((1, 2, 10, 10)),
+            dims=["time", "band", "y", "x"],
+            coords={
+                "time": np.array(["2023-07-15T18:41:16"], dtype="datetime64[ns]"),
+                "band": ["B08", "B12"],
+                "y": range(10),
+                "x": range(10),
+            },
+        )
+
+        assert command_context.geometry is not None
+        with pytest.raises(ValueError, match="prefire"):
+            await command._fetch_satellite_data(
+                command_context,
+                command_context.geometry,
+                ["2023-06-01", "2023-06-15"],
+                ["2023-07-01", "2023-07-15"],
+                "sentinel-2",
+                100.0,
+            )
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
+    @patch("src.commands.impl.fire_severity_command.stackstac")
+    async def test_fetch_satellite_data_requires_both_windows_of_provider(
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
+        """Provider selection must be told which windows have to be covered."""
+        command = FireSeverityAnalysisCommand()
+
+        mock_handler = Mock()
+        mock_stac_handler_class.return_value = mock_handler
+        mock_handler.search_items = AsyncMock(
+            return_value=(["item1", "item2"], Mock(collection="sentinel-2-l2a"))
+        )
+        mock_handler.get_band_names.return_value = ("B08", "B12")
+        mock_handler.get_epsg_code.return_value = 4326
+        mock_stackstac.stack.return_value = xr.DataArray(
+            np.random.random((2, 2, 10, 10)),
+            dims=["time", "band", "y", "x"],
+            coords={
+                "time": np.array(
+                    ["2023-06-10T18:00:00", "2023-07-10T18:00:00"],
+                    dtype="datetime64[ns]",
+                ),
+                "band": ["B08", "B12"],
+                "y": range(10),
+                "x": range(10),
+            },
+        )
+
+        assert command_context.geometry is not None
+        await command._fetch_satellite_data(
+            command_context,
+            command_context.geometry,
+            ["2023-06-01", "2023-06-15"],
+            ["2023-07-01", "2023-07-15"],
+            "sentinel-2",
+            100.0,
+        )
+
+        assert mock_handler.search_items.await_args.kwargs["required_windows"] == [
+            ["2023-06-01", "2023-06-15"],
+            ["2023-07-01", "2023-07-15"],
+        ]
+
     @pytest.mark.asyncio
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
     @patch("src.commands.impl.fire_severity_command.stackstac")

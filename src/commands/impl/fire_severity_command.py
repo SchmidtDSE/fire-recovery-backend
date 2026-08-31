@@ -218,10 +218,15 @@ class FireSeverityAnalysisCommand(Command):
             full_date_range = [prefire_date_range[0], postfire_date_range[1]]
 
             # Search for items (provider chain + collection resolved per sensor)
+            # Ask for a provider that actually has scenes in *both* windows.
+            # Without this the chain stops at the first provider returning any
+            # item at all, which can be a single scene that lands in neither
+            # window while a later provider covers both.
             items, endpoint_config = await stac_handler.search_items(
                 geometry=geometry,
                 date_range=full_date_range,
                 sensor=sensor,
+                required_windows=[prefire_date_range, postfire_date_range],
             )
 
             if not items:
@@ -277,6 +282,30 @@ class FireSeverityAnalysisCommand(Command):
             logger.info(
                 f"Data shapes - Prefire: {prefire_data.shape}, Postfire: {postfire_data.shape}"
             )
+
+            # The combined query can succeed while one of the two windows ends
+            # up with no scenes at all -- most often on small AOIs, where a
+            # provider may hold only a scene or two for the whole range. Catch
+            # that here: reducing over a zero-length time axis fails much later
+            # inside numpy as "'list' object cannot be interpreted as an
+            # integer", which gives no hint of the real problem.
+            empty_windows = [
+                f"{label} ({window[0]} to {window[1]})"
+                for label, subset, window in (
+                    ("prefire", prefire_data, prefire_date_range),
+                    ("postfire", postfire_data, postfire_date_range),
+                )
+                if subset.sizes.get("time", 0) == 0
+            ]
+            if empty_windows:
+                raise ValueError(
+                    f"No {' or '.join(empty_windows)} scenes available from "
+                    f"provider {endpoint_config.name} for this area: "
+                    f"{len(items)} item(s) matched {full_date_range[0]} to "
+                    f"{full_date_range[1]}, but none fall in "
+                    f"{' or '.join(empty_windows)}. Both windows need at least "
+                    f"one scene to compute a burn index."
+                )
 
             return STACDataPayload(
                 prefire_data=prefire_data,
@@ -449,9 +478,16 @@ class FireSeverityAnalysisCommand(Command):
         """Subset stacked data by date range (migrated from original code)"""
         start_date, end_date = date_range
 
-        # Convert string dates to numpy datetime64
+        # Convert string dates to numpy datetime64. A bare date parses to
+        # midnight, so using end_date directly as the (inclusive) slice stop
+        # drops every scene captured later that same day. Sentinel-2 and
+        # Landsat overpasses are mid-morning to midday, so that silently
+        # discards the whole final day of the window. Extend the stop to the
+        # last instant of end_date. This must stay in sync with
+        # StacEndpointHandler._items_cover_windows, which decides provider
+        # coverage using the same convention.
         start = np.datetime64(start_date)
-        end = np.datetime64(end_date)
+        end = np.datetime64(end_date) + np.timedelta64(1, "D") - np.timedelta64(1, "ns")
 
         # Subset data by time
         return stacked_data.sel(time=slice(start, end))
