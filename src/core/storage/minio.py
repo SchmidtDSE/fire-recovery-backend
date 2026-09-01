@@ -109,7 +109,11 @@ class MinioCloudStorage(StorageInterface):
         if temporary and not path.startswith("temp/"):
             path = f"temp/{path}"
 
-        await obs.put_async(self._store, path, data)
+        # obstore would switch to multipart above 5 MiB, and GCS's
+        # S3-compatibility endpoint rejects the multipart-initiate POST with
+        # `411 Length Required`. Nothing to stream here anyway -- see the
+        # contract on StorageInterface.save_bytes.
+        await obs.put_async(self._store, path, data, use_multipart=False)
         return self.get_url(path)
 
     async def get_bytes(self, path: str) -> bytes:

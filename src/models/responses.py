@@ -1,6 +1,8 @@
 from typing import Dict, Optional, Any
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.models.provenance import SourceDataProvenance
+
 
 class BaseResponse(BaseModel):
     """Base response model for all API responses."""
@@ -94,6 +96,13 @@ class RefinedBoundaryResponse(BaseResponse):
         }
     )
 
+    source_data: Optional[SourceDataProvenance] = Field(
+        None,
+        description=(
+            "Provider and scene counts carried forward from the severity "
+            "analysis these COGs were cropped from."
+        ),
+    )
     refined_boundary_geojson_url: str = Field(
         ..., description="URL to the refined boundary GeoJSON"
     )
@@ -122,6 +131,13 @@ class FireSeverityResponse(BaseResponse):
 
     coarse_severity_cog_urls: Dict[str, str] = Field(
         ..., description="URLs to the COGs for each severity metric (dnbr, rdnbr, rbr)"
+    )
+    source_data: Optional[SourceDataProvenance] = Field(
+        None,
+        description=(
+            "Provider and scene counts the analysis was computed from. Null for "
+            "items created before provenance was recorded."
+        ),
     )
 
 

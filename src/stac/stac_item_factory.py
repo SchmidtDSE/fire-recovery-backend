@@ -1,8 +1,10 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from shapely.geometry import shape
 import pystac
 from datetime import datetime
 from geojson_pydantic import Polygon, MultiPolygon, Feature
+
+from src.models.provenance import SourceDataProvenance
 
 
 class STACItemFactory:
@@ -62,6 +64,7 @@ class STACItemFactory:
         datetime_str: str,
         boundary_type: str = "coarse",
         skip_validation: bool = False,
+        source_data: Optional[SourceDataProvenance] = None,
     ) -> Dict[str, Any]:
         """
         Create a STAC item for fire severity analysis using pystac
@@ -74,6 +77,8 @@ class STACItemFactory:
             datetime_str: Timestamp for the item
             boundary_type: Type of boundary ('coarse' or 'refined')
             skip_validation: If True, skip validation (useful for testing)
+            source_data: Provider and scene counts the analysis was computed
+                from. Omitted for items whose provenance is unknown.
 
         Returns:
             The created STAC item as dictionary
@@ -104,6 +109,10 @@ class STACItemFactory:
                 "job_id": job_id,
                 "product_type": "fire_severity",
                 "boundary_type": boundary_type,
+                # Which provider actually served the scenes is resolved at run
+                # time, so it is recorded here rather than being derivable from
+                # the request.
+                **(source_data.to_stac_properties() if source_data else {}),
             },
             collection="fire-severity",
         )

@@ -8,6 +8,8 @@ import json
 import logging
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
+from src.util.date_windows import window_bounds
+
 
 # Default sensor used when a caller does not specify one. Kept as a module
 # constant so the request model, router, and command can share a single source
@@ -165,6 +167,7 @@ class StacEndpointHandler:
         date_range: List[str],
         sensor: str = DEFAULT_SENSOR,
         provider_index: Optional[int] = None,
+        required_windows: Optional[List[List[str]]] = None,
     ) -> Tuple[ItemCollection, StacMapping]:
         """
         Search for items using the STAC providers configured for a sensor.
@@ -174,6 +177,12 @@ class StacEndpointHandler:
             date_range: List of [start_date, end_date] as strings
             sensor: Sensor key selecting the provider chain and collection to query
             provider_index: Index of provider to use. If None, tries all in order.
+            required_windows: Optional list of [start_date, end_date] sub-ranges
+                that must *each* contain at least one item for a provider to be
+                accepted. Without it, the chain stops at the first provider
+                returning any item at all, which on small AOIs can be a lone
+                scene sitting outside the caller's windows while a later
+                provider covers them all. Ignored when provider_index is given.
 
         Returns:
             Tuple of (items, provider)
@@ -206,6 +215,11 @@ class StacEndpointHandler:
                 raise RuntimeError(f"No items found using provider {provider.name}")
         else:
             # Try all providers in order (per-sensor fallback chain)
+            # Best non-covering result seen so far, kept so a provider chain in
+            # which nobody covers every window still returns its richest result
+            # (and a meaningful error downstream) rather than nothing at all.
+            fallback: Optional[Tuple[ItemCollection, StacMapping]] = None
+
             for i, provider in enumerate(providers):
                 try:
                     self.logger.info(
@@ -217,17 +231,59 @@ class StacEndpointHandler:
                     items = client.search(
                         **base_params, collections=[provider.collection]
                     ).item_collection()
-                    if len(items) > 0:
-                        return items, provider
+                    if len(items) == 0:
+                        continue
+
+                    if required_windows and not self._items_cover_windows(
+                        items, required_windows
+                    ):
+                        self.logger.info(
+                            f"Provider {provider.name} returned {len(items)} "
+                            f"item(s) but left at least one required window "
+                            f"empty; trying next provider"
+                        )
+                        if fallback is None or len(items) > len(fallback[0]):
+                            fallback = (items, provider)
+                        continue
+
+                    return items, provider
                 except Exception as e:
                     self.logger.warning(
                         f"Failed to get items with provider {provider.name}: {str(e)}"
                     )
                     continue
 
+            if fallback is not None:
+                self.logger.warning(
+                    f"No STAC provider covered every required window for sensor "
+                    f"'{sensor}'; falling back to {fallback[1].name} with "
+                    f"{len(fallback[0])} item(s)"
+                )
+                return fallback
+
             raise RuntimeError(
                 f"No items found with any available STAC provider for sensor '{sensor}'"
             )
+
+    @staticmethod
+    def _items_cover_windows(items: ItemCollection, windows: List[List[str]]) -> bool:
+        """
+        Check that every window contains at least one item.
+
+        Window semantics come from util.date_windows, which the fire severity
+        command also slices its time axis with -- the two must agree, or a
+        provider could be accepted here and then yield an empty window.
+        """
+        for start_date, end_date in windows:
+            start, end = window_bounds(start_date, end_date)
+
+            if not any(
+                item.datetime is not None and start <= item.datetime < end
+                for item in items
+            ):
+                return False
+
+        return True
 
     def get_band_names(self, provider: StacMapping) -> Tuple[str, str]:
         """

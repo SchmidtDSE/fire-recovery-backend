@@ -11,6 +11,8 @@ concern: stackstac applies the per-asset scale/offset from each item's
 """
 
 import json
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -149,3 +151,67 @@ class TestSensorConfigModel:
         )
         assert len(sensor_config.providers) == 1
         assert sensor_config.providers[0].collection == "landsat-c2-l2"
+
+
+class TestRequiredWindowCoverage:
+    """Provider acceptance when the caller needs specific windows covered.
+
+    A provider that returns items for the combined range can still leave one
+    window empty -- common on small AOIs, where a provider may hold only a
+    scene or two. Accepting it strands the analysis with nothing to compare.
+    """
+
+    @staticmethod
+    def _items(*timestamps: str):
+        return [
+            SimpleNamespace(
+                datetime=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
+            )
+            for ts in timestamps
+        ]
+
+    def test_accepts_items_spanning_every_window(self) -> None:
+        items = self._items("2016-10-16T18:33:42", "2016-11-05T18:35:42")
+        assert StacEndpointHandler._items_cover_windows(
+            items,
+            [["2016-10-15", "2016-11-04"], ["2016-11-05", "2017-01-04"]],
+        )
+
+    def test_rejects_when_a_window_has_no_items(self) -> None:
+        # The lone scene sits in the postfire window; prefire is left empty.
+        items = self._items("2017-01-04T18:41:16")
+        assert not StacEndpointHandler._items_cover_windows(
+            items,
+            [["2016-10-15", "2016-11-04"], ["2016-11-05", "2017-01-04"]],
+        )
+
+    def test_end_date_covers_the_whole_final_day(self) -> None:
+        """Mid-morning overpasses on the end date count as inside the window.
+
+        Both this and the fire severity command's time slicing read the
+        window through util.date_windows, so they cannot drift apart.
+        """
+        items = self._items("2017-01-04T18:41:16")
+        assert StacEndpointHandler._items_cover_windows(
+            items, [["2016-11-05", "2017-01-04"]]
+        )
+
+    def test_items_without_datetime_are_ignored(self) -> None:
+        items = [SimpleNamespace(datetime=None)]
+        assert not StacEndpointHandler._items_cover_windows(
+            items, [["2016-11-05", "2017-01-04"]]
+        )
+
+    def test_window_offset_is_honoured_not_relabelled(self) -> None:
+        """A window start carrying an offset means that instant, not UTC.
+
+        Regression: the offset used to be overwritten with UTC, so a scene
+        seven hours before the window actually opened counted as covering it.
+        """
+        # The window opens at 07:00Z; this scene lands four hours earlier.
+        items = self._items("2023-06-15T03:00:00")
+
+        assert not StacEndpointHandler._items_cover_windows(
+            items,
+            [["2023-06-15T00:00:00-07:00", "2023-06-20"]],
+        )

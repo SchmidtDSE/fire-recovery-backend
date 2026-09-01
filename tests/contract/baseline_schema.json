@@ -207,6 +207,17 @@
             "title": "Job Id",
             "type": "string"
           },
+          "source_data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceDataProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider and scene counts the analysis was computed from. Null for items created before provenance was recorded."
+          },
           "status": {
             "description": "Status of the operation",
             "title": "Status",
@@ -1062,7 +1073,8 @@
           "prefire_date_range": [
             "2023-06-01",
             "2023-06-09"
-          ]
+          ],
+          "sensor": "sentinel-2"
         },
         "properties": {
           "coarse_geojson": {
@@ -1100,6 +1112,16 @@
             },
             "title": "Prefire Date Range",
             "type": "array"
+          },
+          "sensor": {
+            "default": "sentinel-2",
+            "description": "Satellite source to analyze: 'sentinel-2' (default) or 'landsat'",
+            "enum": [
+              "sentinel-2",
+              "landsat"
+            ],
+            "title": "Sensor",
+            "type": "string"
           }
         },
         "required": [
@@ -1248,6 +1270,17 @@
             "title": "Refined Severity Cog Urls",
             "type": "object"
           },
+          "source_data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceDataProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider and scene counts carried forward from the severity analysis these COGs were cropped from."
+          },
           "status": {
             "description": "Status of the operation",
             "title": "Status",
@@ -1262,6 +1295,59 @@
           "refined_severity_cog_urls"
         ],
         "title": "RefinedBoundaryResponse",
+        "type": "object"
+      },
+      "SourceDataProvenance": {
+        "description": "Which provider and how many scenes an analysis was computed from.",
+        "example": {
+          "collection": "sentinel-2-l2a",
+          "postfire_scene_count": 7,
+          "prefire_scene_count": 2,
+          "provider": "Microsoft Planetary Computer",
+          "provider_id": "MICROSOFT_PLANETARY_COMPUTER",
+          "sensor": "sentinel-2"
+        },
+        "properties": {
+          "collection": {
+            "description": "STAC collection the scenes came from",
+            "title": "Collection",
+            "type": "string"
+          },
+          "postfire_scene_count": {
+            "description": "Scenes contributing to the postfire composite",
+            "title": "Postfire Scene Count",
+            "type": "integer"
+          },
+          "prefire_scene_count": {
+            "description": "Scenes contributing to the prefire composite",
+            "title": "Prefire Scene Count",
+            "type": "integer"
+          },
+          "provider": {
+            "description": "Human-readable name of the STAC provider that served the data",
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_id": {
+            "description": "Stable provider identifier (StacProvider enum member name)",
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "sensor": {
+            "description": "Sensor key used to resolve the provider chain",
+            "title": "Sensor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "provider_id",
+          "collection",
+          "sensor",
+          "prefire_scene_count",
+          "postfire_scene_count"
+        ],
+        "title": "SourceDataProvenance",
         "type": "object"
       },
       "TaskFailedResponse": {
@@ -1760,7 +1846,7 @@
     },
     "/fire-recovery/process/analyze_fire_severity": {
       "post": {
-        "description": "Initiate fire severity analysis using Sentinel-2 satellite imagery.\n\nCalculates NBR, dNBR, RdNBR, and RBR indices. Returns immediately with a job ID for polling.\n\nSee [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.",
+        "description": "Initiate fire severity analysis using Sentinel-2 (default) or Landsat satellite imagery.\n\nSelect the source via the optional `sensor` body field. Calculates NBR, dNBR,\nRdNBR, and RBR indices. Returns immediately with a job ID for polling.\n\nSee [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.",
         "operationId": "analyze_fire_severity_fire_recovery_process_analyze_fire_severity_post",
         "requestBody": {
           "content": {

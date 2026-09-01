@@ -81,6 +81,31 @@ curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity"
 | `postfire_date_range` | string[] | Yes | Two ISO dates `[start, end]` for post-fire imagery (2-3 weeks after containment) |
 | `sensor` | string | No | Satellite source: `sentinel-2` (default) or `landsat` |
 
+#### Analysis extent
+
+The output COGs cover more ground than `coarse_geojson`: the bounding box is
+padded so the analysis includes unburned surroundings and absorbs imprecision
+in the perimeter itself. Note that boundary refinement crops these COGs, so a
+refined boundary cannot extend past this padded extent.
+
+The margin is **20% of the perimeter's longest side, clamped to 100 m–1,000 m**.
+A fraction alone behaves badly at the extremes — a fifth of a sub-acre
+perimeter is a few metres, tighter than anyone can draw a boundary, while a
+fifth of a 16 km fire is kilometres of mostly-unburned background — so it is
+floored and capped:
+
+| Perimeter | Margin | Set by |
+|---|---|---|
+| 60 m across | 100 m | floor |
+| 500 m across | 100 m | fraction |
+| 3 km across | 600 m | fraction |
+| 16 km across | 1,000 m | cap |
+
+The same distance is applied on every side, since perimeter imprecision is
+roughly isotropic; a per-axis fraction would leave a long, narrow fire with
+almost no margin across its width. These figures are fixed for all jobs;
+the endpoint takes no buffer parameters.
+
 #### Response (202 Accepted)
 
 ```json
@@ -124,9 +149,31 @@ curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Geology_F
     "rbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/rbr.tif",
     "dnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/dnbr.tif",
     "rdnbr": "https://storage.googleapis.com/fire-recovery-store/assets/223c86f1-377f-4640-ba88-ced1277f3831/fire_severity/rdnbr.tif"
+  },
+  "source_data": {
+    "provider": "Microsoft Planetary Computer",
+    "provider_id": "MICROSOFT_PLANETARY_COMPUTER",
+    "collection": "sentinel-2-l2a",
+    "sensor": "sentinel-2",
+    "prefire_scene_count": 2,
+    "postfire_scene_count": 7
   }
 }
 ```
+
+#### `source_data`
+
+Which provider actually served the imagery, and how many scenes went into each
+composite.
+
+The provider chain is tried in order and the first provider holding scenes in
+*both* the prefire and postfire windows wins, so the same request can resolve to
+different providers as archives change — the choice is not derivable from the
+request alone. Scene counts matter because each composite is a per-pixel median:
+a one-scene composite carries no cloud or noise mitigation, so counts are worth
+checking before comparing severity across fires or across window lengths.
+
+`source_data` is `null` for analyses run before provenance was recorded.
 
 ---
 

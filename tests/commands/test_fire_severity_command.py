@@ -9,6 +9,8 @@ from src.commands.interfaces.command_context import CommandContext
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
+from src.models.provenance import SourceDataProvenance
+from tests.factories import make_stac_mapping
 
 
 class MockIndexCalculator:
@@ -113,7 +115,6 @@ def command_context(
             "prefire_date_range": ["2023-06-01", "2023-06-15"],
             "postfire_date_range": ["2023-07-01", "2023-07-15"],
             "sensor": "sentinel-2",
-            "buffer_meters": 100,
             "indices": ["nbr", "dnbr"],
         },
         metadata={"test_metadata": "fire_severity_test"},
@@ -177,30 +178,6 @@ class TestFireSeverityAnalysisCommand:
         assert result is False
         assert message == "storage interface is required"
 
-    def test_get_buffered_bounds(self) -> None:
-        """Test buffered bounds calculation"""
-        command = FireSeverityAnalysisCommand()
-
-        geometry = {
-            "type": "Polygon",
-            "coordinates": [
-                [[-120, 35], [-119, 35], [-119, 36], [-120, 36], [-120, 35]]
-            ],
-        }
-
-        bounds = command._get_buffered_bounds(geometry, 100)
-
-        # Should be a tuple of 4 coordinates
-        assert len(bounds) == 4
-        assert all(isinstance(b, float) for b in bounds)
-
-        # Bounds should be expanded from original
-        minx, miny, maxx, maxy = bounds
-        assert minx < -120
-        assert miny < 35
-        assert maxx > -119
-        assert maxy > 36
-
     def test_subset_data_by_date_range(self) -> None:
         """Test data subsetting by date range"""
         command = FireSeverityAnalysisCommand()
@@ -246,6 +223,187 @@ class TestFireSeverityAnalysisCommand:
         # Should have CRS set
         assert prepared.rio.crs is not None
 
+    def test_subset_data_by_date_range_includes_whole_end_day(self) -> None:
+        """A scene captured during the end date's day must not be dropped.
+
+        Bare dates parse to midnight, so an exclusive-at-midnight stop would
+        discard mid-morning overpasses on the final day of the window -- which
+        is enough to leave a window with no scenes at all.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        time_coords = np.array(
+            ["2023-06-01T18:35:00", "2023-06-15T18:41:16"], dtype="datetime64[ns]"
+        )
+        data = xr.DataArray(
+            np.random.random((2, 10, 10)),
+            dims=["time", "y", "x"],
+            coords={"time": time_coords, "y": range(10), "x": range(10)},
+        )
+
+        subset = command._subset_data_by_date_range(data, ["2023-06-01", "2023-06-15"])
+
+        assert len(subset.time) == 2
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
+    @patch("src.commands.impl.fire_severity_command.stackstac")
+    async def test_fetch_satellite_data_records_source_data(
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
+        """The resolved provider and per-window scene counts are captured.
+
+        Scene counts come from the windows after subsetting, not from the
+        combined search, since that is what each composite is built from.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        mock_handler = Mock()
+        mock_stac_handler_class.return_value = mock_handler
+        mock_handler.search_items = AsyncMock(
+            return_value=(["i1", "i2", "i3", "i4"], make_stac_mapping())
+        )
+        mock_handler.get_band_names.return_value = ("B08", "B12")
+        mock_handler.get_epsg_code.return_value = 4326
+        mock_stackstac.stack.return_value = xr.DataArray(
+            np.random.random((4, 2, 10, 10)),
+            dims=["time", "band", "y", "x"],
+            coords={
+                "time": np.array(
+                    [
+                        "2023-06-02T18:00:00",
+                        "2023-07-02T18:00:00",
+                        "2023-07-07T18:00:00",
+                        "2023-07-12T18:00:00",
+                    ],
+                    dtype="datetime64[ns]",
+                ),
+                "band": ["B08", "B12"],
+                "y": range(10),
+                "x": range(10),
+            },
+        )
+
+        assert command_context.geometry is not None
+        result = await command._fetch_satellite_data(
+            command_context,
+            command_context.geometry,
+            ["2023-06-01", "2023-06-15"],
+            ["2023-07-01", "2023-07-15"],
+            "sentinel-2",
+            100.0,
+        )
+
+        source_data = result["source_data"]
+        assert source_data.provider == "Element 84"
+        assert source_data.provider_id == "ELEMENT_84"
+        assert source_data.collection == "sentinel-2-l2a"
+        assert source_data.sensor == "sentinel-2"
+        assert source_data.prefire_scene_count == 1
+        assert source_data.postfire_scene_count == 3
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
+    @patch("src.commands.impl.fire_severity_command.stackstac")
+    async def test_fetch_satellite_data_rejects_empty_window(
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
+        """A window with no scenes must fail with an explanatory error.
+
+        Regression test: reducing over a zero-length time axis used to escape
+        as numpy's "'list' object cannot be interpreted as an integer", which
+        named neither the window nor the provider.
+        """
+        command = FireSeverityAnalysisCommand()
+
+        mock_handler = Mock()
+        mock_stac_handler_class.return_value = mock_handler
+        mock_handler.search_items = AsyncMock(
+            return_value=(
+                ["item1"],
+                make_stac_mapping(),
+            )
+        )
+        mock_handler.get_band_names.return_value = ("B08", "B12")
+        mock_handler.get_epsg_code.return_value = 4326
+
+        # The single scene lands in the postfire window, leaving prefire empty.
+        mock_stackstac.stack.return_value = xr.DataArray(
+            np.random.random((1, 2, 10, 10)),
+            dims=["time", "band", "y", "x"],
+            coords={
+                "time": np.array(["2023-07-15T18:41:16"], dtype="datetime64[ns]"),
+                "band": ["B08", "B12"],
+                "y": range(10),
+                "x": range(10),
+            },
+        )
+
+        assert command_context.geometry is not None
+        with pytest.raises(ValueError, match="prefire"):
+            await command._fetch_satellite_data(
+                command_context,
+                command_context.geometry,
+                ["2023-06-01", "2023-06-15"],
+                ["2023-07-01", "2023-07-15"],
+                "sentinel-2",
+                100.0,
+            )
+
+    @pytest.mark.asyncio
+    @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
+    @patch("src.commands.impl.fire_severity_command.stackstac")
+    async def test_fetch_satellite_data_requires_both_windows_of_provider(
+        self,
+        mock_stackstac: Mock,
+        mock_stac_handler_class: Mock,
+        command_context: CommandContext,
+    ) -> None:
+        """Provider selection must be told which windows have to be covered."""
+        command = FireSeverityAnalysisCommand()
+
+        mock_handler = Mock()
+        mock_stac_handler_class.return_value = mock_handler
+        mock_handler.search_items = AsyncMock(
+            return_value=(["item1", "item2"], make_stac_mapping())
+        )
+        mock_handler.get_band_names.return_value = ("B08", "B12")
+        mock_handler.get_epsg_code.return_value = 4326
+        mock_stackstac.stack.return_value = xr.DataArray(
+            np.random.random((2, 2, 10, 10)),
+            dims=["time", "band", "y", "x"],
+            coords={
+                "time": np.array(
+                    ["2023-06-10T18:00:00", "2023-07-10T18:00:00"],
+                    dtype="datetime64[ns]",
+                ),
+                "band": ["B08", "B12"],
+                "y": range(10),
+                "x": range(10),
+            },
+        )
+
+        assert command_context.geometry is not None
+        await command._fetch_satellite_data(
+            command_context,
+            command_context.geometry,
+            ["2023-06-01", "2023-06-15"],
+            ["2023-07-01", "2023-07-15"],
+            "sentinel-2",
+            100.0,
+        )
+
+        assert mock_handler.search_items.await_args.kwargs["required_windows"] == [
+            ["2023-06-01", "2023-06-15"],
+            ["2023-07-01", "2023-07-15"],
+        ]
+
     @pytest.mark.asyncio
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
     @patch("src.commands.impl.fire_severity_command.stackstac")
@@ -265,7 +423,7 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],  # Mock STAC items
-                Mock(collection="sentinel-2-l2a"),  # Mock matched-provider config
+                make_stac_mapping(),  # matched-provider config
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")
@@ -370,6 +528,15 @@ class TestFireSeverityAnalysisCommand:
 
         asset_urls = {"nbr": "mock://nbr.tif", "dnbr": "mock://dnbr.tif"}
 
+        source_data = SourceDataProvenance(
+            provider="Element 84",
+            provider_id="ELEMENT_84",
+            collection="sentinel-2-l2a",
+            sensor="sentinel-2",
+            prefire_scene_count=2,
+            postfire_scene_count=7,
+        )
+
         assert command_context.geometry is not None
         result = await command._create_stac_metadata(
             command_context,
@@ -377,11 +544,16 @@ class TestFireSeverityAnalysisCommand:
             asset_urls,
             ["2023-06-01", "2023-06-15"],
             ["2023-07-01", "2023-07-15"],
+            source_data,
         )
 
         # Verify STAC item was created
         assert result == "mock://stac/item.json"
-        command_context.stac_manager.create_fire_severity_item.assert_called_once()  # type: ignore
+        create_item = command_context.stac_manager.create_fire_severity_item  # type: ignore
+        create_item.assert_called_once()
+        # Provenance must reach the stored item, since the API rebuilds its
+        # response from the STAC item rather than from the command result.
+        assert create_item.call_args.kwargs["source_data"] == source_data
 
     @pytest.mark.asyncio
     @patch("src.commands.impl.fire_severity_command.StacEndpointHandler")
@@ -402,7 +574,7 @@ class TestFireSeverityAnalysisCommand:
         mock_handler.search_items = AsyncMock(
             return_value=(
                 ["item1", "item2"],
-                Mock(collection="sentinel-2-l2a"),
+                make_stac_mapping(),
             )
         )
         mock_handler.get_band_names.return_value = ("B08", "B12")

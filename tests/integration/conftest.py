@@ -14,6 +14,7 @@ from src.core.storage.storage_factory import StorageFactory
 from src.stac.stac_json_manager import STACJSONManager
 from src.computation.registry.index_registry import IndexRegistry
 from src.commands.interfaces.command_context import CommandContext
+from tests.factories import make_stac_mapping
 
 
 # Test geometry definitions with realistic sizes
@@ -233,14 +234,16 @@ def realistic_stac_endpoint_mock():
         mock_handler = Mock()
 
         # Mock search_items to return realistic STAC items
-        async def mock_search_items(geometry, date_range, sensor):
+        async def mock_search_items(
+            geometry, date_range, sensor, required_windows=None
+        ):
             # Create synthetic STAC items
             items = [
                 {"id": f"sentinel-2-l2a-{i}", "datetime": date}
                 for i, date in enumerate([*prefire_dates, *postfire_dates])
             ]
 
-            endpoint_config = Mock(collection="sentinel-2-l2a")
+            endpoint_config = make_stac_mapping()
 
             return items, endpoint_config
 
@@ -306,7 +309,6 @@ def create_integration_context(
             "prefire_date_range": prefire_dates,
             "postfire_date_range": postfire_dates,
             "sensor": "sentinel-2",
-            "buffer_meters": 100,
             "indices": ["dnbr", "rdnbr", "rbr"],
         },
         metadata={"test_type": "integration", "geometry_size": geometry_name},

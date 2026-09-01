@@ -1,10 +1,9 @@
 import logging
 import time
-from typing import Dict, List, Any
+from typing import Dict, List
 import xarray as xr
 import stackstac
 import numpy as np
-from shapely.geometry import shape
 from geojson_pydantic import Polygon, MultiPolygon, Feature
 
 from src.commands.interfaces.command import Command
@@ -13,6 +12,15 @@ from src.commands.interfaces.command_result import CommandResult
 from src.core.storage.interface import StorageInterface
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.util.cog_ops import create_cog_bytes
+from src.util.date_windows import window_bounds
+from src.util.geo_ops import (
+    Bounds,
+    DEFAULT_BUFFER_FRACTION,
+    DEFAULT_MAX_BUFFER_METERS,
+    DEFAULT_MIN_BUFFER_METERS,
+    buffered_bounds,
+)
+from src.models.provenance import SourceDataProvenance
 from src.models.types import STACDataPayload, FireSeveritySTACItem
 
 logger = logging.getLogger(__name__)
@@ -116,7 +124,18 @@ class FireSeverityAnalysisCommand(Command):
             prefire_date_range = context.get_computation_config("prefire_date_range")
             postfire_date_range = context.get_computation_config("postfire_date_range")
             sensor = context.get_computation_config("sensor", "sentinel-2")
-            buffer_meters = context.get_computation_config("buffer_meters", 100)
+            analysis_bounds, buffer_meters = buffered_bounds(
+                geometry,
+                fraction=context.get_computation_config(
+                    "buffer_fraction", DEFAULT_BUFFER_FRACTION
+                ),
+                minimum=context.get_computation_config(
+                    "min_buffer_meters", DEFAULT_MIN_BUFFER_METERS
+                ),
+                maximum=context.get_computation_config(
+                    "max_buffer_meters", DEFAULT_MAX_BUFFER_METERS
+                ),
+            )
             indices = context.get_computation_config(
                 "indices",
                 ["dnbr", "rdnbr", "rbr"],  # NBR computed internally by dependencies
@@ -143,7 +162,7 @@ class FireSeverityAnalysisCommand(Command):
                 prefire_date_range,
                 postfire_date_range,
                 sensor,
-                buffer_meters,
+                analysis_bounds,
             )
 
             # Step 2: Calculate burn indices using strategy pattern
@@ -156,7 +175,12 @@ class FireSeverityAnalysisCommand(Command):
 
             # Step 4: Update STAC metadata
             stac_item_url = await self._create_stac_metadata(
-                context, geometry, asset_urls, prefire_date_range, postfire_date_range
+                context,
+                geometry,
+                asset_urls,
+                prefire_date_range,
+                postfire_date_range,
+                stac_data["source_data"],
             )
 
             execution_time = (time.time() - start_time) * 1000
@@ -205,7 +229,7 @@ class FireSeverityAnalysisCommand(Command):
         prefire_date_range: List[str],
         postfire_date_range: List[str],
         sensor: str,
-        buffer_meters: float,
+        analysis_bounds: Bounds,
     ) -> STACDataPayload:
         """Fetch satellite data for pre and post-fire periods"""
         logger.info("Fetching satellite data via STAC")
@@ -218,10 +242,15 @@ class FireSeverityAnalysisCommand(Command):
             full_date_range = [prefire_date_range[0], postfire_date_range[1]]
 
             # Search for items (provider chain + collection resolved per sensor)
+            # Ask for a provider that actually has scenes in *both* windows.
+            # Without this the chain stops at the first provider returning any
+            # item at all, which can be a single scene that lands in neither
+            # window while a later provider covers both.
             items, endpoint_config = await stac_handler.search_items(
                 geometry=geometry,
                 date_range=full_date_range,
                 sensor=sensor,
+                required_windows=[prefire_date_range, postfire_date_range],
             )
 
             if not items:
@@ -240,14 +269,6 @@ class FireSeverityAnalysisCommand(Command):
                 f"NIR: {nir_band}, SWIR: {swir_band}, EPSG: {epsg_code}"
             )
 
-            # Calculate buffered bounds
-            # Convert geometry to dict format for shapely processing
-            if hasattr(geometry, "model_dump"):
-                geometry_dict: Dict[str, Any] = geometry.model_dump()
-            else:
-                geometry_dict: Dict[str, Any] = geometry  # type: ignore
-            buffered_bounds = self._get_buffered_bounds(geometry_dict, buffer_meters)
-
             # Stack data using stackstac. rescale=True (stackstac's default, made
             # explicit here because we depend on it) applies the per-asset
             # scale/offset from each item's `raster:bands` STAC metadata, yielding
@@ -261,7 +282,7 @@ class FireSeverityAnalysisCommand(Command):
                 items,
                 epsg=epsg_code,
                 assets=[swir_band, nir_band],
-                bounds=buffered_bounds,
+                bounds=analysis_bounds,
                 chunksize=(-1, 1, 512, 512),
                 rescale=True,
             )
@@ -278,11 +299,43 @@ class FireSeverityAnalysisCommand(Command):
                 f"Data shapes - Prefire: {prefire_data.shape}, Postfire: {postfire_data.shape}"
             )
 
+            # The combined query can succeed while one of the two windows ends
+            # up with no scenes at all -- most often on small AOIs, where a
+            # provider may hold only a scene or two for the whole range. Catch
+            # that here: reducing over a zero-length time axis fails much later
+            # inside numpy as "'list' object cannot be interpreted as an
+            # integer", which gives no hint of the real problem.
+            empty_windows = [
+                f"{label} ({window[0]} to {window[1]})"
+                for label, subset, window in (
+                    ("prefire", prefire_data, prefire_date_range),
+                    ("postfire", postfire_data, postfire_date_range),
+                )
+                if subset.sizes.get("time", 0) == 0
+            ]
+            if empty_windows:
+                missing = " or ".join(empty_windows)
+                raise ValueError(
+                    f"No {missing} scenes available from provider "
+                    f"{endpoint_config.name} for this area: {len(items)} "
+                    f"item(s) matched {full_date_range[0]} to "
+                    f"{full_date_range[1]}, but none fall in {missing}. Both "
+                    f"windows need at least one scene to compute a burn index."
+                )
+
             return STACDataPayload(
                 prefire_data=prefire_data,
                 postfire_data=postfire_data,
                 nir_band=nir_band,
                 swir_band=swir_band,
+                source_data=SourceDataProvenance(
+                    provider=endpoint_config.name,
+                    provider_id=endpoint_config.id.name,
+                    collection=endpoint_config.collection,
+                    sensor=sensor,
+                    prefire_scene_count=int(prefire_data.sizes["time"]),
+                    postfire_scene_count=int(postfire_data.sizes["time"]),
+                ),
             )
 
         except Exception as e:
@@ -388,6 +441,7 @@ class FireSeverityAnalysisCommand(Command):
         asset_urls: Dict[str, str],
         prefire_date_range: List[str],
         postfire_date_range: List[str],
+        source_data: SourceDataProvenance,
     ) -> str:
         """Create STAC metadata for the fire severity analysis results"""
         logger.info("Creating STAC metadata for fire severity analysis")
@@ -402,6 +456,7 @@ class FireSeverityAnalysisCommand(Command):
                 datetime_str=postfire_date_range[1],
                 boundary_type="coarse",
                 skip_validation=False,
+                source_data=source_data,
             )
 
             # Create STAC item via STAC manager
@@ -416,45 +471,23 @@ class FireSeverityAnalysisCommand(Command):
             logger.error(f"STAC creation failed: {str(e)}", exc_info=True)
             raise
 
-    def _get_buffered_bounds(
-        self, geometry: Dict[str, Any], buffer_meters: float
-    ) -> tuple:
-        """Calculate buffered bounds for the geometry"""
-        # Convert GeoJSON geometry to shapely object
-        geom_shape = shape(geometry)
-
-        minx, miny, maxx, maxy = geom_shape.bounds
-
-        # Calculate width and height in degrees
-        width = maxx - minx
-        height = maxy - miny
-
-        # Calculate buffer size in degrees (20% of width/height or 0.25 degree, whichever is smaller)
-        buffer_x = min(width * 0.2, 0.25)
-        buffer_y = min(height * 0.2, 0.25)
-
-        # Create buffered bounds
-        buffered_bounds = (
-            minx - buffer_x,  # min_x
-            miny - buffer_y,  # min_y
-            maxx + buffer_x,  # max_x
-            maxy + buffer_y,  # max_y
-        )
-
-        return buffered_bounds
-
     def _subset_data_by_date_range(
         self, stacked_data: xr.DataArray, date_range: List[str]
     ) -> xr.DataArray:
         """Subset stacked data by date range (migrated from original code)"""
-        start_date, end_date = date_range
+        # window_bounds is the shared definition of what a date window covers,
+        # also used to decide STAC provider coverage. It returns a half-open
+        # interval; .sel() slices inclusively at both ends, so step back off
+        # the exclusive end. The times it returns are UTC-aware and the stacked
+        # time axis is not, so drop the tzinfo before comparing.
+        start, end = window_bounds(*date_range)
 
-        # Convert string dates to numpy datetime64
-        start = np.datetime64(start_date)
-        end = np.datetime64(end_date)
-
-        # Subset data by time
-        return stacked_data.sel(time=slice(start, end))
+        return stacked_data.sel(
+            time=slice(
+                np.datetime64(start.replace(tzinfo=None)),
+                np.datetime64(end.replace(tzinfo=None)) - np.timedelta64(1, "ns"),
+            )
+        )
 
     def _prepare_data_for_cog(self, data: xr.DataArray) -> xr.DataArray:
         """Prepare xarray data for COG creation (migrated from original code)"""
