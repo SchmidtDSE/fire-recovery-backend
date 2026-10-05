@@ -14,21 +14,25 @@ from src.core.storage.storage_factory import StorageFactory
 
 logger = logging.getLogger(__name__)
 
-# Path template for job result files
-JOB_RESULT_PATH_TEMPLATE = "assets/{job_id}/job_result.json"
+# Path template for job result files. Namespaced by command_name because
+# refine and veg resolve reuse the analyze job_id, and all three commands
+# would otherwise overwrite one shared file.
+JOB_RESULT_PATH_TEMPLATE = "assets/{job_id}/results/{command_name}.json"
 
 
-def get_job_result_path(job_id: str) -> str:
+def get_job_result_path(job_id: str, command_name: str) -> str:
     """
     Get the storage path for a job result file.
 
     Args:
         job_id: Unique job identifier
+        command_name: Name of the command that produced the result
+            (e.g. "fire_severity_analysis", "boundary_refinement")
 
     Returns:
         Storage path for the job result JSON file
     """
-    return JOB_RESULT_PATH_TEMPLATE.format(job_id=job_id)
+    return JOB_RESULT_PATH_TEMPLATE.format(job_id=job_id, command_name=command_name)
 
 
 async def persist_job_result(
@@ -38,8 +42,9 @@ async def persist_job_result(
     """
     Persist a CommandResult to storage.
 
-    Stores the job result as a JSON file at assets/{job_id}/job_result.json.
-    This file can be retrieved later to determine job status and error details.
+    Stores the job result as a JSON file at
+    assets/{job_id}/results/{command_name}.json. This file can be retrieved
+    later to determine job status and error details.
 
     Args:
         result: CommandResult to persist
@@ -49,7 +54,7 @@ async def persist_job_result(
         URL of the persisted job result file
     """
     storage = storage_factory.get_final_storage()
-    path = get_job_result_path(result.job_id)
+    path = get_job_result_path(result.job_id, result.command_name)
 
     result_dict = result.to_dict()
     url = await storage.save_json(result_dict, path)
@@ -64,23 +69,27 @@ async def persist_job_result(
 
 async def get_job_result(
     job_id: str,
+    command_name: str,
     storage_factory: StorageFactory,
 ) -> Optional[CommandResult]:
     """
     Retrieve a CommandResult from storage.
 
-    Looks for a job result file at assets/{job_id}/job_result.json.
-    Returns None if the file does not exist (job still processing).
+    Looks for a job result file at
+    assets/{job_id}/results/{command_name}.json. Returns None if the file
+    does not exist (job still processing).
 
     Args:
         job_id: Unique job identifier
+        command_name: Name of the command whose result to retrieve
+            (e.g. "fire_severity_analysis", "boundary_refinement")
         storage_factory: StorageFactory for accessing final storage
 
     Returns:
         CommandResult if found, None if job is still processing
     """
     storage = storage_factory.get_final_storage()
-    path = get_job_result_path(job_id)
+    path = get_job_result_path(job_id, command_name)
 
     try:
         result_dict = await storage.get_json(path)

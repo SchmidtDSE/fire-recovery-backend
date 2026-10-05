@@ -333,3 +333,37 @@ https://storage.googleapis.com/fire-recovery-store/openapi-schemas/dev.json` act
 200 with JSON matching the live `/openapi.json`, since that depends on the real
 `upload-cloud-storage` action behavior against the real bucket, which can't be exercised from
 this sandbox.
+
+### `be-result-path` (branch `be-result-path`, 2026-10-05)
+
+Shipped. `JOB_RESULT_PATH_TEMPLATE` is now `assets/{job_id}/results/{command_name}.json`
+(`src/util/job_result_persistence.py`). `get_job_result_path` and `get_job_result` both take
+`command_name` as a required argument; the three result endpoints in
+`src/routers/fire_recovery.py` each pass their own ("fire_severity_analysis",
+"boundary_refinement", "vegetation_resolve"), so analyze/refine/veg no longer share one file
+even though refine and veg reuse the analyze `job_id`.
+
+While wiring this up, found that veg's failure path persisted under `command_name =
+"vegetation_resolution"` while its success path (`VegetationResolveCommand.get_command_name()`)
+uses `"vegetation_resolve"` — a pre-existing mismatch that the old shared-file bug had been
+masking. Left unfixed, namespacing would have made veg failures invisible to its own result
+endpoint instead of merely invisible to analyze's. Changed the failure literal to
+`"vegetation_resolve"` so both paths agree; this is a one-line correction, not a new behavior.
+
+Moved the analyze persist (`process_fire_severity` in `fire_recovery.py`) so the **success**
+case is written only after `process_and_upload_geojson` and `stac_manager.create_boundary_item`
+both complete; the **failure** case still persists immediately (nothing downstream to wait
+for). An exception raised during the boundary upload or STAC item creation is caught by the
+existing outer `except Exception` and persisted as a failure there, unchanged.
+
+Added `tests/api/test_result_path_namespacing.py`: two tests drive `process_fire_severity`
+directly with mocked command/upload/STAC/persist calls and assert the ordering
+(`boundary_upload → stac_item → persist` on success; immediate persist with no boundary work on
+failure), plus an end-to-end test that stores a veg failure under a shared `job_id` and confirms
+`GET /result/analyze_fire_severity/...` still reports `complete`. Extended
+`tests/util/test_job_result_persistence.py` for the new two-argument path/read signatures.
+
+Checked locally, all pass: `pixi run pytest` (458 passed, 25 skipped), `pixi run ruff-check`,
+`pixi run ruff-format --check`, `pixi run mypy --config-file mypy.ini src/`. Nothing here
+requires a push to `dev` to verify — it's pure application logic, exercised directly by the new
+tests above.

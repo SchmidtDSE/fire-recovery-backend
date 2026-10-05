@@ -215,14 +215,23 @@ class TestJobResultPath:
 
     def test_get_job_result_path(self) -> None:
         """Test job result path formatting."""
-        path = get_job_result_path("abc-123-def")
-        assert path == "assets/abc-123-def/job_result.json"
+        path = get_job_result_path("abc-123-def", "fire_severity_analysis")
+        assert path == "assets/abc-123-def/results/fire_severity_analysis.json"
 
     def test_get_job_result_path_uuid(self) -> None:
         """Test job result path with UUID-like job ID."""
         job_id = "550e8400-e29b-41d4-a716-446655440000"
-        path = get_job_result_path(job_id)
-        assert path == f"assets/{job_id}/job_result.json"
+        path = get_job_result_path(job_id, "boundary_refinement")
+        assert path == f"assets/{job_id}/results/boundary_refinement.json"
+
+    def test_get_job_result_path_namespaced_by_command(self) -> None:
+        """Different commands for the same job_id resolve to different paths."""
+        job_id = "shared-job-id"
+        analyze_path = get_job_result_path(job_id, "fire_severity_analysis")
+        refine_path = get_job_result_path(job_id, "boundary_refinement")
+        veg_path = get_job_result_path(job_id, "vegetation_resolve")
+
+        assert len({analyze_path, refine_path, veg_path}) == 3
 
 
 class TestPersistJobResult:
@@ -245,10 +254,10 @@ class TestPersistJobResult:
 
         # Verify URL is returned
         assert "persist-test-123" in url
-        assert "job_result.json" in url
+        assert "fire_severity_analysis.json" in url
 
         # Verify data was stored
-        expected_path = "assets/persist-test-123/job_result.json"
+        expected_path = "assets/persist-test-123/results/fire_severity_analysis.json"
         assert expected_path in mock_storage._json_data
 
         stored_data = mock_storage._json_data[expected_path]
@@ -272,7 +281,7 @@ class TestPersistJobResult:
         await persist_job_result(result, mock_storage_factory)
 
         # Verify data was stored
-        expected_path = "assets/persist-fail-456/job_result.json"
+        expected_path = "assets/persist-fail-456/results/boundary_refinement.json"
         stored_data = mock_storage._json_data[expected_path]
         assert stored_data["status"] == "failed"
         assert stored_data["error_message"] == "Test error message"
@@ -302,10 +311,14 @@ class TestGetJobResult:
             "error_details": None,
             "metadata": None,
         }
-        mock_storage._json_data[f"assets/{job_id}/job_result.json"] = result_data
+        mock_storage._json_data[
+            f"assets/{job_id}/results/fire_severity_analysis.json"
+        ] = result_data
 
         # Retrieve it
-        result = await get_job_result(job_id, mock_storage_factory)
+        result = await get_job_result(
+            job_id, "fire_severity_analysis", mock_storage_factory
+        )
 
         assert result is not None
         assert result.job_id == job_id
@@ -317,7 +330,9 @@ class TestGetJobResult:
         self, mock_storage_factory: Mock, mock_storage: MockStorage
     ) -> None:
         """Test retrieving a non-existent job result returns None."""
-        result = await get_job_result("nonexistent-job-999", mock_storage_factory)
+        result = await get_job_result(
+            "nonexistent-job-999", "fire_severity_analysis", mock_storage_factory
+        )
 
         assert result is None
 
@@ -331,7 +346,7 @@ class TestGetJobResult:
             "status": "failed",
             "job_id": job_id,
             "fire_event_name": "test-fire",
-            "command_name": "vegetation_resolution",
+            "command_name": "vegetation_resolve",
             "execution_time_ms": 2000.0,
             "timestamp": datetime.utcnow().isoformat(),
             "data": None,
@@ -340,9 +355,13 @@ class TestGetJobResult:
             "error_details": {"stage": "processing", "exception_type": "ValueError"},
             "metadata": None,
         }
-        mock_storage._json_data[f"assets/{job_id}/job_result.json"] = result_data
+        mock_storage._json_data[f"assets/{job_id}/results/vegetation_resolve.json"] = (
+            result_data
+        )
 
-        result = await get_job_result(job_id, mock_storage_factory)
+        result = await get_job_result(
+            job_id, "vegetation_resolve", mock_storage_factory
+        )
 
         assert result is not None
         assert result.is_failure()
@@ -376,7 +395,9 @@ class TestPersistAndRetrieveIntegration:
         await persist_job_result(original, mock_storage_factory)
 
         # Retrieve
-        retrieved = await get_job_result(original.job_id, mock_storage_factory)
+        retrieved = await get_job_result(
+            original.job_id, original.command_name, mock_storage_factory
+        )
 
         # Verify full round-trip
         assert retrieved is not None
@@ -411,7 +432,9 @@ class TestPersistAndRetrieveIntegration:
         await persist_job_result(original, mock_storage_factory)
 
         # Retrieve
-        retrieved = await get_job_result(original.job_id, mock_storage_factory)
+        retrieved = await get_job_result(
+            original.job_id, original.command_name, mock_storage_factory
+        )
 
         # Verify full round-trip
         assert retrieved is not None

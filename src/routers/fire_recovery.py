@@ -314,13 +314,11 @@ async def process_fire_severity(
         command = FireSeverityAnalysisCommand()
         result = await command.execute(context)
 
-        # Persist the job result regardless of success/failure
-        await persist_job_result(result, storage_factory)
-
         if result.is_failure():
             logger.error(
                 f"Fire severity analysis failed for job {job_id}: {result.error_message}"
             )
+            await persist_job_result(result, storage_factory)
             return  # Don't proceed to STAC creation
 
         # Process and upload the boundary GeoJSON
@@ -342,6 +340,10 @@ async def process_fire_severity(
             datetime_str=datetime_str,
             boundary_type="coarse",
         )
+
+        # Persist only after the boundary upload and STAC item exist, so the
+        # result endpoint never reports success while it would still say pending.
+        await persist_job_result(result, storage_factory)
 
     except Exception as e:
         logger.error(f"Error processing fire severity: {str(e)}")
@@ -381,7 +383,7 @@ async def get_fire_severity_result(
     See [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.
     """
     # Check for job result first (handles both success and failure)
-    job_result = await get_job_result(job_id, storage_factory)
+    job_result = await get_job_result(job_id, "fire_severity_analysis", storage_factory)
 
     if job_result is not None and job_result.is_failure():
         return TaskFailedResponse(
@@ -544,7 +546,7 @@ async def get_refine_result(
     See [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.
     """
     # Check for job result first (handles both success and failure)
-    job_result = await get_job_result(job_id, storage_factory)
+    job_result = await get_job_result(job_id, "boundary_refinement", storage_factory)
 
     if job_result is not None and job_result.is_failure():
         return TaskFailedResponse(
@@ -928,7 +930,7 @@ async def execute_vegetation_resolution_command(
         failure_result = CommandResult.failure(
             job_id=job_id,
             fire_event_name=fire_event_name,
-            command_name="vegetation_resolution",
+            command_name="vegetation_resolve",
             execution_time_ms=execution_time_ms,
             error_message=str(e),
             error_details={
@@ -960,7 +962,7 @@ async def get_veg_map_result(
     See [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.
     """
     # Check for job result first (handles both success and failure)
-    job_result = await get_job_result(job_id, storage_factory)
+    job_result = await get_job_result(job_id, "vegetation_resolve", storage_factory)
 
     if job_result is not None and job_result.is_failure():
         return TaskFailedResponse(
