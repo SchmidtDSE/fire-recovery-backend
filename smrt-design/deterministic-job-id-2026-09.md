@@ -310,3 +310,26 @@ what shipped, what changed about the plan, what turned out to be wrong.
 The control plane reads this section next time it looks. It does not verify it,
 does not reconcile it, and will not rewrite it.
 -->
+
+### `be-schema-publish-path` (branch `be-schema-publish-path`, 2026-10-05)
+
+Shipped. The bug was real but not in the `destination:` string itself — both upload steps
+already pointed at `openapi-schemas/{sha}.json` / `openapi-schemas/{branch}.json` with
+`parent: false`. The `upload-cloud-storage` action always appends the *local* filename to
+`destination`, regardless of `parent`; since the local file was still `baseline_schema.json`,
+the actual object names were `openapi-schemas/{sha}.json/baseline_schema.json` etc. — a
+`destination` that reads like a file path but behaves like a folder.
+
+Fix: added a "Rename schema copies to their published object names" step that `cp`s
+`baseline_schema.json` to `${{ github.sha }}.json` and `${{ github.ref_name }}.json`, then
+point each upload's `path:` at the renamed copy and `destination:` at the bare
+`fire-recovery-store/openapi-schemas` folder. The "Display schema URLs" step already printed
+the correct resolvable URLs and needed no change.
+
+Checked locally: YAML parses (`yaml.safe_load`), `pixi run ruff-check` and `pixi run pytest`
+both pass (454 passed, 25 skipped) — this change touches no Python. **Not verified locally and
+requires a push to `dev`:** that `GET
+https://storage.googleapis.com/fire-recovery-store/openapi-schemas/dev.json` actually returns
+200 with JSON matching the live `/openapi.json`, since that depends on the real
+`upload-cloud-storage` action behavior against the real bucket, which can't be exercised from
+this sandbox.
