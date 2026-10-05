@@ -1,3 +1,11 @@
+### Deterministic `job_id`
+
+`job_id` for `analyze_fire_severity` is derived from the validated, normalized request rather
+than being a random `uuid4`, so a client that loses a response can recover by resubmitting the
+identical body. The decision log and the full contract (canonical form, normalization,
+micro-degrees, vectors, the `fire_event_name` pattern) live in [`docs/JOB_ID.md`](JOB_ID.md).
+Other repos link to that file instead of keeping their own copy.
+
 ### Pixi (Python)
 
 Python and its dependencies are managed by `pixi` - you will need to activate pixi to use python, either by activating using `pixi shell`, or by using `pixi run`. 

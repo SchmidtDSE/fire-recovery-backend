@@ -367,3 +367,25 @@ Checked locally, all pass: `pixi run pytest` (458 passed, 25 skipped), `pixi run
 `pixi run ruff-format --check`, `pixi run mypy --config-file mypy.ini src/`. Nothing here
 requires a push to `dev` to verify — it's pure application logic, exercised directly by the new
 tests above.
+
+### `be-contract-doc` (branch `be-contract-doc`, 2026-10-05)
+
+Shipped. Added `docs/JOB_ID.md` with the two required sections: **Decisions** (D1–D20, verbatim
+from this plan's appendix) and **Contract** (canonical form, D10 normalization steps,
+micro-degrees formula, `fire_event_name` pattern, and the vector coverage list). Linked it from
+`docs/DEVELOPING.md` under a new "Deterministic `job_id`" subsection, ahead of the Pixi section.
+
+Two values the appendix defers to later items are called out as **not yet chosen** rather than
+invented: `NAMESPACE` (filled in by `be-canonicalizer`) and `fire_event_name`'s `max_length`
+(filled in by `be-name-validation`). Neither of those items is implemented on this branch.
+
+Deleted the untracked `000_HASH_JOB_ID.md` scratch doc from the repo root, per this item's "Done
+when": its content is superseded by the appendix, which is now captured in `docs/JOB_ID.md`.
+(It was never git-tracked, so this is a working-tree cleanup, not a history-rewriting change.)
+The frontend's own `000_*` scratch doc is outside this repo and untouched.
+
+Checked locally: `pixi run ruff-check`, `pixi run ruff-format --check`, and `pixi run pytest`
+(454 passed, 25 skipped) — this is a docs-only change and touches no code path any of those
+exercise directly. **Not verified locally and requires a push to `dev`:** the item's literal
+"Done when" is "the file is merged to `dev`," which by definition can't be checked from a local
+branch.
