@@ -45,3 +45,21 @@ geojson-pydantic = ">=2.0.0,<3"
 
 [pypi-dependencies]
 stac-pydantic = ">=3.2.0, <4"
+
+# Portolan validator, kept out of the default env: rashid needs rasterio>=1.4.4
+# and rio-cogeo>=6, newer than the app pins. Run with `pixi run -e portolan rashid ...`.
+[feature.portolan.dependencies]
+python = "3.12.*"
+rasterio = ">=1.4.4"
+rio-cogeo = ">=6"
+# Conda builds of the rest of rashid's geo stack: a pip pyarrow wheel loads the
+# system libstdc++ first and then the conda GDAL/PROJ fail to import.
+pyarrow = ">=21"
+pyproj = ">=3.7.1"
+shapely = ">=2.1"
+
+[feature.portolan.pypi-dependencies]
+rashid = ">=0.3.0,<0.4"
+
+[environments]
+portolan = { features = ["portolan"], no-default-feature = true }
