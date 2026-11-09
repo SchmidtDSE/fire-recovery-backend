@@ -1,0 +1,1334 @@
+{
+ "pipeline_version": 1,
+ "vectors": [
+  {
+   "name": "base_polygon",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "feature_with_properties_id_bbox",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Feature",
+     "id": "perimeter-1",
+     "bbox": [
+      -116.1,
+      33.88,
+      -116.01,
+      33.93
+     ],
+     "properties": {
+      "source": "drawn"
+     },
+     "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+       [
+        [
+         -116.098276,
+         33.929925
+        ],
+        [
+         -116.098276,
+         33.880794
+        ],
+        [
+         -116.019318,
+         33.880794
+        ],
+        [
+         -116.019318,
+         33.929925
+        ],
+        [
+         -116.098276,
+         33.929925
+        ]
+       ]
+      ]
+     }
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "multipolygon_of_same_ring",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         -116.098276,
+         33.929925
+        ],
+        [
+         -116.098276,
+         33.880794
+        ],
+        [
+         -116.019318,
+         33.880794
+        ],
+        [
+         -116.019318,
+         33.929925
+        ],
+        [
+         -116.098276,
+         33.929925
+        ]
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "clockwise_ring",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "z_coordinates",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925,
+        912.5
+       ],
+       [
+        -116.098276,
+        33.880794,
+        912.5
+       ],
+       [
+        -116.019318,
+        33.880794,
+        912.5
+       ],
+       [
+        -116.019318,
+        33.929925,
+        912.5
+       ],
+       [
+        -116.098276,
+        33.929925,
+        912.5
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "sensor_explicit_default",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "sensor": "sentinel-2"
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "numeric_string_coordinates",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        "-116.098276",
+        "33.929925"
+       ],
+       [
+        "-116.098276",
+        "33.880794"
+       ],
+       [
+        "-116.019318",
+        "33.880794"
+       ],
+       [
+        "-116.019318",
+        "33.929925"
+       ],
+       [
+        "-116.098276",
+        "33.929925"
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "unknown_extra_key",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "note": "ignored"
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "below_microdegree_difference",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.0982756,
+        33.929925
+       ],
+       [
+        -116.0982756,
+        33.880794
+       ],
+       [
+        -116.0193176,
+        33.880794
+       ],
+       [
+        -116.0193176,
+        33.929925
+       ],
+       [
+        -116.0982756,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "small_shift_same_tiles",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098226,
+        33.929885
+       ],
+       [
+        -116.098226,
+        33.880754
+       ],
+       [
+        -116.019268,
+        33.880754
+       ],
+       [
+        -116.019268,
+        33.929885
+       ],
+       [
+        -116.098226,
+        33.929885
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "same_as": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "bbf1eb5e-fbf0-527a-a51a-b5575941fbb0"
+  },
+  {
+   "name": "landsat",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "sensor": "landsat"
+   },
+   "differs_from": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "landsat",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "fb4a3c01-fda7-5e1a-b68b-a178c95d130c"
+  },
+  {
+   "name": "other_fire_event_name",
+   "request_body": {
+    "fire_event_name": "Geology_Fire_2",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "differs_from": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire_2",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "77dffee7-89f4-5c6b-8771-85ea4c754f30"
+  },
+  {
+   "name": "other_prefire_window",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-05-25",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "differs_from": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-05-25",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "e4a21041-a503-5ee2-a227-8516779ca311"
+  },
+  {
+   "name": "datetime_string_for_same_date",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.098276,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.880794
+       ],
+       [
+        -116.019318,
+        33.929925
+       ],
+       [
+        -116.098276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01T00:00:00",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "differs_from": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01T00:00:00",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5815,
+      5824
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "d5cf59a2-ec96-5635-9daf-84f94f1579fc"
+  },
+  {
+   "name": "shift_across_tile_edges",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -116.068276,
+        33.929925
+       ],
+       [
+        -116.068276,
+        33.880794
+       ],
+       [
+        -115.989318,
+        33.880794
+       ],
+       [
+        -115.989318,
+        33.929925
+       ],
+       [
+        -116.068276,
+        33.929925
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "differs_from": "base_polygon",
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      5818,
+      5827
+     ],
+     "y": [
+      13096,
+      13103
+     ],
+     "z": 15
+    }
+   },
+   "job_id": "e53faf32-e6fd-5392-b385-b85e1ca8434c"
+  },
+  {
+   "name": "near_zero_coordinates",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -0.004,
+        -0.003
+       ],
+       [
+        0.002,
+        -0.003
+       ],
+       [
+        0.002,
+        0.004
+       ],
+       [
+        -0.004,
+        0.004
+       ],
+       [
+        -0.004,
+        -0.003
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      131068,
+      131074
+     ],
+     "y": [
+      131068,
+      131075
+     ],
+     "z": 18
+    }
+   },
+   "job_id": "0f965fb4-88a6-5bd6-bcc6-c6d6dd685cda"
+  },
+  {
+   "name": "southern_hemisphere",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        148.95,
+        -35.42
+       ],
+       [
+        149.08,
+        -35.42
+       ],
+       [
+        149.08,
+        -35.31
+       ],
+       [
+        148.95,
+        -35.31
+       ],
+       [
+        148.95,
+        -35.42
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      14970,
+      14977
+     ],
+     "y": [
+      9911,
+      9918
+     ],
+     "z": 14
+    }
+   },
+   "job_id": "fe21af79-4f1d-5428-ab73-f5b309e756d7"
+  },
+  {
+   "name": "straddles_utm_zones_10_and_11",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -120.06,
+        36.95
+       ],
+       [
+        -119.94,
+        36.95
+       ],
+       [
+        -119.94,
+        37.04
+       ],
+       [
+        -120.06,
+        37.04
+       ],
+       [
+        -120.06,
+        36.95
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      2727,
+      2733
+     ],
+     "y": [
+      6374,
+      6380
+     ],
+     "z": 14
+    }
+   },
+   "job_id": "67baaaaf-53eb-5359-8f34-7775fb6f7a4a"
+  },
+  {
+   "name": "about_100_km_box",
+   "request_body": {
+    "fire_event_name": "Geology_Fire",
+    "geometry": {
+     "type": "Polygon",
+     "coordinates": [
+      [
+       [
+        -121.2,
+        39.4
+       ],
+       [
+        -120.05,
+        39.4
+       ],
+       [
+        -120.05,
+        40.3
+       ],
+       [
+        -121.2,
+        40.3
+       ],
+       [
+        -121.2,
+        39.4
+       ]
+      ]
+     ]
+    },
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ]
+   },
+   "canonical": {
+    "fire_event_name": "Geology_Fire",
+    "operation": "fire_severity_v2",
+    "pipeline_version": 1,
+    "postfire_window": [
+     "2023-06-17",
+     "2023-06-22"
+    ],
+    "prefire_window": [
+     "2023-06-01",
+     "2023-06-09"
+    ],
+    "sensor": "sentinel-2",
+    "tiles": {
+     "tms": "WebMercatorQuad",
+     "x": [
+      334,
+      341
+     ],
+     "y": [
+      773,
+      779
+     ],
+     "z": 11
+    }
+   },
+   "job_id": "f814d705-d4be-5f9a-a651-895f5734b786"
+  }
+ ]
+}
