@@ -3,8 +3,9 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main, dev]
+  # Every base branch, so each PR in a stack gets checks. The jobs that use
+  # secrets (publish-schema, deploy) run only on push to dev or main.
   pull_request:
-    branches: [main, dev]
 
 jobs:
   # Job 1: Type checking (runs in parallel, no secrets)
@@ -106,15 +107,6 @@ jobs:
             sleep 2
           done
 
-      - name: Initialize STAC catalog
-        env:
-          S3_ENDPOINT: localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
-          S3_SECURE: "False"
-          S3_BUCKET: test-bucket
-        run: pixi run python -m src.scripts.init_stac_catalog
-
       - name: Run all tests (including contract tests)
         env:
           S3_ENDPOINT: localhost:9000
@@ -154,12 +146,23 @@ jobs:
             **/*.log
           retention-days: 7
 
-  # Job 4: Publish OpenAPI schema to GCP (needs all quality checks to pass)
+  # Job 4: Build the image (no push), so a Dockerfile or lock problem shows up
+  # on the PR rather than at deploy time.
+  image:
+    name: Build Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build deployment/fastapi.Dockerfile
+        run: docker build --file deployment/fastapi.Dockerfile --tag fire-recovery-backend:ci .
+
+  # Job 5: Publish OpenAPI schema to GCP (needs all quality checks to pass)
   # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
   publish-schema:
     name: Publish OpenAPI Schema
     runs-on: ubuntu-latest
-    needs: [mypy, ruff, pytest]  # Waits for ALL quality checks to succeed
+    needs: [mypy, ruff, pytest, image]  # Waits for ALL quality checks to succeed
     # Only run on push to dev/main (not PRs)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
 
@@ -225,12 +228,17 @@ jobs:
           echo "  Commit: https://storage.googleapis.com/fire-recovery-store/openapi-schemas/${{ github.sha }}.json"
           echo "  Branch: https://storage.googleapis.com/fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json"
 
-  # Job 5: Deploy to Cloud Run (needs schema publish to succeed)
+  # Job 6: Deploy to Cloud Run (needs schema publish to succeed)
   # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
   deploy:
     name: Deploy to Cloud Run
     runs-on: ubuntu-latest
     needs: [publish-schema]  # Waits for schema publishing to succeed
+    # One deploy per branch at a time, in push order: a later push waits rather
+    # than racing an earlier one for the same image tag.
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: false
     # Only run on push to dev/main (not PRs)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
 

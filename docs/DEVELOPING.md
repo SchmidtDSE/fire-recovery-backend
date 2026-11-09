@@ -90,10 +90,12 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
 
 **Pipeline Stages:**
 
-1. **Quality Checks** (parallel execution):
+1. **Quality Checks** (parallel execution, on pushes and on PRs against any branch, so every
+   PR in a stack is checked):
    - MyPy type checking
    - Ruff linting and formatting
    - Pytest (all tests including contract tests)
+   - A build of `deployment/fastapi.Dockerfile`, not pushed
 
 2. **Schema Publishing** (after quality checks pass):
    - Generates OpenAPI schema
@@ -105,6 +107,7 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
    - Deploys to Cloud Run
    - `dev` branch: Auto-deploys to dev environment
    - `main` branch: Requires manual approval for production
+   - One deploy per branch runs at a time; a later push waits for the earlier one
 
 **Security:**
 - Pull requests only run quality checks (no deployment, no secrets)

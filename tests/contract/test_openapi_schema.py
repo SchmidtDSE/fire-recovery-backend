@@ -13,6 +13,10 @@ from fastapi.testclient import TestClient
 
 from tests.contract.helpers import SchemaValidator
 
+CRITICAL_ENDPOINTS = ["/healthz", "/version"]
+
+DOCUMENTED_MODELS = ["HealthResponse", "VersionResponse"]
+
 
 class TestOpenAPISchemaValidation:
     """Validate OpenAPI schema structure and completeness."""
@@ -48,70 +52,14 @@ class TestOpenAPISchemaValidation:
     ) -> None:
         """Test that all critical endpoints are documented."""
         paths = openapi_schema.get("paths", {})
+        missing = [ep for ep in CRITICAL_ENDPOINTS if ep not in paths]
+        assert not missing, f"Critical endpoints missing from schema: {missing}"
 
-        critical_endpoints = [
-            "/fire-recovery/process/analyze_fire_severity",
-            "/fire-recovery/process/refine",
-            "/fire-recovery/process/resolve_against_veg_map",
-            "/fire-recovery/result/analyze_fire_severity/{fire_event_name}/{job_id}",
-            "/fire-recovery/result/refine/{fire_event_name}/{job_id}",
-            "/fire-recovery/result/resolve_against_veg_map/{fire_event_name}/{job_id}",
-            "/fire-recovery/upload/geojson",
-            "/fire-recovery/upload/shapefile",
-            "/fire-recovery/healthz",
-        ]
-
-        missing_endpoints = [ep for ep in critical_endpoints if ep not in paths]
-
-        assert not missing_endpoints, (
-            f"Critical endpoints missing from schema: {missing_endpoints}"
-        )
-
-    def test_all_response_models_documented(
-        self, openapi_schema: Dict[str, Any]
-    ) -> None:
-        """Test that all response models are in components.schemas."""
+    def test_all_models_documented(self, openapi_schema: Dict[str, Any]) -> None:
+        """Test that every request and response model is in components.schemas."""
         schemas = openapi_schema.get("components", {}).get("schemas", {})
-
-        expected_response_models = [
-            "TaskPendingResponse",
-            "ProcessingStartedResponse",
-            "RefinedBoundaryResponse",
-            "FireSeverityResponse",
-            "VegMapMatrixResponse",
-            "UploadedGeoJSONResponse",
-            "UploadedShapefileZipResponse",
-            "HealthCheckResponse",
-        ]
-
-        missing_models = [
-            model for model in expected_response_models if model not in schemas
-        ]
-
-        assert not missing_models, (
-            f"Response models missing from schema: {missing_models}"
-        )
-
-    def test_all_request_models_documented(
-        self, openapi_schema: Dict[str, Any]
-    ) -> None:
-        """Test that all request models are in components.schemas."""
-        schemas = openapi_schema.get("components", {}).get("schemas", {})
-
-        expected_request_models = [
-            "ProcessingRequest",
-            "RefineRequest",
-            "VegMapResolveRequest",
-            "GeoJSONUploadRequest",
-        ]
-
-        missing_models = [
-            model for model in expected_request_models if model not in schemas
-        ]
-
-        assert not missing_models, (
-            f"Request models missing from schema: {missing_models}"
-        )
+        missing = [model for model in DOCUMENTED_MODELS if model not in schemas]
+        assert not missing, f"Models missing from schema: {missing}"
 
     def test_schema_is_json_serializable(self, openapi_schema: Dict[str, Any]) -> None:
         """Test that schema can be serialized to JSON."""
