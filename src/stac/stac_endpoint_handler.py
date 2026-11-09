@@ -1,19 +1,28 @@
-from typing import Any, Dict, List, Optional, Tuple
-from pystac import ItemCollection
-from pystac_client import Client as PystacClient
-import planetary_computer
-from enum import Enum
-from pydantic import BaseModel
+"""The STAC provider chain: which APIs to search for a sensor, and in what order.
+
+Providers are tried in configured order, and the first one with scenes in
+every requested window wins. Two runs of the same request can therefore
+resolve to different providers, which is why the choice is recorded with the
+results rather than inferred from the request.
+"""
+
 import json
 import logging
-from geojson_pydantic import Polygon, MultiPolygon, Feature
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Sequence, Tuple
+
+import planetary_computer
+from pydantic import BaseModel
+from pystac import Item
+from pystac_client import Client as PystacClient
 
 from src.util.date_windows import window_bounds
+from src.util.geo_ops import Bounds
 
-
-# Default sensor used when a caller does not specify one. Kept as a module
-# constant so the request model, router, and command can share a single source
-# of truth for the fallback.
+# Default sensor used when a caller does not specify one. Changing it changes
+# job ids for requests that omit the sensor (D13), so it needs a
+# PIPELINE_VERSION bump.
 DEFAULT_SENSOR = "sentinel-2"
 
 
@@ -30,12 +39,6 @@ class StacMapping(BaseModel):
 
     The collection ID and band names are properties of the *(sensor, provider)*
     pair, not of the provider alone, so they live together on this model.
-
-    Reflectance scaling is intentionally NOT modeled here. stackstac applies the
-    per-asset ``scale``/``offset`` from each item's ``raster:bands`` metadata at
-    stack time (``rescale=True``), so reflectance correction — including
-    Landsat C2 L2's additive offset — comes from the providers' published
-    metadata rather than hardcoded per-sensor constants.
     """
 
     id: StacProvider
@@ -44,7 +47,11 @@ class StacMapping(BaseModel):
     collection: str
     swir_band: str
     nir_band: str
-    epsg_code: int
+    mask_band: str
+
+    def bands(self) -> Dict[str, str]:
+        """Logical band name ("nir", "swir", "mask") to this provider's asset key."""
+        return {"nir": self.nir_band, "swir": self.swir_band, "mask": self.mask_band}
 
 
 class SensorConfig(BaseModel):
@@ -82,23 +89,12 @@ class StacProviderConfig(BaseModel):
             raise FileNotFoundError(f"Configuration file {filepath} not found.")
 
     def get_sensors(self) -> List[str]:
-        """
-        Get the configured sensor keys.
-
-        Returns:
-            List of sensor names (e.g. ["sentinel-2", "landsat"]).
-        """
+        """The configured sensor keys (e.g. ["sentinel-2", "landsat"])."""
         return list(self.sensors.keys())
 
     def get_providers(self, sensor: str = DEFAULT_SENSOR) -> List[StacMapping]:
         """
         Get the ordered providers for a given sensor.
-
-        Args:
-            sensor: Sensor key selecting which provider chain to use.
-
-        Returns:
-            Ordered list of provider configurations for the sensor.
 
         Raises:
             ValueError: If the sensor is not configured.
@@ -111,26 +107,37 @@ class StacProviderConfig(BaseModel):
         return self.sensors[sensor].providers
 
 
-class StacEndpointHandler:
-    """
-    Handles interactions with STAC endpoints with fallback support.
+@dataclass(frozen=True)
+class WindowSearch:
+    """The provider that covered every window, and each window's scenes."""
 
-    Tries multiple STAC endpoints in order of priority when data is not
-    available. Providers, their collection IDs, and band names are resolved
-    per sensor from configuration. Reflectance scaling is left to stackstac
-    (via each item's ``raster:bands`` metadata at stack time).
+    provider: StacMapping
+    windows: Tuple[List[Item], ...]
+
+
+def in_window(items: Sequence[Item], window: Sequence[str]) -> List[Item]:
     """
+    The items inside a ``[start, end]`` window, sorted by datetime then id.
+
+    Window semantics come from util.date_windows: the end date includes its
+    whole day. Items without a datetime are dropped.
+    """
+    start, end = window_bounds(window[0], window[1])
+    inside = [
+        item
+        for item in items
+        if item.datetime is not None and start <= item.datetime < end
+    ]
+    return sorted(inside, key=lambda item: (item.datetime, item.id))
+
+
+class StacEndpointHandler:
+    """Searches the configured providers for a sensor, in order."""
 
     def __init__(
         self,
         stac_provider_json_path: str = "config/stac_providers.json",
     ):
-        """
-        Initialize the STAC endpoint handler.
-
-        Args:
-            stac_provider_json_path: Path to the STAC provider configuration JSON file.
-        """
         self.config = StacProviderConfig.load_from_file(stac_provider_json_path)
         self.logger = logging.getLogger(__name__)
 
@@ -138,173 +145,69 @@ class StacEndpointHandler:
         """Get the configured sensor keys."""
         return self.config.get_sensors()
 
-    async def get_client(
-        self, provider: StacMapping
-    ) -> Tuple[PystacClient, StacMapping]:
-        """
-        Get a STAC client with authentication for the given provider.
-
-        Args:
-            provider: The StacMapping provider configuration
-
-        Returns:
-            Tuple of (STAC client, provider mapping)
-        """
-        self.logger.info(f"Using STAC endpoint: {provider.name}")
-
-        if provider.id == StacProvider.MICROSOFT_PLANETARY_COMPUTER:
-            client = PystacClient.open(
-                provider.url, modifier=planetary_computer.sign_inplace
-            )
-        else:
-            client = PystacClient.open(provider.url)
-
-        return client, provider
-
-    async def search_items(
+    def search_windows(
         self,
-        geometry: Polygon | MultiPolygon | Feature | Dict[str, Any],
-        date_range: List[str],
+        bbox: Bounds,
+        windows: Sequence[Sequence[str]],
         sensor: str = DEFAULT_SENSOR,
-        provider_index: Optional[int] = None,
-        required_windows: Optional[List[List[str]]] = None,
-    ) -> Tuple[ItemCollection, StacMapping]:
+    ) -> WindowSearch:
         """
-        Search for items using the STAC providers configured for a sensor.
+        Search each window separately and return the first provider covering all.
+
+        Searching per window, rather than one range from the first start to
+        the last end, never returns the scenes between the windows. Searches
+        are unsigned: Planetary Computer hrefs are signed just before they are
+        read (see ``sign_for_read``), so a slow job never reads with an
+        expired token.
 
         Args:
-            geometry: GeoJSON geometry to search within (Polygon, MultiPolygon, Feature, or dict)
-            date_range: List of [start_date, end_date] as strings
-            sensor: Sensor key selecting the provider chain and collection to query
-            provider_index: Index of provider to use. If None, tries all in order.
-            required_windows: Optional list of [start_date, end_date] sub-ranges
-                that must *each* contain at least one item for a provider to be
-                accepted. Without it, the chain stops at the first provider
-                returning any item at all, which on small AOIs can be a lone
-                scene sitting outside the caller's windows while a later
-                provider covers them all. Ignored when provider_index is given.
-
-        Returns:
-            Tuple of (items, provider)
+            bbox: West, south, east, north in EPSG:4326.
+            windows: ``[start, end]`` date windows.
+            sensor: Sensor key selecting the provider chain.
 
         Raises:
-            ValueError: If the sensor is unknown or provider_index is out of range
-            RuntimeError: If no items found at any provider
+            ValueError: If the sensor is unknown.
+            RuntimeError: If no provider has scenes in every window.
         """
-        providers = self.config.get_providers(sensor)
-
-        base_params: Dict[str, Any] = {
-            "intersects": geometry,
-            "datetime": "/".join(date_range),
-        }
-
-        if provider_index is not None:
-            # Try specific provider
-            if provider_index < 0 or provider_index >= len(providers):
-                raise ValueError(f"Provider index {provider_index} out of range")
-
-            provider = providers[provider_index]
-            client, provider = await self.get_client(provider)
-
-            items = client.search(
-                **base_params, collections=[provider.collection]
-            ).item_collection()
-            if len(items) > 0:
-                return items, provider
-            else:
-                raise RuntimeError(f"No items found using provider {provider.name}")
-        else:
-            # Try all providers in order (per-sensor fallback chain)
-            # Best non-covering result seen so far, kept so a provider chain in
-            # which nobody covers every window still returns its richest result
-            # (and a meaningful error downstream) rather than nothing at all.
-            fallback: Optional[Tuple[ItemCollection, StacMapping]] = None
-
-            for i, provider in enumerate(providers):
-                try:
-                    self.logger.info(
-                        f"Trying STAC provider {i}: {provider.name} "
-                        f"(sensor: {sensor}, collection: {provider.collection})"
+        for provider in self.config.get_providers(sensor):
+            try:
+                client = PystacClient.open(provider.url)
+                found = tuple(
+                    in_window(
+                        list(
+                            client.search(
+                                collections=[provider.collection],
+                                bbox=list(bbox),
+                                datetime=list(window_bounds(window[0], window[1])),
+                            ).items()
+                        ),
+                        window,
                     )
-                    client, provider = await self.get_client(provider)
-
-                    items = client.search(
-                        **base_params, collections=[provider.collection]
-                    ).item_collection()
-                    if len(items) == 0:
-                        continue
-
-                    if required_windows and not self._items_cover_windows(
-                        items, required_windows
-                    ):
-                        self.logger.info(
-                            f"Provider {provider.name} returned {len(items)} "
-                            f"item(s) but left at least one required window "
-                            f"empty; trying next provider"
-                        )
-                        if fallback is None or len(items) > len(fallback[0]):
-                            fallback = (items, provider)
-                        continue
-
-                    return items, provider
-                except Exception as e:
-                    self.logger.warning(
-                        f"Failed to get items with provider {provider.name}: {str(e)}"
-                    )
-                    continue
-
-            if fallback is not None:
-                self.logger.warning(
-                    f"No STAC provider covered every required window for sensor "
-                    f"'{sensor}'; falling back to {fallback[1].name} with "
-                    f"{len(fallback[0])} item(s)"
+                    for window in windows
                 )
-                return fallback
-
-            raise RuntimeError(
-                f"No items found with any available STAC provider for sensor '{sensor}'"
+            except Exception as e:
+                self.logger.warning(f"Search failed at {provider.name}: {e}")
+                continue
+            if all(found):
+                self.logger.info(
+                    f"Using {provider.name} for {sensor}: "
+                    f"{[len(items) for items in found]} scenes per window"
+                )
+                return WindowSearch(provider=provider, windows=found)
+            self.logger.info(
+                f"{provider.name} has no {sensor} scenes in at least one window; "
+                f"trying the next provider"
             )
+        raise RuntimeError(
+            f"No STAC provider for sensor '{sensor}' has scenes in every window"
+        )
 
     @staticmethod
-    def _items_cover_windows(items: ItemCollection, windows: List[List[str]]) -> bool:
+    def sign_for_read(provider: StacMapping, items: Sequence[Item]) -> List[Item]:
+        """Copies of the items with hrefs a reader can open now.
+
+        Planetary Computer hrefs need a short-lived SAS token; others are public.
         """
-        Check that every window contains at least one item.
-
-        Window semantics come from util.date_windows, which the fire severity
-        command also slices its time axis with -- the two must agree, or a
-        provider could be accepted here and then yield an empty window.
-        """
-        for start_date, end_date in windows:
-            start, end = window_bounds(start_date, end_date)
-
-            if not any(
-                item.datetime is not None and start <= item.datetime < end
-                for item in items
-            ):
-                return False
-
-        return True
-
-    def get_band_names(self, provider: StacMapping) -> Tuple[str, str]:
-        """
-        Get the NIR and SWIR band names for the given provider.
-
-        Args:
-            provider: The provider configuration
-
-        Returns:
-            Tuple of (nir_band, swir_band)
-        """
-        return provider.nir_band, provider.swir_band
-
-    def get_epsg_code(self, provider: StacMapping) -> int:
-        """
-        Get the EPSG code for the given provider.
-
-        Args:
-            provider: The provider configuration
-
-        Returns:
-            EPSG code as integer
-        """
-        return provider.epsg_code
+        if provider.id == StacProvider.MICROSOFT_PLANETARY_COMPUTER:
+            return [planetary_computer.sign(item) for item in items]
+        return list(items)

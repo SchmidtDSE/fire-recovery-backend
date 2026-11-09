@@ -215,8 +215,8 @@ status, so the pattern is already in use here.
 
 1. **Search.** Search each window separately. Both windows must come from the same provider,
    using the existing chain and coverage rule. Record each scene's id, datetime and href.
-   Planetary Computer hrefs are signed per window, so a slow job never reads with an expired
-   token.
+   Searches are unsigned. Planetary Computer hrefs are signed as each block is read (odc-stac's
+   `patch_url`), so a slow job never reads with an expired token.
 2. **Grid.**
    - **Snap.** Snap `buffered_bounds` outward to the tiles of OGC's WebMercatorQuad tile matrix
      set, the z/x/y grid web maps use, as implemented by morecantile (which TiTiler uses). Pick
@@ -235,10 +235,16 @@ status, so the pattern is already in use here.
    - It reads `proj:code` (projection v2) without the shim.
    - It groups scenes by solar day, so the tiles of one overpass become one time step (14 items
      became 11 days in the 40 km test below).
-   - It reads native uint16, 4× smaller per chunk than stackstac's float64.
+   - It reads native uint16, 4× smaller than stackstac's float64. Each band's type and nodata
+     are passed to it (`stac_cfg`), because Planetary Computer's Sentinel-2 items publish no
+     `raster:bands` and would otherwise load as float32.
    - It doesn't apply `raster:bands` scale and offset, so we do, after asserting they are
      identical across the window. Sentinel-2 windows that straddle the January 2022
      processing-baseline change fail that check, and are rejected for now.
+   - Planetary Computer's Sentinel-2 items carry no scale or offset at all (checked November
+     2026). For them, the scaling comes from the product's rule: 1e-4, with −0.1 from
+     processing baseline 04.00 (`s2:processing_baseline`). v1 read these items unscaled, so
+     its post-2022 NBR from that provider carried the +1000 DN offset.
    - stackstac has had no release since August 2024. Its projection-v2 PR has been open since
      December 2024, and its tracker has an open "Has the project been abandoned?" issue.
 4. **Mask** before compositing, using each product's own flags:
@@ -249,11 +255,13 @@ status, so the pattern is already in use here.
    - **Smoke:** no standard smoke flag exists. SWIR sees through most smoke, thick plumes are
      usually flagged as cloud, and the median absorbs the rest.
    - A pixel with no clear observation in a window becomes nodata.
-5. **Plan.** Pick a chunk side so that one chunk (one band, every day in the window) stays at
-   or below 16 MiB. Three bands are read per window. Memory stays flat at about 0.5 GiB, as
-   measured, and runtime scales with pixels × days.
-6. **Compute** one spatial block of chunks at a time, for both date windows:
-   1. Take each window's median NIR and SWIR.
+5. **Plan.** Pick a block side so that one band of one window over the block, every day
+   included, stays at or below 32 MiB at uint16. Only the scenes that touch a block are read
+   for it. Memory stays flat: 4.6 Mpx with 45-day windows peaked at 0.51 GiB on 2 threads
+   (64 MiB blocks peaked at 0.84 GiB). Runtime scales with pixels × days.
+6. **Compute** one spatial block at a time, reading one date window and then the other:
+   1. Take each window's median NIR and SWIR, in strips of rows so the median's sort stays
+      small.
    2. Compute prefire and postfire NBR once.
    3. Apply each registered index.
    4. Write float32, with NaN replaced by the nodata value −9999, to one tiled GeoTIFF per
