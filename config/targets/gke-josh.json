@@ -2,6 +2,11 @@
   "type": "kubernetes",
   "kubernetes": {
     "context": "gke_dse-nps_us-west1_josh-k8s-gke",
+    "gke": {
+      "project": "dse-nps",
+      "location": "us-west1",
+      "cluster": "josh-k8s-gke"
+    },
     "namespace": "fire-severity-dev",
     "image": "ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:latest",
     "resources": {

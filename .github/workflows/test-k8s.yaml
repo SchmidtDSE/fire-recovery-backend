@@ -107,12 +107,7 @@ jobs:
 
       - name: A context with only the dispatcher's permissions
         run: |
-          for _ in $(seq 1 30); do
-            TOKEN=$(kubectl -n "$NAMESPACE" get secret severity-v2-dispatcher-token -o jsonpath='{.data.token}' | base64 -d)
-            [ -n "$TOKEN" ] && break
-            sleep 1
-          done
-          [ -n "$TOKEN" ]
+          TOKEN=$(kubectl -n "$NAMESPACE" create token severity-v2-dispatcher --duration=2h)
           kubectl config set-credentials kind-dispatcher --token="$TOKEN"
           kubectl config set-context kind-dispatcher --cluster=kind-kind --user=kind-dispatcher --namespace="$NAMESPACE"
           kubectl --context kind-dispatcher auth can-i create jobs

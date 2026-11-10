@@ -1,17 +1,22 @@
 """Target profiles, the Job and Secret specs, status mapping, and the launcher."""
 
+import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+import google.auth
 import pytest
+from google.auth.exceptions import DefaultCredentialsError
 from kubernetes.client import V1Job, V1JobCondition, V1JobStatus
 from kubernetes.client.exceptions import ApiException
 
 from src.v2.k8s import (
+    GkeCluster,
     KubernetesLauncher,
     TargetProfile,
+    gke_api_client,
     job_manifest,
     job_name,
     job_status,
@@ -53,10 +58,68 @@ def test_shipped_profiles_load_with_requests_equal_to_limits(name: str) -> None:
     assert profile.timeout_seconds == 6 * 3600
 
 
-def test_gke_profile_uses_joshs_cluster_context_and_spot() -> None:
+def test_gke_profile_names_joshs_cluster_and_spot() -> None:
     profile = TargetProfile.load("gke-josh")
     assert profile.context == "gke_dse-nps_us-west1_josh-k8s-gke"
+    assert profile.gke == GkeCluster("dse-nps", "us-west1", "josh-k8s-gke")
     assert profile.spot
+    assert TargetProfile.load("nrp").gke is None
+
+
+class FakeCredentials:
+    """Application Default Credentials that hand out numbered tokens."""
+
+    def __init__(self) -> None:
+        self.valid = False
+        self.token: Optional[str] = None
+        self.refreshes = 0
+
+    def refresh(self, request: Any) -> None:
+        self.refreshes += 1
+        self.token = f"token-{self.refreshes}"
+        self.valid = True
+
+
+class FakeGkeApi:
+    def __init__(self) -> None:
+        self.urls: List[str] = []
+
+    def get(self, url: str, timeout: float) -> Any:
+        self.urls.append(url)
+        cluster = {
+            "endpoint": "34.1.2.3",
+            "masterAuth": {
+                "clusterCaCertificate": base64.b64encode(b"--CA--").decode()
+            },
+        }
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: cluster)
+
+
+def test_gke_client_uses_the_callers_identity_and_refreshes_its_token() -> None:
+    credentials, api = FakeCredentials(), FakeGkeApi()
+    cluster = GkeCluster("dse-nps", "us-west1", "josh-k8s-gke")
+    config = gke_api_client(cluster, credentials, api).configuration
+    assert api.urls == [
+        "https://container.googleapis.com/v1/projects/dse-nps/locations/us-west1"
+        "/clusters/josh-k8s-gke"
+    ]
+    assert config.host == "https://34.1.2.3"
+    assert Path(config.ssl_ca_cert).read_bytes() == b"--CA--"
+    assert config.get_api_key_with_prefix("authorization") == "Bearer token-1"
+    assert config.get_api_key_with_prefix("authorization") == "Bearer token-1"
+    credentials.valid = False  # expired
+    assert config.get_api_key_with_prefix("authorization") == "Bearer token-2"
+
+
+def test_gke_target_without_google_credentials_is_dispatch_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_credentials(scopes: List[str]) -> Any:
+        raise DefaultCredentialsError("no ADC")
+
+    monkeypatch.setattr(google.auth, "default", no_credentials)
+    with pytest.raises(DispatchUnavailable, match="Google identity"):
+        KubernetesLauncher(TargetProfile.load("gke-josh"), IMAGE).status(JOB_ID)
 
 
 def test_ci_profiles_load_from_the_targets_dir(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -338,8 +401,8 @@ def test_missing_context_or_image_is_dispatch_unavailable(
         )
     )
     monkeypatch.setenv("KUBECONFIG", str(kubeconfig))
-    with pytest.raises(DispatchUnavailable, match="gke_dse-nps_us-west1_josh-k8s-gke"):
-        KubernetesLauncher(TargetProfile.load("gke-josh"), IMAGE).status(JOB_ID)
+    with pytest.raises(DispatchUnavailable, match="kubeconfig context 'nautilus'"):
+        KubernetesLauncher(TargetProfile.load("nrp"), IMAGE).status(JOB_ID)
     with pytest.raises(DispatchUnavailable, match="SEVERITY_IMAGE"):
         KubernetesLauncher(
             TargetProfile.load("gke-josh"), None, FakeBatch(), FakeCore()

@@ -2,12 +2,23 @@
 
 Target profiles use josh's format (SchmidtDSE/josh, BATCH_REMOTE.md): JSON with
 ``"type": "kubernetes"`` and a ``kubernetes`` block naming a kubeconfig context,
-a namespace, an image, resources and scheduling. The API reaches the cluster
-through that context, read from ``KUBECONFIG`` or ``~/.kube/config``, as josh's
-dispatcher does. Each Job gets a Secret holding the storage and mail settings
-from the API's own environment, owned by the Job: credentials never appear in a
-Job spec, no cluster needs a credential Secret made by hand, and the Secret goes
-when the Job does.
+a namespace, an image, resources and scheduling.
+
+How the API reaches the cluster, with no key:
+
+- A profile with a ``gke`` block (josh's cluster) is reached as the caller's
+  Google identity: Application Default Credentials, which on Cloud Run are the
+  service's own account from the metadata server. The cluster's endpoint and CA
+  come from the GKE API. That is what ``get-credentials`` and the GKE auth
+  plugin do, and how josh's machines and its Tofu reach the cluster. A
+  RoleBinding to that identity grants the dispatcher role.
+- Any other profile is reached through its kubeconfig context, from
+  ``KUBECONFIG`` or ``~/.kube/config``, as josh's dispatcher does.
+
+Each Job gets a Secret holding the storage and mail settings from the API's own
+environment, owned by the Job: credentials never appear in a Job spec, no
+cluster needs a credential Secret made by hand, and the Secret goes when the
+Job does.
 
 The Job spec (design §1) retries only what the platform did to a pod: an
 evicted or preempted pod (condition DisruptionTarget) is rescheduled, and any
@@ -15,14 +26,18 @@ failure of ours is final (backoffLimit 0). A deadline caps the whole run,
 rescheduling included.
 """
 
+import base64
 import json
 import logging
 import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+import google.auth
+from google.auth.transport.requests import AuthorizedSession, Request
 from kubernetes import client as k8s_client
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config import new_client_from_config
@@ -42,6 +57,11 @@ SECRET_NAME_PREFIX = "sev-creds-"
 CONTAINER_NAME = "run"
 SCRATCH_PATH = "/scratch"
 SPOT_LABEL = "cloud.google.com/gke-spot"
+GKE_CLUSTER_URL = (
+    "https://container.googleapis.com/v1/projects/{project}/locations/{location}"
+    "/clusters/{cluster}"
+)
+CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
 
@@ -73,13 +93,24 @@ def secret_name(job_id: str) -> str:
 
 
 @dataclass(frozen=True)
+class GkeCluster:
+    """A GKE cluster, reached as the caller's Google identity."""
+
+    project: str
+    location: str
+    cluster: str
+
+
+@dataclass(frozen=True)
 class TargetProfile:
     """One cluster, in josh's profile format: how to reach it and how pods run."""
 
     name: str
     namespace: str
-    # A kubeconfig context; None means the kubeconfig's current context.
+    # A kubeconfig context; None means the kubeconfig's current context. People
+    # use it with kubectl; the API uses it only without a gke block.
     context: Optional[str] = None
+    gke: Optional[GkeCluster] = None
     # Used when SEVERITY_IMAGE is unset; the deploy pins a digest instead.
     image: Optional[str] = None
     resources: Dict[str, Dict[str, str]] = field(default_factory=dict)
@@ -110,10 +141,14 @@ class TargetProfile:
             raise ValueError(f"Target {name!r} is not a Kubernetes profile")
         if not k8s.get("namespace"):
             raise ValueError(f"Target {name!r} names no namespace")
+        gke = k8s.get("gke")
         return cls(
             name=name,
             namespace=k8s["namespace"],
             context=k8s.get("context"),
+            gke=GkeCluster(gke["project"], gke["location"], gke["cluster"])
+            if gke
+            else None,
             image=k8s.get("image"),
             resources=k8s.get("resources") or {},
             timeout_seconds=int(k8s.get("timeoutSeconds", 21600)),
@@ -237,6 +272,47 @@ def secret_manifest(
     }
 
 
+def gke_api_client(
+    cluster: GkeCluster,
+    credentials: Optional[Any] = None,
+    session: Optional[Any] = None,
+) -> k8s_client.ApiClient:
+    """A client for a GKE cluster, authenticated as the caller's Google identity.
+
+    Application Default Credentials: on Cloud Run, the service's account from the
+    metadata server; for a person, ``gcloud auth application-default login``.
+    The token is refreshed before it expires.
+    """
+    if credentials is None:
+        credentials, _ = google.auth.default(scopes=[CLOUD_PLATFORM_SCOPE])
+    http = session or AuthorizedSession(credentials)
+    response = http.get(
+        GKE_CLUSTER_URL.format(
+            project=cluster.project, location=cluster.location, cluster=cluster.cluster
+        ),
+        timeout=30,
+    )
+    response.raise_for_status()
+    info = response.json()
+    # The client reads the CA from a file.
+    with tempfile.NamedTemporaryFile("wb", suffix=".crt", delete=False) as ca:
+        ca.write(base64.b64decode(info["masterAuth"]["clusterCaCertificate"]))
+    configuration = k8s_client.Configuration()
+    configuration.host = f"https://{info['endpoint']}"
+    configuration.ssl_ca_cert = ca.name
+    token_request = Request()
+
+    def bearer(config: k8s_client.Configuration) -> None:
+        if not credentials.valid:
+            credentials.refresh(token_request)
+        config.api_key = {"authorization": f"Bearer {credentials.token}"}
+
+    # The client calls this before each request; its declared type is just None.
+    configuration.refresh_api_key_hook = bearer  # type: ignore[assignment]
+    bearer(configuration)
+    return k8s_client.ApiClient(configuration)
+
+
 def job_status(job: Any) -> JobStatus:
     """A V1Job's phase: its Complete or Failed condition, else active and ready pods."""
     status = job.status
@@ -272,14 +348,23 @@ class KubernetesLauncher:
 
     def _apis(self) -> tuple[Any, Any]:
         if self._batch is None or self._core is None:
+            gke = self.profile.gke
             try:
-                api_client = new_client_from_config(
-                    context=self.profile.context, persist_config=False
+                if gke is not None:
+                    api_client = gke_api_client(gke)
+                else:
+                    api_client = new_client_from_config(
+                        context=self.profile.context, persist_config=False
+                    )
+            except Exception as e:  # no credentials, no such context or cluster
+                how = (
+                    f"GKE cluster {gke.cluster!r} as this process's Google identity"
+                    if gke is not None
+                    else f"kubeconfig context {self.profile.context!r} "
+                    "(KUBECONFIG or ~/.kube/config)"
                 )
-            except Exception as e:  # no kubeconfig, no such context, a failing plugin
                 raise DispatchUnavailable(
-                    f"No usable kubeconfig context {self.profile.context!r} for target "
-                    f"{self.profile.name!r} (KUBECONFIG or ~/.kube/config): {e}"
+                    f"Can't reach target {self.profile.name!r} through {how}: {e}"
                 ) from e
             self._batch = k8s_client.BatchV1Api(api_client)
             self._core = k8s_client.CoreV1Api(api_client)

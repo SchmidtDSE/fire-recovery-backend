@@ -1,26 +1,31 @@
 # Provisioning a cluster for severity v2
 
-Analysis Jobs run on Kubernetes (design §1). The API creates one Job per analysis in a target
-cluster and reads its status. Targets work as josh's do (SchmidtDSE/josh, `BATCH_REMOTE.md`):
+Analysis Jobs run on Kubernetes (design §1). The API, a Cloud Run service, is the one thing
+that dispatches: it validates requests, applies API keys and rate limits, then creates one Job
+per analysis and reads its status. Targets work as josh's do (SchmidtDSE/josh,
+`BATCH_REMOTE.md`):
 
-- A JSON profile in `config/targets/` names a kubeconfig **context**, a namespace, the image,
-  resources and spot scheduling. `SEVERITY_TARGET` picks the profile.
-- The API reaches the cluster through that context, from `KUBECONFIG` or `~/.kube/config`.
+- A JSON profile in `config/targets/` names the cluster, a namespace, the image, resources and
+  spot scheduling. `SEVERITY_TARGET` picks the profile.
+- **No keys.** The API reaches josh's GKE cluster as the Cloud Run service's own Google
+  identity, from the metadata server, as josh's machines and its Tofu reach it. A RoleBinding
+  in the namespace grants that identity the dispatcher role.
 - Each Job gets its own Secret with the storage and mail settings from the API's environment,
   owned by the Job, so no cluster needs a credential Secret made by hand.
 
-Josh's cluster, namespace, bucket and storage identity are OpenTofu in
-SchmidtDSE/fire-recovery-iac (`environments/josh-k8s/`, PR #4). Severity's belong beside
-them. Until they're there, the manifests here describe the cluster side:
+Josh's cluster, namespace, bucket and identities are OpenTofu in SchmidtDSE/fire-recovery-iac
+(`environments/josh-k8s/`, PR #4). Severity's belong beside them. Until they're there, the
+manifests here describe the cluster side:
 
 | | josh | severity |
 |---|---|---|
 | Cluster | `josh-k8s-gke` (`dse-nps`, `us-west1`) | the same cluster |
 | Namespace | `joshsim` | `fire-severity-dev` (`namespace.yaml`) |
-| Dispatcher role | Jobs, Secrets, pods | the same, plus `delete` and `update` for restarts (`rbac.yaml`) |
+| Who dispatches | people and dev VMs, as their Google identity: `container.clusterViewer` plus a RoleBinding | the API's Cloud Run account, `fire-severity-k8s-api-sa`, the same way (`rbac.yaml`) |
+| Dispatcher role | Jobs, Secrets, pods | the same, plus `delete` and `update` for restarts |
 | Pod egress | DNS, HTTPS | DNS, HTTPS, SMTP (`networkpolicy.yaml`) |
 | Bucket | `dse-nps-josh-batch-storage` | `dse-nps-fire-severity-storage`, public read |
-| Storage identity | `josh-k8s-gcs-sa`: `storage.objectAdmin` and `storage.bucketViewer`; HMAC key in Secret Manager as `josh-k8s-minio-{access,secret}-key` | `fire-severity-k8s-gcs-sa`, the same roles; `fire-severity-k8s-minio-{access,secret}-key` |
+| Storage identity | `josh-k8s-gcs-sa`: `storage.objectAdmin`, `storage.bucketViewer`; HMAC key in Secret Manager as `josh-k8s-minio-{access,secret}-key` | `fire-severity-k8s-gcs-sa`, the same roles; `fire-severity-k8s-minio-{access,secret}-key` |
 | Image | `ghcr.io/schmidtdse/josh/joshsim-batch` | `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch` |
 
 The bucket is public-read because the API hands out links to the catalogs in it. The result
@@ -43,50 +48,26 @@ kubectl apply -f deployment/k8s/rbac.yaml
 kubectl apply -f deployment/k8s/networkpolicy.yaml
 ```
 
-## 3. Contexts
+## 3. Who may dispatch
 
-**People** use their own identity, as with josh:
-
-```bash
-# GKE: context gke_dse-nps_us-west1_josh-k8s-gke (needs gke-gcloud-auth-plugin, and a
-# RoleBinding to the dispatcher role for your Google identity, as josh-k8s binds its users)
-gcloud container clusters get-credentials josh-k8s-gke --region us-west1 --project dse-nps
-# NRP: the kubeconfig from the portal, context nautilus
-```
-
-**The API on Cloud Run** has no Google login to run the GKE plugin with, so it uses a
-kubeconfig whose contexts carry the same names, with the dispatcher's token. One file holds
-every target's context:
-
-```bash
-NS=fire-severity-dev
-CONTEXT=gke_dse-nps_us-west1_josh-k8s-gke   # the profile's context
-TOKEN=$(kubectl -n $NS get secret severity-v2-dispatcher-token -o jsonpath='{.data.token}' | base64 -d)
-SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
-CA=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
-cat > /tmp/severity-kubeconfig.yaml <<EOF
-apiVersion: v1
-kind: Config
-clusters: [{name: $CONTEXT, cluster: {server: $SERVER, certificate-authority-data: $CA}}]
-users: [{name: $CONTEXT-dispatcher, user: {token: $TOKEN}}]
-contexts: [{name: $CONTEXT, context: {cluster: $CONTEXT, user: $CONTEXT-dispatcher, namespace: $NS}}]
-current-context: $CONTEXT
-EOF
-kubectl --kubeconfig /tmp/severity-kubeconfig.yaml -n $NS auth can-i create jobs   # yes
-gcloud secrets create severity-v2-kubeconfig --project dse-nps \
-  --data-file=/tmp/severity-kubeconfig.yaml
-rm /tmp/severity-kubeconfig.yaml
-```
-
-The dev deploy mounts it at `/var/secrets/kube/config` and points `KUBECONFIG` there. To add
-NRP, add its context to the same file and add a version of the secret.
+- **The API**: the Cloud Run service runs as `fire-severity-k8s-api-sa`, with
+  `roles/container.clusterViewer` on the project so it can read the cluster's endpoint and CA,
+  and the `severity-v2-api` RoleBinding (`kind: User`, the account's email) in the namespace.
+  That is how josh binds its dev VMs' accounts. No key exists for it.
+- **People**, to test or to use kubectl: the same pair for your Google identity (a RoleBinding
+  per user or group), then either `gcloud auth application-default login` for the API or
+  `gcloud container clusters get-credentials josh-k8s-gke --region us-west1 --project dse-nps`
+  for kubectl.
+- **NRP** has no Google identities. Dispatching there from Cloud Run would need a kubeconfig
+  with a token for the `severity-v2-dispatcher` ServiceAccount: the one credential this setup
+  can't avoid, so it waits until NRP is a target.
 
 ## 4. Storage
 
 Create the bucket, its service account with `storage.objectAdmin` and `storage.bucketViewer`,
 and an HMAC key in Secret Manager, as `environments/josh-k8s/` does for josh. Then grant
 `allUsers` `storage.objectViewer` on the bucket. The dev deploy maps the HMAC secrets to
-`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` and passes them on to each Job.
+`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, and the API passes them on to each Job.
 
 ## 5. API keys
 
@@ -98,15 +79,15 @@ printf '%s' "$(printf '%s' "$KEY" | sha256sum | cut -d' ' -f1)" | \
   gcloud secrets create severity-v2-api-key-hashes --project dse-nps --data-file=-
 ```
 
-Grant the Cloud Run service account (`github-actions-sa`) `roles/secretmanager.secretAccessor`
-on `severity-v2-kubeconfig`, `severity-v2-api-key-hashes` and the two HMAC secrets.
+Grant `fire-severity-k8s-api-sa` `roles/secretmanager.secretAccessor` on
+`severity-v2-api-key-hashes` and the two HMAC secrets.
 
 ## 6. The image
 
 As josh does with `joshsim-batch`, CI pushes `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch`:
 `{sha}` and `latest` on every deploy to dev, and `{sha}` for each PR from this repository, so a
-cluster can run a branch before it merges. Make the GHCR package public once, in the
-organization's package settings, so any cluster can pull it without credentials.
+cluster can run a branch before it merges. Make the GHCR package public once, in its package
+settings, so any cluster can pull it without credentials.
 
 ## 7. Monitoring
 

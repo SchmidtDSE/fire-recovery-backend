@@ -1,9 +1,12 @@
-# The identity the API uses to dispatch Jobs, with josh's role
-# (fire-recovery-iac, environments/josh-k8s/kubernetes.tf): create and read
-# Jobs, give each its own credentials Secret, and read pods to report why a Job
-# failed (for example OOMKilled). Delete and update cover restarts. Nothing
-# else. Its token goes in the kubeconfig the API reads on Cloud Run
-# (deployment/k8s/README.md).
+# Who may dispatch analysis Jobs, with josh's role (fire-recovery-iac,
+# environments/josh-k8s/kubernetes.tf): create and read Jobs, give each its own
+# credentials Secret, and read pods to report why a Job failed (for example
+# OOMKilled). Delete and update cover restarts. Nothing else.
+#
+# No keys: the API on Cloud Run is bound as its own Google identity, as josh
+# binds its machines' service accounts (GKE presents the account's email as a
+# Kubernetes User). The ServiceAccount is for clusters without Google identities
+# (NRP, and CI's Kind cluster), with short-lived tokens from `kubectl create token`.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -40,12 +43,17 @@ roleRef:
   kind: Role
   name: severity-v2-dispatcher
 ---
-# A long-lived token for the dispatcher, for the API's kubeconfig.
-apiVersion: v1
-kind: Secret
+# The API's Cloud Run service account (deployment/k8s/README.md).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
-  name: severity-v2-dispatcher-token
+  name: severity-v2-api
   namespace: fire-severity-dev
-  annotations:
-    kubernetes.io/service-account.name: severity-v2-dispatcher
-type: kubernetes.io/service-account-token
+subjects:
+  - kind: User
+    name: fire-severity-k8s-api-sa@dse-nps.iam.gserviceaccount.com
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: severity-v2-dispatcher

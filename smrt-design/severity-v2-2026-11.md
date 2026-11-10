@@ -190,9 +190,11 @@ spec:
 ```
 
 `src/v2/k8s.py` (`job_manifest`) builds this from the target profile in `config/targets/`.
-Profiles use josh's format (SchmidtDSE/josh, `BATCH_REMOTE.md`): JSON naming a kubeconfig
-context, a namespace, the image, resources and spot scheduling. The API reaches the cluster
-through that context, from `KUBECONFIG` or `~/.kube/config`, as josh's dispatcher does.
+Profiles use josh's format (SchmidtDSE/josh, `BATCH_REMOTE.md`): JSON naming the cluster, a
+namespace, the image, resources and spot scheduling. The API reaches josh's GKE cluster with no
+key: as the Cloud Run service's own Google identity, bound to the dispatcher role in the
+namespace, as josh binds its machines' accounts. Other clusters are reached through a
+kubeconfig context.
 
 **Why Kubernetes.**
 
@@ -655,8 +657,9 @@ Recorded 2026-11-09.
 
 To set up per target when the service account gets its permissions:
 
-- **The API's credential** to create, get, list and delete Jobs, to create each Job's Secret,
-  and to read pods, in the target's namespace (`deployment/k8s/rbac.yaml`).
+- **The API's identity**: the Cloud Run service's own account, with no key, bound to the
+  dispatcher role (Jobs, each Job's Secret, pods) in the target's namespace
+  (`deployment/k8s/rbac.yaml`). On NRP, which has no Google identities, a token instead.
 - **Storage credentials for the job.** HMAC keys for v2's bucket, held by the API and passed to
   each Job's Secret, which work on any cluster. If the GCS check in §7 fails, `gs://` needs workload identity on GKE and a
   service-account key on NRP.
@@ -715,9 +718,10 @@ To set up per target when the service account gets its permissions:
 **2026-11-10: targets, auth and images aligned with josh** (`v2/08-josh-targets`), after
 reading SchmidtDSE/josh and fire-recovery-iac's `josh-k8s` environment:
 
-- Profiles are JSON in josh's format and name a kubeconfig context. People reach josh's GKE
-  cluster as josh's users do (`get-credentials`). The API on Cloud Run reads a mounted
-  kubeconfig with the same context names and the dispatcher's token.
+- Profiles are JSON in josh's format. The API on Cloud Run reaches josh's GKE cluster as its
+  own service account, with no key: `container.clusterViewer` plus a RoleBinding, as josh
+  binds its machines' accounts. API keys and rate limits stay in the API, in front of
+  dispatch.
 - Each Job gets a Secret with the API's storage and mail settings and the requester's address,
   owned by the Job, as josh's dispatcher creates one per Job. No cluster needs a credential
   Secret by hand, and the address is no longer in the Job spec.

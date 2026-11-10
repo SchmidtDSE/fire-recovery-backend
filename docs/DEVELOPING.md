@@ -158,7 +158,8 @@ without them the job skips it.
 ### Testing the Kubernetes path
 
 Targets work as josh's do (`deployment/k8s/README.md`): a profile in `config/targets/` names
-a kubeconfig context, and the API gives each Job a Secret with its own storage settings.
+the cluster, the API reaches it with no key, and the API gives each Job a Secret with its own
+storage settings.
 
 **In CI**, the Kubernetes integration tests run the whole path on a Kind cluster on every PR,
 as josh's `test-k8s.yaml` does. The API dispatches through a context with only the
@@ -166,12 +167,13 @@ dispatcher's permissions, and a real analysis publishes to RustFS in the cluster
 image doesn't exist must surface as a failure on the status URL. The CI profiles are in
 `tests/fixtures/targets/`.
 
-**Against josh's GKE cluster**, once severity's namespace and bucket exist, set up the
-context and the bucket keys as josh's client setup does, then start the API with the target
-and a PR's image:
+**Against josh's GKE cluster**, once severity's namespace and bucket exist, sign in as
+yourself and fetch the bucket keys as josh's client setup does, then start the API with the
+target and a PR's image. The API reaches the cluster as your Google identity, the same way it
+reaches it as its own account on Cloud Run, so it needs no kubeconfig and no GKE plugin:
 
 ```bash
-gcloud container clusters get-credentials josh-k8s-gke --region us-west1 --project dse-nps
+gcloud auth login && gcloud auth application-default login
 export S3_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=fire-severity-k8s-minio-access-key --project=dse-nps)
 export S3_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=fire-severity-k8s-minio-secret-key --project=dse-nps)
 SEVERITY_TARGET=gke-josh \
@@ -179,9 +181,9 @@ SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:$(git rev
   pixi run uvicorn src.app:app --port 8000
 ```
 
-This needs `gke-gcloud-auth-plugin` and a RoleBinding for your identity in
-`fire-severity-dev`. Without `S3_BUCKET` the API and its Jobs use v2's bucket,
-`dse-nps-fire-severity-storage`.
+Your identity needs `container.clusterViewer` and a RoleBinding to the dispatcher role in
+`fire-severity-dev` (`deployment/k8s/README.md`). Without `S3_BUCKET` the API and its Jobs
+use v2's bucket, `dse-nps-fire-severity-storage`.
 
 ## Environment Variables & Secrets
 
