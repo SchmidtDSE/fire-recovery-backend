@@ -11,11 +11,22 @@ ruff-check = "ruff check ."
 ruff-format = "ruff format ."
 ruff-fix = "ruff check . --fix"
 
-# The storage tests against local RustFS: start it with `pixi run -e s3 s3-server` and
-# create the bucket with `pixi run -e s3 s3-bucket` first.
+# Local runs against RustFS: start it with `pixi run -e s3 s3-server` and create the bucket
+# with `pixi run -e s3 s3-bucket` first. Each task sets every S3_* variable, so nothing falls
+# back to .devcontainer/.env or the production bucket.
 [tasks.storage-test]
 cmd = "python -m pytest -m storage"
 env = { RUN_STORAGE_TESTS = "1", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
+
+# The API on :8000, starting each analysis as a child process.
+[tasks.dev-api]
+cmd = "uvicorn src.app:app --port 8000"
+env = { SEVERITY_TARGET = "local", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
+
+# One analysis without the API: `pixi run dev-job --request-file request.json`.
+[tasks.dev-job]
+cmd = "python -m src.v2.run"
+env = { S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
 
 [dependencies]
 python = "3.12.*"
@@ -96,9 +107,18 @@ fire-recovery-backend = { path = ".", editable = true }
 rustfs = "==1.0.4"
 awscli = ">=2.38,<3"
 
+# Local-only settings, so any `pixi run -e s3 aws ...` reaches local RustFS.
+[feature.s3.activation.env]
+RUSTFS_ACCESS_KEY = "dev-access-key"
+RUSTFS_SECRET_KEY = "dev-secret-key"
+AWS_ENDPOINT_URL = "http://127.0.0.1:9000"
+AWS_ACCESS_KEY_ID = "dev-access-key"
+AWS_SECRET_ACCESS_KEY = "dev-secret-key"
+AWS_DEFAULT_REGION = "us-east-1"
+
 [feature.s3.tasks]
-s3-server = { cmd = "mkdir -p .rustfs && rustfs server --address 127.0.0.1:9000 .rustfs", env = { RUSTFS_ACCESS_KEY = "dev-access-key", RUSTFS_SECRET_KEY = "dev-secret-key" } }
-s3-bucket = { cmd = "aws s3api head-bucket --bucket dev-bucket 2> /dev/null || aws s3 mb s3://dev-bucket", env = { AWS_ENDPOINT_URL = "http://127.0.0.1:9000", AWS_ACCESS_KEY_ID = "dev-access-key", AWS_SECRET_ACCESS_KEY = "dev-secret-key", AWS_DEFAULT_REGION = "us-east-1" } }
+s3-server = "mkdir -p .rustfs && rustfs server --address 127.0.0.1:9000 .rustfs"
+s3-bucket = "aws s3api head-bucket --bucket dev-bucket 2> /dev/null || aws s3 mb s3://dev-bucket"
 
 [environments]
 s3 = { features = ["s3"], no-default-feature = true }

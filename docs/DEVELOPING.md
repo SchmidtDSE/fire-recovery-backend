@@ -131,19 +131,20 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
 The API and the analysis job are the same code. Locally, the API starts each job as a child
 process instead of a Kubernetes Job (`SEVERITY_TARGET=local`, the default).
 
-1. Start RustFS and create a bucket (see [Local storage with RustFS](#local-storage-with-rustfs)
-   below), and put its `S3_*` settings in `.devcontainer/.env`.
-2. Run the API:
+1. Start RustFS and create `dev-bucket` (see
+   [Local storage with RustFS](#local-storage-with-rustfs) below).
+2. Run the API against it. The task sets every `S3_*` variable, so nothing falls back to
+   `.devcontainer/.env` or the production bucket.
    ```bash
-   pixi run uvicorn src.app:app --port 8000
+   pixi run dev-api
    ```
 3. Submit an analysis (see the README), then poll the `status_url` it returns. The job reads
-   real imagery from Element 84 or Planetary Computer and publishes to your bucket.
+   real imagery from Element 84 or Planetary Computer and publishes to `dev-bucket`.
 
 To run one job without the API, give it a canonical request:
 
 ```bash
-pixi run python -m src.v2.run --request-file request.json
+pixi run dev-job --request-file request.json
 ```
 
 `request.json` is the canonical form (`src/v2/job_id.py`), for example a `canonical` entry
@@ -192,15 +193,13 @@ It is separate from the default environment, so neither reaches the image.
    pixi run -e s3 s3-bucket
    ```
 
-3. Point the app and the job at it, in `.devcontainer/.env`:
-   ```dotenv
-   S3_ENDPOINT=127.0.0.1:9000
-   S3_SECURE=False
-   S3_BUCKET=dev-bucket
-   S3_REGION=us-east-1
-   S3_ACCESS_KEY_ID=dev-access-key
-   S3_SECRET_ACCESS_KEY=dev-secret-key
-   ```
+3. `pixi run dev-api`, `pixi run dev-job` and `pixi run storage-test` use it, with fixed local
+   settings in `pixi.toml`. `.devcontainer/.env` doesn't need changing.
+
+The AWS CLI in the `s3` environment points at RustFS, so you can look at what a run published:
+```bash
+pixi run -e s3 aws s3 ls s3://dev-bucket --recursive
+```
 
 ### Tests
 
