@@ -103,7 +103,10 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
    - Only runs on `dev` and `main` branches
 
 3. **Deployment** (after schema publishing):
-   - Builds Docker image via Cloud Build
+   - `dev`: builds the image once and pushes it to GHCR, where the analysis Jobs pull it, and
+     to Artifact Registry. Cloud Run deploys it by digest, and the API starts Jobs with the
+     same digest (`SEVERITY_IMAGE`).
+   - `main`: builds via Cloud Build (unchanged until prod moves to v2)
    - Deploys to Cloud Run
    - `dev` branch: Auto-deploys to dev environment
    - `main` branch: Requires manual approval for production
@@ -122,6 +125,30 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
 - Push to `dev` branch: Automatically deploys to dev after tests pass
 - Push to `main` branch: Automatically publishes schema, waits for approval to deploy to production
 - Pull requests: Only run quality checks
+
+### Running v2 locally
+
+The API and the analysis job are the same code. Locally, the API starts each job as a child
+process instead of a Kubernetes Job (`SEVERITY_TARGET=local`, the default).
+
+1. Start RustFS and create a bucket (see [Local storage with RustFS](#local-storage-with-rustfs)
+   below), and put its `S3_*` settings in `.devcontainer/.env`.
+2. Run the API:
+   ```bash
+   pixi run uvicorn src.app:app --port 8000
+   ```
+3. Submit an analysis (see the README), then poll the `status_url` it returns. The job reads
+   real imagery from Element 84 or Planetary Computer and publishes to your bucket.
+
+To run one job without the API, give it a canonical request:
+
+```bash
+pixi run python -m src.v2.run --request-file request.json
+```
+
+`request.json` is the canonical form (`src/v2/job_id.py`), for example a `canonical` entry
+from `tests/fixtures/v2_job_id_vectors.json`. Set `SMTP_*` and `OPERATOR_EMAIL` to test mail;
+without them the job skips it.
 
 ## Environment Variables & Secrets
 

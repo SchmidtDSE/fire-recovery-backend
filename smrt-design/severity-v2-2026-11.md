@@ -6,7 +6,7 @@ repos: [backend]
 status: draft
 source: agent
 authored: 2026-11-09
-revised: 2026-11-09
+revised: 2026-11-10
 owner: "fire-recovery-backend agent"
 depends_on: []
 needs_context: [dev-deployment]
@@ -670,3 +670,50 @@ To set up per target when the service account gets its permissions:
   - the refine and veg parts of `be-name-validation` and `be-job-id-format`
   - `be-result-path`'s v1 result files
   - `be-cache-branch`'s in-memory registry, which the result record and the Job name replace
+
+## Progress
+
+<!-- Owned by this repo's agent. Appended as work lands. -->
+
+**2026-11-10: built as a stack of seven PRs against `dev`** (`v2/01-retire-v1` through
+`v2/07-deploy`).
+
+| PR | Branch | What |
+|---|---|---|
+| 1 | `v2/01-retire-v1` | This doc; v1's index values frozen; v1 deleted; `/healthz`, `/version`; CI checks stacked PRs |
+| 2 | `v2/02-identity` | Request model, tile snap, raster grid, job id, committed vectors |
+| 3 | `v2/03-pipeline` | Per-window search, odc-stac load, masks, index registry, bounded compute, COGs |
+| 4 | `v2/04-catalog` | One environment; sidecar, plugin, thumbnail, catalog build and rashid gate, push; RustFS in CI |
+| 5 | `v2/05-runner` | `python -m src.v2.run`, result record, failure handling, SMTP |
+| 6 | `v2/06-api` | Launchers, target profiles, Job spec, `POST`/`GET /v2/severity`, limits, API keys |
+| 7 | `v2/07-deploy` | One image build to GHCR and Artifact Registry by digest; provisioning manifests; docs |
+
+**What implementation found:**
+
+- Planetary Computer's Sentinel-2 items publish no `raster:bands`. Scaling for them comes from
+  `s2:processing_baseline`, and their band types are passed to odc-stac (§2). v1 read these
+  items unscaled.
+- odc-stac signs hrefs when `load` is called, so the compute loads and signs per block.
+- Memory: 32 MiB blocks peaked at 0.51 GiB (4.6 Mpx, 45-day windows, 2 threads, real data).
+  64 MiB blocks peaked at 0.84 GiB, and computing medians in row strips saved a further 0.25 GiB.
+- portolan keeps a thumbnail drawn before `add` and stamps its checksum. The plugin drops the
+  duplicate asset portolan also makes for it. A real Geology catalog passes rashid with 0
+  errors and 0 warnings.
+- The single environment needed three solver pins: `sqlite` (an unconstrained solve picked a
+  2020 build that broke GDAL), `pystac>=1.14` (portolan-cli uses newer API than it declares),
+  and `python-dateutil<3` (for botocore, via portolan).
+- A full local run took about 10 s for the Geology box: the API with the subprocess launcher,
+  a job against Element 84, and an S3 test server.
+
+**Left before merging into `dev`** (Rollout):
+
+- The acceptance fixtures on real data: a ~100 km fire, a UTM-zone straddle, Landsat, a long
+  gap, and the ~38 Mpx, 48-day memory run.
+- RustFS is first exercised in CI. Running its binary locally was blocked, so pushes were
+  checked against moto locally.
+- Provisioning on both clusters (`deployment/k8s/README.md`), and the two Secret Manager
+  secrets the dev deploy maps.
+- The GCS S3 push check (§7), which writes to `fire-recovery-store` and needs approval.
+- Promoting `dev` to `main` before the stack lands, and refreshing `dev-deployment` (its
+  `covers` include the changed workflow) once it has.
+

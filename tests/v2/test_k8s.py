@@ -57,6 +57,7 @@ def test_job_manifest() -> None:
     assert job["ttlSecondsAfterFinished"] == 86400
     pod = job["template"]["spec"]
     assert pod["restartPolicy"] == "Never"
+    assert pod["automountServiceAccountToken"] is False
     assert pod["nodeSelector"] == {"cloud.google.com/gke-spot": "true"}
     (container,) = pod["containers"]
     assert container["image"] == IMAGE

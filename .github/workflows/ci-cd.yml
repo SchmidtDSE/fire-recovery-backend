@@ -232,6 +232,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: write  # push the image to GHCR, where the clusters pull it
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -253,6 +254,37 @@ jobs:
 
       - name: Set environment variable for branch
         run: echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      # One build, pushed to GHCR (the analysis Jobs pull it from any cluster)
+      # and to Artifact Registry (Cloud Run pulls it). Both carry the same
+      # digest, and the API starts Jobs with it, so the code that derived a job
+      # id is the code that runs it.
+      - name: Build the image once and push it to GHCR and Artifact Registry
+        id: image
+        if: github.ref_name == 'dev'
+        env:
+          GHCR_IMAGE: ghcr.io/schmidtdse/fire-recovery-backend
+          AR_IMAGE: us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          # A BuildKit builder exports the image once and pushes that same
+          # manifest to every tag.
+          docker buildx create --use --name severity-builder
+          docker buildx build \
+            --file deployment/fastapi.Dockerfile \
+            --tag "$GHCR_IMAGE:$GITHUB_SHA" --tag "$GHCR_IMAGE:dev" \
+            --tag "$AR_IMAGE:$GITHUB_SHA" --tag "$AR_IMAGE:latest" \
+            --provenance=false \
+            --push .
+          ghcr_digest=$(docker buildx imagetools inspect "$GHCR_IMAGE:$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)
+          ar_digest=$(docker buildx imagetools inspect "$AR_IMAGE:$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)
+          if [ -z "$ghcr_digest" ] || [ "$ghcr_digest" != "$ar_digest" ]; then
+            echo "Digests differ or are missing: GHCR '$ghcr_digest', Artifact Registry '$ar_digest'"
+            exit 1
+          fi
+          echo "Pushed $ghcr_digest to both registries"
+          echo "digest=$ghcr_digest" >> "$GITHUB_OUTPUT"
 
       - name: Build and Deploy to Cloud Run
         id: deploy
@@ -296,28 +328,30 @@ jobs:
 
           if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
             echo "Deploying to DEV..."
+            DIGEST="${{ steps.image.outputs.digest }}"
+            DEV_URL="https://fire-recovery-backend-dev-113009620257.us-central1.run.app"
 
-            gcloud builds submit \
-              --config deployment/dev-cloudbuild.yml \
-              --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
-              .
-
+            # Env vars and secrets are merged into the service's, so the
+            # existing storage credentials stay. The two secrets must exist in
+            # Secret Manager first (deployment/k8s/README.md).
             gcloud run deploy fire-recovery-backend-dev \
-              --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
+              --image "us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev@$DIGEST" \
               --platform managed \
               --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
-              --tag "sha-${GITHUB_SHA:0:7}"
+              --tag "sha-${GITHUB_SHA:0:7}" \
+              --update-env-vars "SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend@$DIGEST,GIT_SHA=$GITHUB_SHA,SEVERITY_TARGET=gke-josh,SEVERITY_API_URL=$DEV_URL" \
+              --update-secrets "K8S_KUBECONFIG_GKE_JOSH=severity-v2-kubeconfig-gke-josh:latest,SEVERITY_API_KEY_HASHES=severity-v2-api-key-hashes:latest"
 
             # Ensure 100% traffic goes to the new revision
             gcloud run services update-traffic fire-recovery-backend-dev \
               --region us-central1 \
               --to-latest
 
-            echo "url=https://fire-recovery-backend-dev-<hash>-uc.a.run.app" >> $GITHUB_OUTPUT
+            echo "url=$DEV_URL" >> $GITHUB_OUTPUT
           fi
 
       - name: Display deployment URL

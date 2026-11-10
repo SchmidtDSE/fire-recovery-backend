@@ -1,0 +1,46 @@
+# The identity the API uses to dispatch Jobs: create, read, list and delete
+# Jobs, and read their pods to report why one failed (for example OOMKilled).
+# Nothing else. Its token goes in the kubeconfig the API reads
+# (deployment/k8s/README.md).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: severity-v2-dispatcher
+  namespace: fire-severity-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: severity-v2-dispatcher
+  namespace: fire-severity-dev
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs", "jobs/status"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: severity-v2-dispatcher
+  namespace: fire-severity-dev
+subjects:
+  - kind: ServiceAccount
+    name: severity-v2-dispatcher
+    namespace: fire-severity-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: severity-v2-dispatcher
+---
+# A long-lived token for the dispatcher, for the API's kubeconfig.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: severity-v2-dispatcher-token
+  namespace: fire-severity-dev
+  annotations:
+    kubernetes.io/service-account.name: severity-v2-dispatcher
+type: kubernetes.io/service-account-token

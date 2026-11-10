@@ -87,6 +87,8 @@ def job_manifest(spec: JobSpec, profile: TargetProfile, image: str) -> Dict[str,
     pod_spec: Dict[str, Any] = {
         # Required by podFailurePolicy.
         "restartPolicy": "Never",
+        # The analysis never calls the cluster API, so it gets no token.
+        "automountServiceAccountToken": False,
         "containers": [container],
         "volumes": [
             {"name": "scratch", "emptyDir": {"sizeLimit": profile.scratch_size}}
