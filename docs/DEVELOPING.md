@@ -167,23 +167,28 @@ dispatcher's permissions, and a real analysis publishes to RustFS in the cluster
 image doesn't exist must surface as a failure on the status URL. The CI profiles are in
 `tests/fixtures/targets/`.
 
-**Against josh's GKE cluster**, once severity's namespace and bucket exist, sign in as
-yourself and fetch the bucket keys as josh's client setup does, then start the API with the
-target and a PR's image. The API reaches the cluster as your Google identity, the same way it
-reaches it as its own account on Cloud Run, so it needs no kubeconfig and no GKE plugin:
+**Against josh's GKE cluster**, once severity's namespace and bucket exist, run the API on
+your machine in place of Cloud Run. It reaches the cluster as your Application Default
+Credentials, the same way it reaches it as its own account on Cloud Run, so it needs no
+kubeconfig and no GKE plugin. Impersonating the API's account gives it exactly that account's
+permissions, which is the closer test (it needs Token Creator on the account):
 
 ```bash
-gcloud auth login && gcloud auth application-default login
-export S3_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=fire-severity-k8s-minio-access-key --project=dse-nps)
-export S3_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=fire-severity-k8s-minio-secret-key --project=dse-nps)
-SEVERITY_TARGET=gke-josh \
-SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:$(git rev-parse HEAD) \
-  pixi run uvicorn src.app:app --port 8000
+gcloud auth login
+gcloud auth application-default login \
+  --impersonate-service-account=fire-severity-k8s-api-sa@dse-nps.iam.gserviceaccount.com
+pixi run gke-api
 ```
 
-Your identity needs `container.clusterViewer` and a RoleBinding to the dispatcher role in
-`fire-severity-dev` (`deployment/k8s/README.md`). Without `S3_BUCKET` the API and its Jobs
-use v2's bucket, `dse-nps-fire-severity-storage`.
+`gke-api` (`scripts/gke-api.sh`) fixes every storage setting to v2's bucket, reads the bucket
+key from Secret Manager and turns mail off. The API copies these settings into each Job's
+Secret on the cluster, so none may come from `.devcontainer/.env`. Jobs run the image CI built
+for this branch's last push, or `SEVERITY_IMAGE` if set. The task stops if GHCR doesn't have
+that image, since a Job would otherwise wait on it until its deadline.
+
+Signed in as yourself instead, the API needs your identity to have `container.clusterViewer`
+and a RoleBinding to the dispatcher role in `fire-severity-dev`, unless your project role
+already grants both (`deployment/k8s/README.md`).
 
 ## Environment Variables & Secrets
 

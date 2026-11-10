@@ -23,6 +23,11 @@ env = { RUN_STORAGE_TESTS = "1", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "Fa
 cmd = "uvicorn src.app:app --port 8000"
 env = { SEVERITY_TARGET = "local", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
 
+# The API on :8000 dispatching to josh's GKE cluster, standing in for Cloud Run. Sign in
+# with `gcloud auth application-default login` first; see docs/DEVELOPING.md.
+[tasks.gke-api]
+cmd = "bash scripts/gke-api.sh"
+
 # One analysis without the API: `pixi run dev-job --request-file request.json`.
 [tasks.dev-job]
 cmd = "python -m src.v2.run"
