@@ -19,7 +19,7 @@ from src.v2.grid import Grid
 from src.v2.job_id import CanonicalRequest, fire_id
 from src.v2.publish import catalog_prefix, publish
 from src.v2.sidecar import build_sidecar
-from src.v2.store import DEFAULT_BUCKET, Store, StoreSettings
+from src.v2.store import DEFAULT_BUCKET, V1_BUCKET, Store, StoreSettings
 from tests.v2.conftest import write_index_cogs
 
 pytestmark = pytest.mark.storage
@@ -32,8 +32,8 @@ def store() -> Store:
     if os.environ.get("RUN_STORAGE_TESTS") != "1" or not os.environ.get("S3_ENDPOINT"):
         pytest.skip("set RUN_STORAGE_TESTS=1 and S3_ENDPOINT to run storage tests")
     settings = StoreSettings.from_env()
-    if settings.bucket == DEFAULT_BUCKET:
-        pytest.skip("refusing to run storage tests against the production bucket")
+    if settings.bucket in (DEFAULT_BUCKET, V1_BUCKET):
+        pytest.skip("refusing to run storage tests against a production bucket")
     return Store(settings)
 
 

@@ -1,8 +1,9 @@
 """The bucket, over the S3 protocol, for any S3-compatible endpoint (design §7).
 
-Settings come from the same S3_* variables v1 used, so existing deployments
-need no new configuration: GCS through its S3 endpoint with HMAC keys in
-production, RustFS in CI and local development.
+Settings come from the same S3_* variables v1 used: GCS through its S3 endpoint
+with HMAC keys in production, RustFS in CI and local development. v2 has its own
+bucket, named and provisioned like josh's (``{project}-{app}-storage``), so
+nothing v2 does reaches v1's ``fire-recovery-store``.
 """
 
 import json
@@ -13,7 +14,9 @@ from typing import Any, Dict, Mapping, Optional
 import obstore
 from obstore.store import S3Store
 
-DEFAULT_BUCKET = "fire-recovery-store"
+DEFAULT_BUCKET = "dse-nps-fire-severity-storage"
+# v1's production bucket, which v2 never writes to.
+V1_BUCKET = "fire-recovery-store"
 DEFAULT_ENDPOINT = "storage.googleapis.com"
 # GCS accepts any region in a SigV4 signature; "auto" is its convention.
 DEFAULT_REGION = "auto"

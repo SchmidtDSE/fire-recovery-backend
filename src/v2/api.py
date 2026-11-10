@@ -112,7 +112,9 @@ def configured_launcher() -> Launcher:
     target = os.environ.get(ENV_TARGET) or LOCAL_TARGET
     if target == LOCAL_TARGET:
         return SubprocessLauncher()
-    return KubernetesLauncher(TargetProfile.load(target), os.environ.get(ENV_IMAGE))
+    profile = TargetProfile.load(target)
+    # The deploy pins the image by digest; otherwise the profile names one.
+    return KubernetesLauncher(profile, os.environ.get(ENV_IMAGE) or profile.image)
 
 
 def get_store() -> Store:
@@ -125,11 +127,11 @@ def get_store() -> Store:
 
 
 def get_launcher() -> Launcher:
-    """The launcher for SEVERITY_TARGET: a profile in config/targets/, or "local"."""
+    """The launcher for SEVERITY_TARGET: a target profile's name, or "local"."""
     try:
         return configured_launcher()
-    except FileNotFoundError as e:
-        logger.error(f"Unknown {ENV_TARGET}: {e}")
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Unusable {ENV_TARGET}: {e}")
         raise HTTPException(503, "Analysis dispatch is not configured") from e
 
 

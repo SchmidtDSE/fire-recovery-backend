@@ -95,7 +95,10 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
    - MyPy type checking
    - Ruff linting and formatting
    - Pytest (all tests including contract tests)
-   - A build of `deployment/fastapi.Dockerfile`, not pushed
+   - A build of `deployment/fastapi.Dockerfile`. A PR from this repository also pushes it to
+     GHCR as `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:{sha}`.
+   - Kubernetes integration tests (`.github/workflows/test-k8s.yaml`; see
+     [Testing the Kubernetes path](#testing-the-kubernetes-path))
 
 2. **Schema Publishing** (after quality checks pass):
    - Generates OpenAPI schema
@@ -103,9 +106,10 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
    - Only runs on `dev` and `main` branches
 
 3. **Deployment** (after schema publishing):
-   - `dev`: builds the image once and pushes it to GHCR, where the analysis Jobs pull it, and
-     to Artifact Registry. Cloud Run deploys it by digest, and the API starts Jobs with the
-     same digest (`SEVERITY_IMAGE`).
+   - `dev`: builds the image once and pushes it to GHCR (`severity-batch:{sha}` and
+     `:latest`, as josh publishes `joshsim-batch`), where the analysis Jobs pull it, and to
+     Artifact Registry. Cloud Run deploys it by digest, and the API starts Jobs with the same
+     digest (`SEVERITY_IMAGE`).
    - `main`: builds via Cloud Build (unchanged until prod moves to v2)
    - Deploys to Cloud Run
    - `dev` branch: Auto-deploys to dev environment
@@ -151,6 +155,34 @@ pixi run dev-job --request-file request.json
 from `tests/fixtures/v2_job_id_vectors.json`. Set `SMTP_*` and `OPERATOR_EMAIL` to test mail;
 without them the job skips it.
 
+### Testing the Kubernetes path
+
+Targets work as josh's do (`deployment/k8s/README.md`): a profile in `config/targets/` names
+a kubeconfig context, and the API gives each Job a Secret with its own storage settings.
+
+**In CI**, the Kubernetes integration tests run the whole path on a Kind cluster on every PR,
+as josh's `test-k8s.yaml` does. The API dispatches through a context with only the
+dispatcher's permissions, and a real analysis publishes to RustFS in the cluster. A Job whose
+image doesn't exist must surface as a failure on the status URL. The CI profiles are in
+`tests/fixtures/targets/`.
+
+**Against josh's GKE cluster**, once severity's namespace and bucket exist, set up the
+context and the bucket keys as josh's client setup does, then start the API with the target
+and a PR's image:
+
+```bash
+gcloud container clusters get-credentials josh-k8s-gke --region us-west1 --project dse-nps
+export S3_ACCESS_KEY_ID=$(gcloud secrets versions access latest --secret=fire-severity-k8s-minio-access-key --project=dse-nps)
+export S3_SECRET_ACCESS_KEY=$(gcloud secrets versions access latest --secret=fire-severity-k8s-minio-secret-key --project=dse-nps)
+SEVERITY_TARGET=gke-josh \
+SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:$(git rev-parse HEAD) \
+  pixi run uvicorn src.app:app --port 8000
+```
+
+This needs `gke-gcloud-auth-plugin` and a RoleBinding for your identity in
+`fire-severity-dev`. Without `S3_BUCKET` the API and its Jobs use v2's bucket,
+`dse-nps-fire-severity-storage`.
+
 ## Environment Variables & Secrets
 
 ### Overview
@@ -171,7 +203,7 @@ Storage is reached over the S3 protocol, so any S3-compatible endpoint works
 | `S3_SECRET_ACCESS_KEY` | Yes | Secret key | — |
 | `S3_ENDPOINT` | No | Host and port, no scheme | `storage.googleapis.com` |
 | `S3_SECURE` | No | `True` for HTTPS, `False` for a local HTTP endpoint | `True` |
-| `S3_BUCKET` | No | Bucket | `fire-recovery-store` |
+| `S3_BUCKET` | No | Bucket | `dse-nps-fire-severity-storage` (v2's own) |
 | `S3_REGION` | No | Region used to sign requests | `auto` |
 | `S3_PUBLIC_BASE_URL` | No | Base of the public URLs in API responses | `{scheme}://{endpoint}/{bucket}` |
 
@@ -255,7 +287,7 @@ The API reads the result records with GCS HMAC credentials, injected as `S3_ACCE
 - **"Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY"**: the process has no storage
   credentials. Add them to `.devcontainer/.env` locally, or check the Secret in the cluster.
 - **Storage tests skip**: set `RUN_STORAGE_TESTS=1` and `S3_ENDPOINT`, and use a bucket other
-  than `fire-recovery-store`.
+  than the production ones (`dse-nps-fire-severity-storage`, v1's `fire-recovery-store`).
 - **RustFS not ready in CI**: the workflow waits up to a minute for it to answer; check the
   service container's log in the run.
 

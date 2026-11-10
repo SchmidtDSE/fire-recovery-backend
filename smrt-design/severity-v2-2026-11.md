@@ -172,16 +172,17 @@ spec:
       # node selectors, tolerations and limits come from the target profile
       containers:
         - name: run
-          image: ghcr.io/schmidtdse/fire-recovery-backend@sha256:<the API's own digest>
+          image: ghcr.io/schmidtdse/fire-recovery-backend/severity-batch@sha256:<the API's own digest>
           args: [python, -m, src.v2.run]
           env:
             - {name: SEVERITY_REQUEST, value: "<canonical request JSON>"}
             - {name: JOB_ID, value: "<job id>"}          # the job re-derives it and checks
             - {name: STATUS_URL, value: "<status URL>"}  # for the email
-            - {name: NOTIFY_EMAIL, value: "<requester, optional>"}
             - {name: SEVERITY_WORKDIR, value: /scratch}
           envFrom:
-            - secretRef: {name: severity-v2}   # storage and SMTP credentials
+            # storage and SMTP credentials and the requester's address: a Secret
+            # the API creates for each Job, owned by the Job
+            - secretRef: {name: sev-creds-{job_id}}
           resources:
             requests: {cpu: "2", memory: 2Gi, ephemeral-storage: 10Gi}
           volumeMounts: [{name: scratch, mountPath: /scratch}]
@@ -189,6 +190,9 @@ spec:
 ```
 
 `src/v2/k8s.py` (`job_manifest`) builds this from the target profile in `config/targets/`.
+Profiles use josh's format (SchmidtDSE/josh, `BATCH_REMOTE.md`): JSON naming a kubeconfig
+context, a namespace, the image, resources and spot scheduling. The API reaches the cluster
+through that context, from `KUBECONFIG` or `~/.kube/config`, as josh's dispatcher does.
 
 **Why Kubernetes.**
 
@@ -210,7 +214,7 @@ status, so the pattern is already in use here.
 **Portability.** Nothing in the dispatch path is specific to GKE:
 
 - The Job uses standard `batch/v1` fields. `podFailurePolicy` needs Kubernetes 1.26 or later.
-- The image is public and credentials come from a namespace Secret.
+- The image is public, and each Job's credentials come from a Secret the API creates for it.
 - Status comes from the Job API, so the status URL works on any cluster.
 - One piece is GCP-flavored: the log-based alert. On NRP, use its own monitoring.
 - If the GCS check in §7 passes, storage is S3 with HMAC keys on every cluster. If it fails,
@@ -497,9 +501,10 @@ never uploads it.
   It uploads assets, then items, then `collection.json`, then `catalog.json`. A reader
   therefore never sees a catalog whose files are missing.
 - **One protocol everywhere: S3 with HMAC keys.**
-  - Production stays on GCS, through its S3 endpoint, as v1 uses it today.
-  - CI and local development move from MinIO to RustFS. CI still runs the frozen
-    `bitnamilegacy/minio` image, and local development follows `docs/DEVELOPING.md`.
+  - Production is GCS, through its S3 endpoint, as v1 uses it, but in v2's own bucket,
+    `dse-nps-fire-severity-storage`, named and provisioned like josh's.
+  - CI and local development use RustFS, which replaced the frozen `bitnamilegacy/minio`
+    image (`docs/DEVELOPING.md`).
 - **GCS's S3 endpoint probably accepts push now.**
   - push uses multipart uploads for any file over 5 MiB. Eureka's COGs came to about 3.5 bytes
     per pixel, so a COG crosses that threshold at roughly 1.5 Mpx.
@@ -517,8 +522,8 @@ never uploads it.
 
 - **Sender.** A new Gmail account, sending over SMTP with an app password (which needs 2-step
   verification), through the standard library.
-  - That is the whole setup: one account, one app password, and the credentials in each
-    cluster's `severity-v2` Secret.
+  - That is the whole setup: one account, one app password, and the credentials in the API's
+    environment, which it passes to each Job's Secret.
   - Moving to a relay later is a configuration change.
   - GCP blocks outbound port 25 only, so ports 465 and 587 work from GKE. Check NRP's egress
     rules when it's set up.
@@ -565,9 +570,10 @@ never uploads it.
    - against the real providers
 2. **Provision**, before the merge. IAM details are deferred (see below).
    - a `fire-severity-dev` namespace on josh's GKE cluster, and one on NRP Nautilus
-   - in each namespace, the `severity-v2` Secret (storage and SMTP credentials)
+   - v2's bucket, its storage identity and HMAC key, as fire-recovery-iac's `josh-k8s`
+     provisions josh's
    - the image on GHCR
-   - the API's credentials for each target
+   - a kubeconfig holding each target's context, for the API
    - a log-based alert on failed Jobs on josh's cluster
 3. **Deploy.** Once the acceptance checks pass:
    1. Merge `dev` into `main`, so prod keeps v1.
@@ -649,10 +655,10 @@ Recorded 2026-11-09.
 
 To set up per target when the service account gets its permissions:
 
-- **The API's credential** to create, get, list and delete Jobs, and to read pod logs, in the
-  target's namespace.
-- **Storage credentials for the job.** HMAC keys in each namespace's Secret, which work on any
-  cluster. If the GCS check in §7 fails, `gs://` needs workload identity on GKE and a
+- **The API's credential** to create, get, list and delete Jobs, to create each Job's Secret,
+  and to read pods, in the target's namespace (`deployment/k8s/rbac.yaml`).
+- **Storage credentials for the job.** HMAC keys for v2's bucket, held by the API and passed to
+  each Job's Secret, which work on any cluster. If the GCS check in §7 fails, `gs://` needs workload identity on GKE and a
   service-account key on NRP.
 - **The SMTP credentials.**
 - **Outbound SMTP on NRP.** Unconfirmed. Email is best-effort until it is (§8).
@@ -687,6 +693,7 @@ To set up per target when the service account gets its permissions:
 | 5 | `v2/05-runner` | `python -m src.v2.run`, result record, failure handling, SMTP |
 | 6 | `v2/06-api` | Launchers, target profiles, Job spec, `POST`/`GET /v2/severity`, limits, API keys |
 | 7 | `v2/07-deploy` | One image build to GHCR and Artifact Registry by digest; provisioning manifests; docs |
+| 8 | `v2/08-josh-targets` | Targets, auth, credentials and images as josh does them; v2's own bucket; Kubernetes tests on Kind |
 
 **What implementation found:**
 
@@ -705,15 +712,32 @@ To set up per target when the service account gets its permissions:
 - A full local run took about 10 s for the Geology box: the API with the subprocess launcher,
   a job against Element 84, and an S3 test server.
 
+**2026-11-10: targets, auth and images aligned with josh** (`v2/08-josh-targets`), after
+reading SchmidtDSE/josh and fire-recovery-iac's `josh-k8s` environment:
+
+- Profiles are JSON in josh's format and name a kubeconfig context. People reach josh's GKE
+  cluster as josh's users do (`get-credentials`). The API on Cloud Run reads a mounted
+  kubeconfig with the same context names and the dispatcher's token.
+- Each Job gets a Secret with the API's storage and mail settings and the requester's address,
+  owned by the Job, as josh's dispatcher creates one per Job. No cluster needs a credential
+  Secret by hand, and the address is no longer in the Job spec.
+- The image is `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch`, `{sha}` and `latest`
+  like `joshsim-batch`. PRs from this repo push `{sha}`, so a cluster can run a branch before
+  it merges.
+- v2 writes to its own bucket, `dse-nps-fire-severity-storage`, and never to v1's.
+- The Kubernetes path runs end to end on Kind in CI, as josh's `test-k8s.yaml` does: dispatch
+  through a context with only the dispatcher's role, a real analysis publishing to RustFS in
+  the cluster, and a missing image surfacing as a failure.
+- RustFS now runs in CI (it passed in #28) and locally from pixi's `s3` environment.
+
 **Left before merging into `dev`** (Rollout):
 
 - The acceptance fixtures on real data: a ~100 km fire, a UTM-zone straddle, Landsat, a long
   gap, and the ~38 Mpx, 48-day memory run.
-- RustFS is first exercised in CI. Running its binary locally was blocked, so pushes were
-  checked against moto locally.
-- Provisioning on both clusters (`deployment/k8s/README.md`), and the two Secret Manager
-  secrets the dev deploy maps.
-- The GCS S3 push check (§7), which writes to `fire-recovery-store` and needs approval.
+- Provisioning (`deployment/k8s/README.md`): the namespace on both clusters; v2's bucket, its
+  storage identity and HMAC key, ideally in fire-recovery-iac beside `josh-k8s`; and the
+  Secret Manager secrets the dev deploy maps.
+- The GCS S3 push check (§7), against v2's bucket once it exists.
 - Promoting `dev` to `main` before the stack lands, and refreshing `dev-deployment` (its
   `covers` include the changed workflow) once it has.
 

@@ -1,6 +1,8 @@
-# The identity the API uses to dispatch Jobs: create, read, list and delete
-# Jobs, and read their pods to report why one failed (for example OOMKilled).
-# Nothing else. Its token goes in the kubeconfig the API reads
+# The identity the API uses to dispatch Jobs, with josh's role
+# (fire-recovery-iac, environments/josh-k8s/kubernetes.tf): create and read
+# Jobs, give each its own credentials Secret, and read pods to report why a Job
+# failed (for example OOMKilled). Delete and update cover restarts. Nothing
+# else. Its token goes in the kubeconfig the API reads on Cloud Run
 # (deployment/k8s/README.md).
 apiVersion: v1
 kind: ServiceAccount
@@ -15,10 +17,13 @@ metadata:
   namespace: fire-severity-dev
 rules:
   - apiGroups: ["batch"]
-    resources: ["jobs", "jobs/status"]
-    verbs: ["create", "get", "list", "delete"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
   - apiGroups: [""]
-    resources: ["pods", "pods/log"]
+    resources: ["secrets"]
+    verbs: ["create", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

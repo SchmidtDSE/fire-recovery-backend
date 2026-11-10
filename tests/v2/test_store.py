@@ -2,18 +2,20 @@
 
 import pytest
 
-from src.v2.store import StoreSettings
+from src.v2.store import V1_BUCKET, StoreSettings
 
 CREDENTIALS = {"S3_ACCESS_KEY_ID": "key", "S3_SECRET_ACCESS_KEY": "secret"}
 
 
-def test_defaults_are_production_gcs() -> None:
+def test_defaults_are_production_gcs_in_v2s_own_bucket() -> None:
     settings = StoreSettings.from_env(CREDENTIALS)
     assert settings.endpoint_url == "https://storage.googleapis.com"
-    assert settings.bucket == "fire-recovery-store"
+    assert settings.bucket == "dse-nps-fire-severity-storage"
+    assert settings.bucket != V1_BUCKET
     assert settings.region == "auto"
     assert (
-        settings.public_base_url == "https://storage.googleapis.com/fire-recovery-store"
+        settings.public_base_url
+        == "https://storage.googleapis.com/dse-nps-fire-severity-storage"
     )
 
 

@@ -1,36 +1,66 @@
 """Analysis jobs as Kubernetes Jobs, on any cluster a target profile describes.
 
+Target profiles use josh's format (SchmidtDSE/josh, BATCH_REMOTE.md): JSON with
+``"type": "kubernetes"`` and a ``kubernetes`` block naming a kubeconfig context,
+a namespace, an image, resources and scheduling. The API reaches the cluster
+through that context, read from ``KUBECONFIG`` or ``~/.kube/config``, as josh's
+dispatcher does. Each Job gets a Secret holding the storage and mail settings
+from the API's own environment, owned by the Job: credentials never appear in a
+Job spec, no cluster needs a credential Secret made by hand, and the Secret goes
+when the Job does.
+
 The Job spec (design §1) retries only what the platform did to a pod: an
 evicted or preempted pod (condition DisruptionTarget) is rescheduled, and any
 failure of ours is final (backoffLimit 0). A deadline caps the whole run,
-rescheduling included. Everything cluster-specific lives in the profile:
-namespace, credentials, scheduling, resources.
+rescheduling included.
 """
 
+import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
-import yaml
 from kubernetes import client as k8s_client
 from kubernetes.client.exceptions import ApiException
-from kubernetes.config import new_client_from_config_dict
+from kubernetes.config import new_client_from_config
 
 from src.v2.constants import ENV_IMAGE
-from src.v2.launcher import DispatchUnavailable, JobSpec, JobStatus
+from src.v2.launcher import ENV_NOTIFY_EMAIL, DispatchUnavailable, JobSpec, JobStatus
 
 logger = logging.getLogger(__name__)
 
-PROFILES_DIR = Path(__file__).resolve().parents[2] / "config" / "targets"
+ENV_TARGETS_DIR = "SEVERITY_TARGETS_DIR"
+DEFAULT_TARGETS_DIR = Path(__file__).resolve().parents[2] / "config" / "targets"
+TARGET_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 APP_LABEL = "severity-v2"
 JOB_ID_LABEL = "severity-v2/job-id"
 JOB_NAME_PREFIX = "sev-"
+SECRET_NAME_PREFIX = "sev-creds-"
 CONTAINER_NAME = "run"
 SCRATCH_PATH = "/scratch"
+SPOT_LABEL = "cloud.google.com/gke-spot"
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
+
+# What a job needs from the API's environment: storage, and mail if configured.
+CREDENTIAL_ENV = (
+    "S3_ENDPOINT",
+    "S3_SECURE",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_PUBLIC_BASE_URL",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "SMTP_FROM",
+    "OPERATOR_EMAIL",
+)
 
 
 def job_name(job_id: str) -> str:
@@ -38,48 +68,85 @@ def job_name(job_id: str) -> str:
     return f"{JOB_NAME_PREFIX}{job_id}"
 
 
+def secret_name(job_id: str) -> str:
+    return f"{SECRET_NAME_PREFIX}{job_id}"
+
+
 @dataclass(frozen=True)
 class TargetProfile:
-    """One cluster: where Jobs go, how the API reaches it, how pods are scheduled."""
+    """One cluster, in josh's profile format: how to reach it and how pods run."""
 
     name: str
     namespace: str
-    kubeconfig_env: str
-    secret_name: str = "severity-v2"
-    node_selector: Dict[str, str] = field(default_factory=dict)
-    tolerations: List[Dict[str, Any]] = field(default_factory=list)
+    # A kubeconfig context; None means the kubeconfig's current context.
+    context: Optional[str] = None
+    # Used when SEVERITY_IMAGE is unset; the deploy pins a digest instead.
+    image: Optional[str] = None
     resources: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    timeout_seconds: int = 21600
+    ttl_seconds_after_finished: int = 86400
+    spot: bool = False
+    node_selector: Dict[str, str] = field(default_factory=dict)
+    # Where pods reach storage, when not where the API does (in CI, a service
+    # inside the cluster).
+    pod_s3_endpoint: Optional[str] = None
     threads: int = 2
     scratch_size: str = "10Gi"
-    active_deadline_seconds: int = 21600
-    ttl_seconds_after_finished: int = 86400
 
     @classmethod
-    def load(cls, name: str, directory: Path = PROFILES_DIR) -> "TargetProfile":
-        """Read ``config/targets/{name}.yaml``.
+    def load(cls, name: str, directory: Optional[Path] = None) -> "TargetProfile":
+        """Read ``{name}.json`` from SEVERITY_TARGETS_DIR, by default config/targets/.
 
         Raises:
             FileNotFoundError: if there is no such profile.
+            ValueError: if the name or the profile is invalid.
         """
-        data = yaml.safe_load((directory / f"{name}.yaml").read_text())
-        return cls(name=name, **data)
+        if not TARGET_NAME.match(name):
+            raise ValueError(f"Invalid target name {name!r}")
+        root = directory or Path(os.environ.get(ENV_TARGETS_DIR) or DEFAULT_TARGETS_DIR)
+        data = json.loads((root / f"{name}.json").read_text())
+        k8s = data.get("kubernetes")
+        if data.get("type") != "kubernetes" or not isinstance(k8s, dict):
+            raise ValueError(f"Target {name!r} is not a Kubernetes profile")
+        if not k8s.get("namespace"):
+            raise ValueError(f"Target {name!r} names no namespace")
+        return cls(
+            name=name,
+            namespace=k8s["namespace"],
+            context=k8s.get("context"),
+            image=k8s.get("image"),
+            resources=k8s.get("resources") or {},
+            timeout_seconds=int(k8s.get("timeoutSeconds", 21600)),
+            ttl_seconds_after_finished=int(k8s.get("ttlSecondsAfterFinished", 86400)),
+            spot=bool(k8s.get("spot", False)),
+            node_selector=k8s.get("nodeSelector") or {},
+            pod_s3_endpoint=k8s.get("pod_s3_endpoint"),
+            threads=int(k8s.get("threads", 2)),
+            scratch_size=str(k8s.get("scratchSize", "10Gi")),
+        )
+
+
+def labels(job_id: str) -> Dict[str, str]:
+    return {"app": APP_LABEL, JOB_ID_LABEL: job_id}
 
 
 def job_manifest(spec: JobSpec, profile: TargetProfile, image: str) -> Dict[str, Any]:
     """The batch/v1 Job for one analysis."""
-    labels = {"app": APP_LABEL, JOB_ID_LABEL: spec.job_id}
-    env = {
-        **spec.environment(),
-        ENV_IMAGE: image,
-        "SEVERITY_WORKDIR": SCRATCH_PATH,
-        "SEVERITY_THREADS": str(profile.threads),
-    }
+    # The requester's address goes in the Job's Secret, not in its spec.
+    env = {k: v for k, v in spec.environment().items() if k != ENV_NOTIFY_EMAIL}
+    env.update(
+        {
+            ENV_IMAGE: image,
+            "SEVERITY_WORKDIR": SCRATCH_PATH,
+            "SEVERITY_THREADS": str(profile.threads),
+        }
+    )
     container: Dict[str, Any] = {
         "name": CONTAINER_NAME,
         "image": image,
         "args": ["python", "-m", "src.v2.run"],
         "env": [{"name": key, "value": value} for key, value in env.items()],
-        "envFrom": [{"secretRef": {"name": profile.secret_name}}],
+        "envFrom": [{"secretRef": {"name": secret_name(spec.job_id)}}],
         "volumeMounts": [{"name": "scratch", "mountPath": SCRATCH_PATH}],
     }
     if profile.resources:
@@ -94,14 +161,27 @@ def job_manifest(spec: JobSpec, profile: TargetProfile, image: str) -> Dict[str,
             {"name": "scratch", "emptyDir": {"sizeLimit": profile.scratch_size}}
         ],
     }
-    if profile.node_selector:
-        pod_spec["nodeSelector"] = profile.node_selector
-    if profile.tolerations:
-        pod_spec["tolerations"] = profile.tolerations
+    node_selector = dict(profile.node_selector)
+    tolerations: List[Dict[str, str]] = []
+    if profile.spot:
+        # As josh does: spot nodes, and the taint GKE gives them.
+        node_selector[SPOT_LABEL] = "true"
+        tolerations.append(
+            {
+                "key": SPOT_LABEL,
+                "operator": "Equal",
+                "value": "true",
+                "effect": "NoSchedule",
+            }
+        )
+    if node_selector:
+        pod_spec["nodeSelector"] = node_selector
+    if tolerations:
+        pod_spec["tolerations"] = tolerations
     return {
         "apiVersion": "batch/v1",
         "kind": "Job",
-        "metadata": {"name": job_name(spec.job_id), "labels": labels},
+        "metadata": {"name": job_name(spec.job_id), "labels": labels(spec.job_id)},
         "spec": {
             # A failure of ours is never retried...
             "backoffLimit": 0,
@@ -114,10 +194,46 @@ def job_manifest(spec: JobSpec, profile: TargetProfile, image: str) -> Dict[str,
                     }
                 ]
             },
-            "activeDeadlineSeconds": profile.active_deadline_seconds,
+            "activeDeadlineSeconds": profile.timeout_seconds,
             "ttlSecondsAfterFinished": profile.ttl_seconds_after_finished,
-            "template": {"metadata": {"labels": labels}, "spec": pod_spec},
+            "template": {"metadata": {"labels": labels(spec.job_id)}, "spec": pod_spec},
         },
+    }
+
+
+def job_credentials(
+    spec: JobSpec, profile: TargetProfile, env: Mapping[str, str]
+) -> Dict[str, str]:
+    """The Job's Secret: the API's storage and mail settings, and who to tell."""
+    data = {key: env[key] for key in CREDENTIAL_ENV if env.get(key)}
+    if profile.pod_s3_endpoint:
+        data["S3_ENDPOINT"] = profile.pod_s3_endpoint
+    if spec.notify_email:
+        data[ENV_NOTIFY_EMAIL] = spec.notify_email
+    return data
+
+
+def secret_manifest(
+    spec: JobSpec, profile: TargetProfile, env: Mapping[str, str], owner_uid: str
+) -> Dict[str, Any]:
+    """The v1 Secret a Job reads, deleted with the Job (by its TTL or a restart)."""
+    return {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "type": "Opaque",
+        "metadata": {
+            "name": secret_name(spec.job_id),
+            "labels": labels(spec.job_id),
+            "ownerReferences": [
+                {
+                    "apiVersion": "batch/v1",
+                    "kind": "Job",
+                    "name": job_name(spec.job_id),
+                    "uid": owner_uid,
+                }
+            ],
+        },
+        "stringData": job_credentials(spec, profile, env),
     }
 
 
@@ -146,46 +262,79 @@ class KubernetesLauncher:
         image: Optional[str],
         batch: Optional[Any] = None,
         core: Optional[Any] = None,
+        env: Optional[Mapping[str, str]] = None,
     ):
         self.profile = profile
         self.image = image
         self._batch = batch
         self._core = core
+        self._env = env
 
     def _apis(self) -> tuple[Any, Any]:
         if self._batch is None or self._core is None:
-            text = os.environ.get(self.profile.kubeconfig_env)
-            if not text:
-                raise DispatchUnavailable(
-                    f"{self.profile.kubeconfig_env} is not set: no credentials for "
-                    f"target {self.profile.name!r}"
+            try:
+                api_client = new_client_from_config(
+                    context=self.profile.context, persist_config=False
                 )
-            api_client = new_client_from_config_dict(yaml.safe_load(text))
+            except Exception as e:  # no kubeconfig, no such context, a failing plugin
+                raise DispatchUnavailable(
+                    f"No usable kubeconfig context {self.profile.context!r} for target "
+                    f"{self.profile.name!r} (KUBECONFIG or ~/.kube/config): {e}"
+                ) from e
             self._batch = k8s_client.BatchV1Api(api_client)
             self._core = k8s_client.CoreV1Api(api_client)
         return self._batch, self._core
 
     def start(self, spec: JobSpec) -> bool:
         if not self.image:
-            raise DispatchUnavailable(f"{ENV_IMAGE} is not set: no image to run")
-        batch, _ = self._apis()
+            raise DispatchUnavailable(
+                f"{ENV_IMAGE} is not set and target {self.profile.name!r} names no image"
+            )
+        batch, core = self._apis()
         try:
-            batch.create_namespaced_job(
+            job = batch.create_namespaced_job(
                 self.profile.namespace, job_manifest(spec, self.profile, self.image)
             )
         except ApiException as e:
             if e.status == HTTP_CONFLICT:
                 return False
             raise DispatchUnavailable(f"Creating the Job failed: {e.reason}") from e
+        # Created after the Job, so it can name the Job as its owner; the pod
+        # waits for it.
+        env = os.environ if self._env is None else self._env
+        try:
+            self._put_secret(
+                core, secret_manifest(spec, self.profile, env, job.metadata.uid)
+            )
+        except ApiException as e:
+            # Without its credentials the pod could only wait out its deadline.
+            self.delete(spec.job_id)
+            raise DispatchUnavailable(
+                f"Creating the Job's credentials failed: {e.reason}"
+            ) from e
         logger.info(f"Created Job {job_name(spec.job_id)} in {self.profile.namespace}")
         return True
+
+    def _put_secret(self, core: Any, secret: Dict[str, Any]) -> None:
+        name, namespace = secret["metadata"]["name"], self.profile.namespace
+        try:
+            core.create_namespaced_secret(namespace, secret)
+            return
+        except ApiException as e:
+            if e.status != HTTP_CONFLICT:
+                raise
+        # Left by the Job this one replaces, and not yet collected.
+        try:
+            core.replace_namespaced_secret(name, namespace, secret)
+        except ApiException as e:
+            if e.status != HTTP_NOT_FOUND:
+                raise
+            core.create_namespaced_secret(namespace, secret)
 
     def status(self, job_id: str) -> JobStatus:
         batch, _ = self._apis()
         try:
-            job = batch.read_namespaced_job_status(
-                job_name(job_id), self.profile.namespace
-            )
+            job = batch.read_namespaced_job(job_name(job_id), self.profile.namespace)
         except ApiException as e:
             if e.status == HTTP_NOT_FOUND:
                 return JobStatus("unknown")
@@ -212,12 +361,17 @@ class KubernetesLauncher:
             for container in (
                 (pod.status.container_statuses or []) if pod.status else []
             ):
-                terminated = container.state.terminated if container.state else None
+                state = container.state
+                terminated = state.terminated if state else None
                 if terminated is not None and terminated.reason:
                     return str(terminated.reason)
+                waiting = state.waiting if state else None
+                if waiting is not None and waiting.reason:
+                    return str(waiting.reason)
         return None
 
     def delete(self, job_id: str) -> None:
+        """Delete the Job; its pods and Secret follow, as its dependents."""
         batch, _ = self._apis()
         try:
             batch.delete_namespaced_job(
