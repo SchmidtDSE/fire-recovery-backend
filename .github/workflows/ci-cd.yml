@@ -7,6 +7,12 @@ on:
   # secrets (publish-schema, deploy) run only on push to dev or main.
   pull_request:
 
+# A new push to a PR cancels that PR's checks still running. Pushes to dev and
+# main always run to the end (their deploys queue, see the deploy job).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Job 1: Type checking (runs in parallel, no secrets)
   mypy:
