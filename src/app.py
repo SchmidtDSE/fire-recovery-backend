@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from src.v2 import api as severity_v2
 from src.v2.constants import ENV_GIT_SHA, ENV_IMAGE, PIPELINE_VERSION
 
 logging.basicConfig(
@@ -90,10 +91,16 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+app.include_router(severity_v2.router)
+
 
 @app.get("/", tags=["Root"])
 async def root() -> dict[str, str]:
-    return {"message": "Fire Recovery Backend", "docs_url": "/docs"}
+    return {
+        "message": "Fire Recovery Backend",
+        "docs_url": "/docs",
+        "severity": "/v2/severity",
+    }
 
 
 @app.get("/healthz", response_model=HealthResponse, tags=["Health"])

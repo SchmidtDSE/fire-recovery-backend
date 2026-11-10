@@ -1,6 +1,343 @@
 {
   "components": {
     "schemas": {
+      "BaseModel": {
+        "properties": {},
+        "title": "BaseModel",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "Feature": {
+        "description": "Feature Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "GeometryCollection": "#/components/schemas/GeometryCollection",
+                    "LineString": "#/components/schemas/LineString",
+                    "MultiLineString": "#/components/schemas/MultiLineString",
+                    "MultiPoint": "#/components/schemas/MultiPoint",
+                    "MultiPolygon": "#/components/schemas/MultiPolygon",
+                    "Point": "#/components/schemas/Point",
+                    "Polygon": "#/components/schemas/Polygon"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Point"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MultiPoint"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LineString"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MultiLineString"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Polygon"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MultiPolygon"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GeometryCollection"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometry"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "$ref": "#/components/schemas/BaseModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Properties"
+          },
+          "type": {
+            "const": "Feature",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "geometry",
+          "properties"
+        ],
+        "title": "Feature",
+        "type": "object"
+      },
+      "GeometryCollection": {
+        "description": "GeometryCollection Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "geometries": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "GeometryCollection": "#/components/schemas/GeometryCollection",
+                  "LineString": "#/components/schemas/LineString",
+                  "MultiLineString": "#/components/schemas/MultiLineString",
+                  "MultiPoint": "#/components/schemas/MultiPoint",
+                  "MultiPolygon": "#/components/schemas/MultiPolygon",
+                  "Point": "#/components/schemas/Point",
+                  "Polygon": "#/components/schemas/Polygon"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Point"
+                },
+                {
+                  "$ref": "#/components/schemas/MultiPoint"
+                },
+                {
+                  "$ref": "#/components/schemas/LineString"
+                },
+                {
+                  "$ref": "#/components/schemas/MultiLineString"
+                },
+                {
+                  "$ref": "#/components/schemas/Polygon"
+                },
+                {
+                  "$ref": "#/components/schemas/MultiPolygon"
+                },
+                {
+                  "$ref": "#/components/schemas/GeometryCollection"
+                }
+              ]
+            },
+            "title": "Geometries",
+            "type": "array"
+          },
+          "type": {
+            "const": "GeometryCollection",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "geometries"
+        ],
+        "title": "GeometryCollection",
+        "type": "object"
+      },
+      "GridInfo": {
+        "description": "The output raster's grid and the tile range it came from.",
+        "properties": {
+          "bounds": {
+            "maxItems": 4,
+            "minItems": 4,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Bounds",
+            "type": "array"
+          },
+          "epsg": {
+            "title": "Epsg",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "resolution": {
+            "title": "Resolution",
+            "type": "integer"
+          },
+          "tiles": {
+            "$ref": "#/components/schemas/TileRange"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "epsg",
+          "resolution",
+          "bounds",
+          "width",
+          "height",
+          "tiles"
+        ],
+        "title": "GridInfo",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Liveness: the process is up and serving requests.",
         "properties": {
@@ -15,6 +352,919 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "LineString": {
+        "description": "LineString Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Position2D"
+                },
+                {
+                  "$ref": "#/components/schemas/Position3D"
+                }
+              ]
+            },
+            "minItems": 2,
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "LineString",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "LineString",
+        "type": "object"
+      },
+      "MultiLineString": {
+        "description": "MultiLineString Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Position2D"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Position3D"
+                  }
+                ]
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "MultiLineString",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "MultiLineString",
+        "type": "object"
+      },
+      "MultiPoint": {
+        "description": "MultiPoint Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Position2D"
+                },
+                {
+                  "$ref": "#/components/schemas/Position3D"
+                }
+              ]
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "MultiPoint",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "MultiPoint",
+        "type": "object"
+      },
+      "MultiPolygon": {
+        "description": "MultiPolygon Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Position2D"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Position3D"
+                    }
+                  ]
+                },
+                "minItems": 4,
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "MultiPolygon",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "MultiPolygon",
+        "type": "object"
+      },
+      "Point": {
+        "description": "Point Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Position2D"
+              },
+              {
+                "$ref": "#/components/schemas/Position3D"
+              }
+            ],
+            "title": "Coordinates"
+          },
+          "type": {
+            "const": "Point",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "Polygon": {
+        "description": "Polygon Model",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 6,
+                "minItems": 6,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Position2D"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Position3D"
+                  }
+                ]
+              },
+              "minItems": 4,
+              "type": "array"
+            },
+            "title": "Coordinates",
+            "type": "array"
+          },
+          "type": {
+            "const": "Polygon",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "Polygon",
+        "type": "object"
+      },
+      "Position2D": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "title": "Longitude",
+            "type": "number"
+          },
+          {
+            "title": "Latitude",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "Position3D": {
+        "maxItems": 3,
+        "minItems": 3,
+        "prefixItems": [
+          {
+            "title": "Longitude",
+            "type": "number"
+          },
+          {
+            "title": "Latitude",
+            "type": "number"
+          },
+          {
+            "title": "Altitude",
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "SeverityAccepted": {
+        "description": "The analysis is queued or running: poll the status URL.",
+        "properties": {
+          "grid": {
+            "$ref": "#/components/schemas/GridInfo"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "status_url": {
+            "title": "Status Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "grid",
+          "status_url"
+        ],
+        "title": "SeverityAccepted",
+        "type": "object"
+      },
+      "SeverityRequest": {
+        "description": "Request for a fire severity analysis.",
+        "example": {
+          "fire_event_name": "Geology_Fire",
+          "geometry": {
+            "coordinates": [
+              [
+                [
+                  -116.098276,
+                  33.929925
+                ],
+                [
+                  -116.098276,
+                  33.880794
+                ],
+                [
+                  -116.019318,
+                  33.880794
+                ],
+                [
+                  -116.019318,
+                  33.929925
+                ],
+                [
+                  -116.098276,
+                  33.929925
+                ]
+              ]
+            ],
+            "type": "Polygon"
+          },
+          "postfire_window": [
+            "2023-06-17",
+            "2023-06-22"
+          ],
+          "prefire_window": [
+            "2023-06-01",
+            "2023-06-09"
+          ],
+          "sensor": "sentinel-2"
+        },
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional address to email when the analysis finishes. Never stored; the status URL works without it.",
+            "title": "Email"
+          },
+          "fire_event_name": {
+            "description": "Name of the fire event: letters, digits, '_' and '-' only. Validated, never transformed; it is part of the job id.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Fire Event Name",
+            "type": "string"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Polygon"
+              },
+              {
+                "$ref": "#/components/schemas/MultiPolygon"
+              },
+              {
+                "$ref": "#/components/schemas/Feature"
+              }
+            ],
+            "description": "Fire perimeter: a Polygon, a MultiPolygon, or a Feature holding one. Only its bounds are used, and it is not stored.",
+            "title": "Geometry"
+          },
+          "postfire_window": {
+            "description": "[start, end] as ISO dates or datetimes (naive values are UTC). The end date includes its whole day. Hashed verbatim, so '2023-06-01' and '2023-06-01T00:00:00' are different requests.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Postfire Window",
+            "type": "array"
+          },
+          "prefire_window": {
+            "description": "[start, end] as ISO dates or datetimes (naive values are UTC). The end date includes its whole day. Hashed verbatim, so '2023-06-01' and '2023-06-01T00:00:00' are different requests.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Prefire Window",
+            "type": "array"
+          },
+          "sensor": {
+            "default": "sentinel-2",
+            "description": "Satellite source: 'sentinel-2' (default) or 'landsat'",
+            "enum": [
+              "sentinel-2",
+              "landsat"
+            ],
+            "title": "Sensor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fire_event_name",
+          "geometry",
+          "prefire_window",
+          "postfire_window"
+        ],
+        "title": "SeverityRequest",
+        "type": "object"
+      },
+      "SeverityResult": {
+        "description": "The analysis already exists: links to its catalog and assets.",
+        "properties": {
+          "assets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Assets",
+            "type": "object"
+          },
+          "catalog_url": {
+            "title": "Catalog Url",
+            "type": "string"
+          },
+          "grid": {
+            "$ref": "#/components/schemas/GridInfo"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "state": {
+            "const": "succeeded",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state",
+          "grid",
+          "catalog_url",
+          "assets"
+        ],
+        "title": "SeverityResult",
+        "type": "object"
+      },
+      "SeverityStatus": {
+        "description": "Where an analysis stands.",
+        "properties": {
+          "assets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Assets",
+            "type": "object"
+          },
+          "catalog_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Url"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it failed: the job's own reason, or the platform's (e.g. OOMKilled)",
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "fire_event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fire Event Name"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "pipeline_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Version"
+          },
+          "scene_counts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Counts"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state"
+        ],
+        "title": "SeverityStatus",
+        "type": "object"
+      },
+      "TileRange": {
+        "additionalProperties": false,
+        "description": "An inclusive range of WebMercatorQuad tiles at one zoom: the spatial key.",
+        "properties": {
+          "tms": {
+            "const": "WebMercatorQuad",
+            "default": "WebMercatorQuad",
+            "title": "Tms",
+            "type": "string"
+          },
+          "x": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "X",
+            "type": "array"
+          },
+          "y": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Y",
+            "type": "array"
+          },
+          "z": {
+            "title": "Z",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "z",
+          "x",
+          "y"
+        ],
+        "title": "TileRange",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       },
       "VersionResponse": {
@@ -109,6 +1359,153 @@
         "summary": "Healthz",
         "tags": [
           "Health"
+        ]
+      }
+    },
+    "/v2/severity": {
+      "post": {
+        "description": "Submit an analysis, or get the existing one for the same key.\n\nRequests whose perimeters snap to the same tiles, with the same name,\nwindows and sensor, share one job id and one analysis. The status URL\nalways works; the optional email reaches the requester whose submission\nstarts the job.",
+        "operationId": "submit_severity_v2_severity_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeverityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeverityResult"
+                }
+              }
+            },
+            "description": "Already computed: the links"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeverityAccepted"
+                }
+              }
+            },
+            "description": "Queued or running: poll status_url"
+          },
+          "422": {
+            "description": "Invalid request, or an area beyond the limits"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Too many requests; see Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Storage or job dispatch unavailable"
+          }
+        },
+        "summary": "Submit Severity",
+        "tags": [
+          "Severity v2"
+        ]
+      }
+    },
+    "/v2/severity/{job_id}": {
+      "get": {
+        "description": "An analysis's state, its links when done, and its error when failed.",
+        "operationId": "severity_status_v2_severity__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeverityStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Severity Status",
+        "tags": [
+          "Severity v2"
         ]
       }
     },

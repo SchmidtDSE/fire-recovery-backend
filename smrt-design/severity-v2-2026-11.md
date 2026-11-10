@@ -176,12 +176,19 @@ spec:
           args: [python, -m, src.v2.run]
           env:
             - {name: SEVERITY_REQUEST, value: "<canonical request JSON>"}
+            - {name: JOB_ID, value: "<job id>"}          # the job re-derives it and checks
+            - {name: STATUS_URL, value: "<status URL>"}  # for the email
             - {name: NOTIFY_EMAIL, value: "<requester, optional>"}
+            - {name: SEVERITY_WORKDIR, value: /scratch}
           envFrom:
             - secretRef: {name: severity-v2}   # storage and SMTP credentials
           resources:
             requests: {cpu: "2", memory: 2Gi, ephemeral-storage: 10Gi}
+          volumeMounts: [{name: scratch, mountPath: /scratch}]
+      volumes: [{name: scratch, emptyDir: {sizeLimit: 10Gi}}]
 ```
+
+`src/v2/k8s.py` (`job_manifest`) builds this from the target profile in `config/targets/`.
 
 **Why Kubernetes.**
 

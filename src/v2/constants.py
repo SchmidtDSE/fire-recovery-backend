@@ -18,3 +18,16 @@ MAX_BUFFERED_MEGAPIXELS = 100.0
 # A coarser snap keeps more keys stable but adds more area (design §6). Part of
 # the key's definition: changing it re-keys every analysis.
 SNAP_TILES_PER_SIDE = 8
+
+# Concurrency and access (design §6). Placeholders, like the limits above.
+MAX_ACTIVE_JOBS = 4
+ANONYMOUS_STARTS_PER_WINDOW = 10
+RATE_WINDOW_SECONDS = 3600
+BUSY_RETRY_AFTER_SECONDS = 60
+
+# API configuration.
+ENV_TARGET = "SEVERITY_TARGET"  # a profile in config/targets/, or "local"
+LOCAL_TARGET = "local"
+ENV_API_URL = (
+    "SEVERITY_API_URL"  # public base URL for status links, if not the request's
+)

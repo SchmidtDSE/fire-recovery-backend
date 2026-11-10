@@ -37,6 +37,10 @@ odc-geo = ">=0.5.0,<0.6"
 # h3shape_to_cells_experimental, which has no stability guarantee.
 h3-py = "==4.5.0"
 obstore = ">=0.12.1,<0.13"
+# Starts and watches analysis Jobs on the target cluster.
+python-kubernetes = ">=37,<38"
+# botocore (via portolan-cli's geoparquet-io) needs python-dateutil<3.
+python-dateutil = ">=2.8,<3"
 # portolan-cli's and rashid's compiled dependencies, from conda-forge rather
 # than PyPI: a pip wheel (pyarrow first among them) loads the system libstdc++,
 # and then conda's GDAL and PROJ fail to import.

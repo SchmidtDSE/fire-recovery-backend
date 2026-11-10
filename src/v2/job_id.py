@@ -14,11 +14,11 @@ vectors follow deterministic-job-id-2026-09.
 import json
 import re
 import uuid
-from typing import Final, Literal
+from typing import Final, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from src.util.geo_ops import buffered_bounds
+from src.util.geo_ops import Bounds, buffered_bounds
 from src.v2.constants import PIPELINE_VERSION
 from src.v2.grid import TileRange, snap_tiles
 from src.v2.request import SeverityRequest
@@ -53,15 +53,23 @@ class CanonicalRequest(BaseModel):
         return str(uuid.uuid5(NAMESPACE, self.to_json()))
 
 
+def buffered_box(request: SeverityRequest) -> Bounds:
+    """The request's normalized bounds with v1's metric buffer (geo_ops)."""
+    padded, _ = buffered_bounds(request.bounds_geometry())
+    return padded
+
+
 def canonical_request(
-    request: SeverityRequest, pipeline_version: int = PIPELINE_VERSION
+    request: SeverityRequest,
+    pipeline_version: int = PIPELINE_VERSION,
+    padded: Optional[Bounds] = None,
 ) -> CanonicalRequest:
     """Canonicalize a validated request: buffer its bounds and snap them to tiles.
 
     Raises:
         ValueError: if the buffered box falls outside the tile grid.
     """
-    padded, _ = buffered_bounds(request.bounds_geometry())
+    padded = padded if padded is not None else buffered_box(request)
     return CanonicalRequest(
         operation=OPERATION,
         pipeline_version=pipeline_version,
