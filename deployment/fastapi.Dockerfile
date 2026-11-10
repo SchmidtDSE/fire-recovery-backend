@@ -4,6 +4,10 @@ FROM ghcr.io/prefix-dev/pixi:0.45.0-bookworm-slim
 # Install CA certificates for TLS (required by obstore/rustls)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# The project's own directory. The base image sets none, and building the repo's
+# editable package at / walks the whole filesystem, /proc's links back to / included.
+WORKDIR /app
+
 # Copy pixi environment files
 COPY pixi.toml pixi.toml
 COPY pixi.lock pixi.lock
