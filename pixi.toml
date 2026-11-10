@@ -11,6 +11,12 @@ ruff-check = "ruff check ."
 ruff-format = "ruff format ."
 ruff-fix = "ruff check . --fix"
 
+# The storage tests against local RustFS: start it with `pixi run -e s3 s3-server` and
+# create the bucket with `pixi run -e s3 s3-bucket` first.
+[tasks.storage-test]
+cmd = "python -m pytest -m storage"
+env = { RUN_STORAGE_TESTS = "1", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
+
 [dependencies]
 python = "3.12.*"
 numpy = ">=2.2.4,<3"
@@ -82,3 +88,17 @@ portolan-cli = "==0.9.0"
 rashid = "==0.3.0"
 # This repo, so portolan finds the enrich plugin (see pyproject.toml).
 fire-recovery-backend = { path = ".", editable = true }
+
+# Local S3: the RustFS version CI runs as a service container (keep it in step with
+# rustfs/rustfs in .github/workflows/ci-cd.yml), and the AWS CLI to create the bucket. Its
+# own environment keeps both out of the image, which installs only the default one.
+[feature.s3.dependencies]
+rustfs = "==1.0.4"
+awscli = ">=2.38,<3"
+
+[feature.s3.tasks]
+s3-server = { cmd = "mkdir -p .rustfs && rustfs server --address 127.0.0.1:9000 .rustfs", env = { RUSTFS_ACCESS_KEY = "dev-access-key", RUSTFS_SECRET_KEY = "dev-secret-key" } }
+s3-bucket = { cmd = "aws s3api head-bucket --bucket dev-bucket 2> /dev/null || aws s3 mb s3://dev-bucket", env = { AWS_ENDPOINT_URL = "http://127.0.0.1:9000", AWS_ACCESS_KEY_ID = "dev-access-key", AWS_SECRET_ACCESS_KEY = "dev-secret-key", AWS_DEFAULT_REGION = "us-east-1" } }
+
+[environments]
+s3 = { features = ["s3"], no-default-feature = true }

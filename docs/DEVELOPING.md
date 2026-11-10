@@ -179,25 +179,22 @@ for anything else.
 
 ### Local storage with RustFS
 
-1. Start RustFS (the version CI uses):
-   ```bash
-   docker run -d --name rustfs -p 9000:9000 -p 9001:9001 \
-     -e RUSTFS_ACCESS_KEY=dev-access-key \
-     -e RUSTFS_SECRET_KEY=dev-secret-key \
-     -v /tmp/rustfs-data:/data \
-     rustfs/rustfs:1.0.4
-   ```
-   The console is at http://localhost:9001.
+Pixi's `s3` environment has RustFS from conda-forge, at the version CI runs, and the AWS CLI.
+It is separate from the default environment, so neither reaches the image.
 
-2. Create a bucket, for example with the AWS CLI:
+1. Start RustFS on `127.0.0.1:9000` and leave it running. Its data goes in `.rustfs/`.
    ```bash
-   AWS_ACCESS_KEY_ID=dev-access-key AWS_SECRET_ACCESS_KEY=dev-secret-key \
-     aws --endpoint-url http://localhost:9000 --region us-east-1 s3 mb s3://dev-bucket
+   pixi run -e s3 s3-server
+   ```
+
+2. Create `dev-bucket`. Running it again does nothing.
+   ```bash
+   pixi run -e s3 s3-bucket
    ```
 
 3. Point the app and the job at it, in `.devcontainer/.env`:
    ```dotenv
-   S3_ENDPOINT=localhost:9000
+   S3_ENDPOINT=127.0.0.1:9000
    S3_SECURE=False
    S3_BUCKET=dev-bucket
    S3_REGION=us-east-1
@@ -212,11 +209,9 @@ for anything else.
 - **Network tests** read real STAC APIs and imagery: `pixi run pytest -m network`.
 - **Storage tests** push a catalog with a COG over 5 MiB to a real S3-compatible store. They
   run only with `RUN_STORAGE_TESTS=1` and an explicit `S3_ENDPOINT`, and refuse the production
-  bucket:
+  bucket. With RustFS running and `dev-bucket` created (above), this sets both and runs them:
   ```bash
-  RUN_STORAGE_TESTS=1 S3_ENDPOINT=localhost:9000 S3_SECURE=False S3_BUCKET=dev-bucket \
-    S3_REGION=us-east-1 S3_ACCESS_KEY_ID=dev-access-key S3_SECRET_ACCESS_KEY=dev-secret-key \
-    pixi run pytest tests/v2/test_publish_storage.py
+  pixi run storage-test
   ```
 
 pytest loads `.devcontainer/test.env` and `.devcontainer/.env` if they exist (`pytest.ini`).
@@ -244,7 +239,8 @@ The API reads the result records with GCS HMAC credentials, injected as `S3_ACCE
 
 #### Credential Rotation
 
-**Local RustFS credentials** are local-only; restart RustFS with new ones if concerned.
+**Local RustFS credentials** are fixed in `pixi.toml` and local-only: RustFS listens on
+`127.0.0.1`.
 
 **GCS HMAC credentials**, if exposed:
 1. **Immediately** delete the exposed HMAC key in the
