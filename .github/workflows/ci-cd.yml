@@ -24,7 +24,7 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
         with:
-          pixi-version: v0.40.0
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
           cache: true
 
       - name: Run mypy
@@ -40,7 +40,7 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
         with:
-          pixi-version: v0.40.0
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
           cache: true
 
       - name: Run ruff check
@@ -54,23 +54,25 @@ jobs:
     name: Pytest
     runs-on: ubuntu-latest
 
+    # RustFS, the S3-compatible store for CI and local development (MinIO's
+    # community image is deprecated). The storage tests push a catalog to it.
     services:
-      minio:
-        image: bitnamilegacy/minio:latest
+      rustfs:
+        image: rustfs/rustfs:1.0.4
         ports:
           - 9000:9000
-          - 9001:9001
         env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: test-bucket:download
-          MINIO_SCHEME: http
-          BITNAMI_DEBUG: false
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/ready || curl -f http://localhost:9000/minio/health/live"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          RUSTFS_ACCESS_KEY: ci-access-key
+          RUSTFS_SECRET_KEY: ci-secret-key
+
+    env:
+      S3_ENDPOINT: localhost:9000
+      S3_ACCESS_KEY_ID: ci-access-key
+      S3_SECRET_ACCESS_KEY: ci-secret-key
+      S3_SECURE: "False"
+      S3_BUCKET: test-bucket
+      S3_REGION: us-east-1
+      RUN_STORAGE_TESTS: "1"
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -78,60 +80,31 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
         with:
-          pixi-version: v0.40.0
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
 
-      - name: Create test environment files
+      - name: Wait for RustFS and create the test bucket
+        env:
+          AWS_ACCESS_KEY_ID: ci-access-key
+          AWS_SECRET_ACCESS_KEY: ci-secret-key
+          AWS_DEFAULT_REGION: us-east-1
         run: |
-          mkdir -p .devcontainer
-
-          # Create test.env with S3_* variables (new standard)
-          cat > .devcontainer/test.env << EOF
-          S3_ENDPOINT=localhost:9000
-          S3_ACCESS_KEY_ID=minioadmin
-          S3_SECRET_ACCESS_KEY=minioadmin
-          S3_SECURE=False
-          S3_BUCKET=test-bucket
-          EOF
-
-          # Create .env with S3_* variables (new standard)
-          cat > .devcontainer/.env << EOF
-          S3_ACCESS_KEY_ID=minioadmin
-          S3_SECRET_ACCESS_KEY=minioadmin
-          RUN_LOCAL=True
-          EOF
-
-      - name: Verify MinIO is ready
-        run: |
-          for i in {1..30}; do
-            if curl -f http://localhost:9000/minio/health/ready; then
-              echo "MinIO is ready!"
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null "http://$S3_ENDPOINT/"; then
+              echo "RustFS is answering"
               break
             fi
-            echo "Waiting for MinIO... (attempt $i/30)"
+            echo "Waiting for RustFS... (attempt $i/30)"
             sleep 2
           done
+          aws --endpoint-url "http://$S3_ENDPOINT" s3 mb "s3://$S3_BUCKET"
 
-      - name: Run all tests (including contract tests)
-        env:
-          S3_ENDPOINT: localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
-          S3_SECURE: "False"
-          S3_BUCKET: test-bucket
-          RUN_LOCAL: "True"
+      - name: Run all tests (including contract and storage tests)
         run: pixi run pytest --verbose
 
       - name: Generate baseline schema for artifact
         if: always()
-        env:
-          S3_ENDPOINT: localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
-          S3_SECURE: "False"
-          S3_BUCKET: test-bucket
-          RUN_LOCAL: "True"
         run: pixi run python -m scripts.generate_baseline_schema
 
       - name: Upload baseline schema as artifact

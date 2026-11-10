@@ -391,7 +391,9 @@ never uploads it.
   - portolan 0.9 renders a grayscale thumbnail per COG with its own stretch, and points the item
     at the first one, dnbr.
   - The plugin points it instead at RBR, rendered with a fixed 0–0.5 ramp as the explorer uses.
-  - The build must check that portolan keeps a pre-rendered thumbnail and its checksum.
+  - Checked: portolan keeps a thumbnail drawn before `add`, and stamps its size and checksum.
+    It also tracks the file as a second thumbnail asset, which the plugin removes. rashid
+    passes the result with 0 errors and 0 warnings.
 
 ### 6. Job identity, cache and API
 

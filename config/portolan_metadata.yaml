@@ -1,0 +1,24 @@
+# Portolan metadata for every published analysis (.portolan/metadata.yaml).
+# The job copies this into each catalog and sets source_url to the STAC
+# collection the scenes came from. Providers, contact and license appear in
+# the STAC and the README. Schema: portolan-cli 0.9's metadata.yaml template.
+
+contact:
+  name: "Schmidt Center for Data Science & Environment"
+  email: "dse@berkeley.edu"
+
+license: "CC-BY-4.0"
+
+providers:
+  - name: "Schmidt Center for Data Science & Environment, UC Berkeley"
+    roles: ["producer", "processor", "host"]
+    url: "https://dse.berkeley.edu"
+
+keywords: ["burn severity", "dNBR", "RdNBR", "RBR", "wildfire"]
+
+source_url: ""
+
+processing_notes: >-
+  Per-window median NIR and SWIR2 surface reflectance of cloud-masked
+  observations; NBR, dNBR, RdNBR and RBR on the sensor's native UTM pixel grid.
+  The scenes, windows, grid and H3 cells are recorded in each item.

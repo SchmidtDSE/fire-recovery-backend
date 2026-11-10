@@ -14,13 +14,15 @@ ruff-fix = "ruff check . --fix"
 [dependencies]
 python = "3.12.*"
 numpy = ">=2.2.4,<3"
-rasterio = ">=1.4.3,<2"
+rasterio = ">=1.4.4,<2"
 pyproj = ">=3.7.1,<4"
 shapely = ">=2.1.0,<3"
 fastapi = ">=0.115.12,<0.116"
 uvicorn = ">=0.34.2,<0.35"
 python-dotenv = ">=1.1.0,<2"
-pystac = ">=1.13.0,<2"
+# portolan-cli 0.9 uses MediaType.VND_APACHE_PARQUET (pystac 1.14+), though it
+# declares pystac>=1.10.
+pystac = ">=1.14,<2"
 pystac-client = ">=0.8.6,<0.9"
 planetary-computer = ">=1.0.0,<2"
 geojson-pydantic = ">=2.0.0,<3"
@@ -31,6 +33,36 @@ xarray = ">=2025.3.1"
 dask-core = ">=2025.3.0"
 odc-stac = ">=0.5.3,<0.6"
 odc-geo = ">=0.5.0,<0.6"
+# H3 cells recorded for GLEN. Pinned exactly: the covering uses
+# h3shape_to_cells_experimental, which has no stability guarantee.
+h3-py = "==4.5.0"
+obstore = ">=0.12.1,<0.13"
+# portolan-cli's and rashid's compiled dependencies, from conda-forge rather
+# than PyPI: a pip wheel (pyarrow first among them) loads the system libstdc++,
+# and then conda's GDAL and PROJ fail to import.
+rio-cogeo = ">=6"
+pyarrow = ">=23.0.1,<27"
+python-duckdb = ">=1.5.6,<1.6"
+geopandas = ">=1.0.1,<2"
+pyogrio = ">=0.7"
+pillow = ">=13"
+matplotlib-base = ">=3.8"
+lxml = ">=6.1"
+cryptography = ">=46.0.7"
+aiohttp = ">=3.14.4"
+pyyaml = ">=6"
+# portolan-cli's floors on packages the rest of the env also uses.
+requests = ">=2.33"
+certifi = ">=2026.10.19"
+click = ">=8.4,<8.6"
+pygments = ">=2.20"
+jsonschema = ">=4.26"
+idna = ">=3.15"
+urllib3 = ">=2.7"
+psutil = ">=7"
+# proj depends on sqlite; left unconstrained the solver picks a 2020 build
+# whose libsqlite3 shadows libsqlite's, and GDAL then fails to load.
+sqlite = ">=3.50"
 pixi-kernel = ">=0.6.3,<0.7"
 pytest = ">=8.3.5,<9"
 pytest-asyncio = ">=0.26.0,<0.27"
@@ -38,3 +70,11 @@ pytest-dotenv = ">=0.5.2,<0.6"
 httpx = ">=0.28.1,<0.29"
 mypy = ">=1.16.0,<2"
 ruff = ">=0.12.9,<0.13"
+types-pyyaml = ">=6"
+
+[pypi-dependencies]
+# Pinned exactly; bump deliberately and rerun the acceptance fixtures.
+portolan-cli = "==0.9.0"
+rashid = "==0.3.0"
+# This repo, so portolan finds the enrich plugin (see pyproject.toml).
+fire-recovery-backend = { path = ".", editable = true }
