@@ -111,6 +111,21 @@ def test_gke_client_uses_the_callers_identity_and_refreshes_its_token() -> None:
     assert config.get_api_key_with_prefix("authorization") == "Bearer token-2"
 
 
+def test_gke_token_names_the_caller_by_email(monkeypatch: pytest.MonkeyPatch) -> None:
+    requested: List[List[str]] = []
+
+    def default(scopes: List[str]) -> Any:
+        requested.append(scopes)
+        return FakeCredentials(), "dse-nps"
+
+    monkeypatch.setattr(google.auth, "default", default)
+    gke_api_client(
+        GkeCluster("dse-nps", "us-west1", "josh-k8s-gke"), session=FakeGkeApi()
+    )
+    # Without it, GKE sees the account's numeric id and RoleBindings by email miss.
+    assert "https://www.googleapis.com/auth/userinfo.email" in requested[0]
+
+
 def test_gke_target_without_google_credentials_is_dispatch_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

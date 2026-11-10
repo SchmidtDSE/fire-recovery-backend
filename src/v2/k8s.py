@@ -61,7 +61,13 @@ GKE_CLUSTER_URL = (
     "https://container.googleapis.com/v1/projects/{project}/locations/{location}"
     "/clusters/{cluster}"
 )
-CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+# GKE names a token's caller by email only if the token has userinfo.email. Without
+# it the API server sees the account's numeric id, and a RoleBinding naming the
+# email (deployment/k8s/rbac.yaml) doesn't match.
+GKE_SCOPES = [
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+]
 HTTP_NOT_FOUND = 404
 HTTP_CONFLICT = 409
 
@@ -284,7 +290,7 @@ def gke_api_client(
     The token is refreshed before it expires.
     """
     if credentials is None:
-        credentials, _ = google.auth.default(scopes=[CLOUD_PLATFORM_SCOPE])
+        credentials, _ = google.auth.default(scopes=GKE_SCOPES)
     http = session or AuthorizedSession(credentials)
     response = http.get(
         GKE_CLUSTER_URL.format(
