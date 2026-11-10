@@ -13,6 +13,11 @@ on:
     branches: [main, dev]
   pull_request:
 
+# A new push to a PR cancels that PR's run still in progress.
+concurrency:
+  group: k8s-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test-k8s:
     name: Test Kubernetes Jobs
