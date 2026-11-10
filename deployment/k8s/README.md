@@ -86,8 +86,8 @@ Grant `fire-severity-k8s-api-sa` `roles/secretmanager.secretAccessor` on
 
 As josh does with `joshsim-batch`, CI pushes `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch`:
 `{sha}` and `latest` on every deploy to dev, and `{sha}` for each PR from this repository, so a
-cluster can run a branch before it merges. Make the GHCR package public once, in its package
-settings, so any cluster can pull it without credentials.
+cluster can run a branch before it merges. The package took the repository's public visibility
+on its first push, so any cluster pulls it without credentials.
 
 ## 7. Monitoring
 
