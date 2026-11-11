@@ -24,6 +24,13 @@ def test_rate_limiter_window() -> None:
     assert limiter.allow("a") == (True, 0)
 
 
+def test_anonymous_limit_is_ten_per_72_hours() -> None:
+    from src.v2.api import get_rate_limiter
+
+    limiter = get_rate_limiter()
+    assert (limiter.limit, limiter.window) == (10, 72 * 3600)
+
+
 def request(headers: dict, host: str = "10.0.0.1") -> Any:
     return SimpleNamespace(headers=headers, client=SimpleNamespace(host=host))
 

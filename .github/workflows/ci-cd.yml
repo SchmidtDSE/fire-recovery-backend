@@ -371,11 +371,18 @@ jobs:
             # come from fire-recovery-iac (environments/fire-severity-k8s/), and
             # the API key secret needs a version (deployment/k8s/README.md §5).
             # This deploy owns the revision, including its runtime account.
+            # Analyses run as Jobs, so the API itself needs little: one small
+            # instance, with CPU billed only while it serves a request. It stays
+            # warm and single because the anonymous rate limit lives in its memory
+            # (src/v2/constants.py).
             gcloud run deploy fire-recovery-backend-dev \
               --image "us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev@$DIGEST" \
               --platform managed \
               --service-account=fire-severity-k8s-api-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
+              --cpu 1 \
+              --memory 512Mi \
+              --cpu-throttling \
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \

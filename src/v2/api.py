@@ -246,7 +246,12 @@ def submit_severity(
         if not valid_api_key(x_api_key, key_hashes):
             allowed, retry_after = limiter.allow(client_ip(request))
             if not allowed:
-                return busy("Too many new analyses from this address", retry_after)
+                return busy(
+                    f"Without an API key, an address may start "
+                    f"{ANONYMOUS_STARTS_PER_WINDOW} analyses per "
+                    f"{RATE_WINDOW_SECONDS // 3600} hours",
+                    retry_after,
+                )
 
         if status.finished:
             # A failed run, or a finished Job whose record says it failed: run again.

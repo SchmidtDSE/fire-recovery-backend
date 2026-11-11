@@ -485,8 +485,10 @@ never uploads it.
   - At most 4 Jobs run at once, counted from the Job API by label. Beyond that the API returns
     `429` with `Retry-After`. Retrying is safe because the id is deterministic.
 - **Access.**
-  - Anonymous submissions are rate-limited per IP, in memory. There is one instance, so the
-    count is exact, and resetting on deploy is fine.
+  - Anonymous submissions are rate-limited per IP: 10 new analyses per 72 hours, counted in
+    memory. There is one instance, so the count is exact. It resets on deploy, which is fine,
+    and the dev service keeps that instance warm (1 vCPU, 512 MiB, CPU billed only during
+    requests) so that idling doesn't reset it too.
   - An API key lifts that limit for programmatic clients. Keys are a hashed list from Secret
     Manager, as with josh's `JOSH_API_KEYS`.
   - Cache hits cost nothing and aren't limited.

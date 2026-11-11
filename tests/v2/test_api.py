@@ -182,6 +182,7 @@ def test_per_ip_rate_limit_and_api_keys(
     limited = client.post("/v2/severity", json={**BODY, "fire_event_name": "C"})
     assert limited.status_code == 429
     assert int(limited.headers["Retry-After"]) > 0
+    assert "API key" in limited.json()["detail"]
     keyed = client.post(
         "/v2/severity",
         json={**BODY, "fire_event_name": "C"},

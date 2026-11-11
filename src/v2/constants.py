@@ -23,8 +23,11 @@ SNAP_TILES_PER_SIDE = 8
 # fire-recovery-iac's severity-v2-quota on josh's cluster admits exactly this many
 # Jobs at the gke-josh profile's requests, so change the quota if either changes.
 MAX_ACTIVE_JOBS = 4
+# Without an API key, an address may start this many analyses per window. The
+# count lives in the API's memory: exact with its one instance, reset by a deploy
+# or by the instance stopping, which is why the dev service keeps one warm.
 ANONYMOUS_STARTS_PER_WINDOW = 10
-RATE_WINDOW_SECONDS = 3600
+RATE_WINDOW_SECONDS = 72 * 3600
 BUSY_RETRY_AFTER_SECONDS = 60
 
 # API configuration.
