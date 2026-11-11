@@ -1,15 +1,17 @@
 # Analysis pods may reach DNS, HTTPS (STAC APIs, imagery, the bucket, GHCR) and
 # SMTP (mail to requesters and the operator), and nothing else: josh's egress
 # policy (fire-recovery-iac, environments/josh-k8s/kubernetes.tf) plus SMTP.
+#
+# It covers every pod in the namespace, as josh's and Tofu's policies do. The
+# namespace holds only analysis Jobs, and a label selector that matched nothing
+# would leave pods unrestricted without any error.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: severity-v2-egress
   namespace: fire-severity-dev
 spec:
-  podSelector:
-    matchLabels:
-      app: severity-v2
+  podSelector: {}
   policyTypes: ["Egress"]
   egress:
     - ports:
