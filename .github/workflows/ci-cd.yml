@@ -275,11 +275,17 @@ jobs:
             # which needs secretAccessor on the two storage-key secrets. The code
             # reads the keys on every analysis, from the same secrets as dev's
             # service. This deploy owns the revision, including its runtime account.
+            # The size and CPU allocation match dev's live service: analyses run as
+            # background tasks after the response, so CPU must stay allocated between
+            # requests, and live prod throttles it.
             gcloud run deploy fire-recovery-backend-prod \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
               --platform managed \
               --service-account=fire-recovery-backend-prod-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
+              --cpu 8 \
+              --memory 32Gi \
+              --no-cpu-throttling \
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
