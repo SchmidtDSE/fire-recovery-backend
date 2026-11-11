@@ -149,6 +149,14 @@ jobs:
             --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
             --tag fire-recovery-backend:ci .
 
+      # Jobs run with egress limited to DNS, HTTPS and SMTP, and the Kind test
+      # leaves that policy out, so check here that the catalog step's DuckDB
+      # extension loads with no network at all.
+      - name: Check the image loads DuckDB spatial offline
+        run: |
+          docker run --rm --network none fire-recovery-backend:ci \
+            python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL spatial'); c.execute('LOAD spatial')"
+
       - name: Push this PR's image to GHCR
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
