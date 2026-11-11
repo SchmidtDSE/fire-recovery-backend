@@ -194,11 +194,16 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: dse-nps
 
+      - name: Rename schema copies to their published object names
+        run: |
+          cp baseline_schema.json "${{ github.sha }}.json"
+          cp baseline_schema.json "${{ github.ref_name }}.json"
+
       - name: Upload commit-specific schema to GCP
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
         with:
-          path: baseline_schema.json
-          destination: fire-recovery-store/openapi-schemas/${{ github.sha }}.json
+          path: ${{ github.sha }}.json
+          destination: fire-recovery-store/openapi-schemas
           parent: false
           process_gcloudignore: false
           headers: |-
@@ -207,8 +212,8 @@ jobs:
       - name: Upload branch-specific schema to GCP
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
         with:
-          path: baseline_schema.json
-          destination: fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json
+          path: ${{ github.ref_name }}.json
+          destination: fire-recovery-store/openapi-schemas
           parent: false
           process_gcloudignore: false
           headers: |-
