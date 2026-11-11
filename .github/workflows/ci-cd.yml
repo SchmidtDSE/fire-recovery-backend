@@ -271,14 +271,19 @@ jobs:
               --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
               .
 
+            # Prod runs as its own account (fire-recovery-iac, environments/prod),
+            # which needs secretAccessor on the two storage-key secrets. The code
+            # reads the keys on every analysis, from the same secrets as dev's
+            # service. This deploy owns the revision, including its runtime account.
             gcloud run deploy fire-recovery-backend-prod \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
               --platform managed \
-              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --service-account=fire-recovery-backend-prod-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
+              --update-secrets "S3_ACCESS_KEY_ID=fire-recovery-backend-minio-key:latest,S3_SECRET_ACCESS_KEY=fire-recovery-backend-minio-secret:latest" \
               --tag "sha-${GITHUB_SHA:0:7}"
 
             # Ensure 100% traffic goes to the new revision
