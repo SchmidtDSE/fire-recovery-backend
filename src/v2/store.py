@@ -21,6 +21,10 @@ DEFAULT_ENDPOINT = "storage.googleapis.com"
 # GCS accepts any region in a SigV4 signature; "auto" is its convention.
 DEFAULT_REGION = "auto"
 JSON_CONTENT_TYPE = "application/json"
+# The bucket is public, and GCS caches public objects at its edge for an hour by
+# default, authenticated S3 reads included. A record is overwritten when its job
+# reruns, and the API decides from what it reads, so records must never be cached.
+NO_STORE = "no-store"
 
 
 @dataclass(frozen=True)
@@ -109,13 +113,13 @@ class Store:
         return value
 
     def put_json(self, key: str, value: Dict[str, Any]) -> None:
-        """Write ``value`` as JSON at ``key`` in one PUT."""
+        """Write ``value`` as JSON at ``key`` in one PUT, never to be cached."""
         obstore.put(
             self._store,
             key,
             json.dumps(value, indent=1).encode(),
             use_multipart=False,
-            attributes={"Content-Type": JSON_CONTENT_TYPE},
+            attributes={"Content-Type": JSON_CONTENT_TYPE, "Cache-Control": NO_STORE},
         )
 
     def delete_prefix(self, prefix: str) -> int:

@@ -1,10 +1,23 @@
-"""Store settings from the S3_* environment."""
+"""Store settings from the S3_* environment, and how records are written."""
+
+from typing import Any, Dict
 
 import pytest
 
-from src.v2.store import V1_BUCKET, StoreSettings
+import src.v2.store as store_module
+from src.v2.store import V1_BUCKET, Store, StoreSettings
 
 CREDENTIALS = {"S3_ACCESS_KEY_ID": "key", "S3_SECRET_ACCESS_KEY": "secret"}
+
+
+def test_records_are_written_uncacheable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # GCS serves a cached public object for an hour, so a rerun's record would
+    # read back as the previous run's (seen on josh's cluster).
+    calls: Dict[str, Any] = {}
+    monkeypatch.setattr(store_module.obstore, "put", lambda *a, **kw: calls.update(kw))
+    Store(StoreSettings.from_env(CREDENTIALS)).put_json("v2/jobs/x.json", {"a": 1})
+    assert calls["attributes"]["Cache-Control"] == "no-store"
+    assert calls["attributes"]["Content-Type"] == "application/json"
 
 
 def test_defaults_are_production_gcs_in_v2s_own_bucket() -> None:
