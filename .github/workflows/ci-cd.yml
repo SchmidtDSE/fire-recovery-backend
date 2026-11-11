@@ -360,7 +360,9 @@ jobs:
             # runs as its own account, which reaches josh's cluster with no key
             # (a RoleBinding in the namespace). v2 uses its own bucket and HMAC
             # key, which the API passes on to each Job. The account and secrets
-            # must exist first (deployment/k8s/README.md).
+            # come from fire-recovery-iac (environments/fire-severity-k8s/), and
+            # the API key secret needs a version (deployment/k8s/README.md §5).
+            # This deploy owns the revision, including its runtime account.
             gcloud run deploy fire-recovery-backend-dev \
               --image "us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev@$DIGEST" \
               --platform managed \

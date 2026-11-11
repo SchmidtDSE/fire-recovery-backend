@@ -20,6 +20,8 @@ MAX_BUFFERED_MEGAPIXELS = 100.0
 SNAP_TILES_PER_SIDE = 8
 
 # Concurrency and access (design §6). Placeholders, like the limits above.
+# fire-recovery-iac's severity-v2-quota on josh's cluster admits exactly this many
+# Jobs at the gke-josh profile's requests, so change the quota if either changes.
 MAX_ACTIVE_JOBS = 4
 ANONYMOUS_STARTS_PER_WINDOW = 10
 RATE_WINDOW_SECONDS = 3600

@@ -4,9 +4,12 @@
 # OOMKilled). Delete and update cover restarts. Nothing else.
 #
 # No keys: the API on Cloud Run is bound as its own Google identity, as josh
-# binds its machines' service accounts (GKE presents the account's email as a
-# Kubernetes User). The ServiceAccount is for clusters without Google identities
-# (NRP, and CI's Kind cluster), with short-lived tokens from `kubectl create token`.
+# binds its machines' service accounts. The ServiceAccount is for clusters without
+# Google identities (NRP, and CI's Kind cluster), with short-lived tokens from
+# `kubectl create token`.
+#
+# On josh's GKE cluster, fire-recovery-iac (environments/fire-severity-k8s/)
+# creates these objects. Apply this file only where Tofu doesn't (README.md).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -43,7 +46,9 @@ roleRef:
   kind: Role
   name: severity-v2-dispatcher
 ---
-# The API's Cloud Run service account (deployment/k8s/README.md).
+# The API's Cloud Run service account. Its token has the userinfo.email scope, so
+# GKE identifies it by email. Tofu also binds the account's numeric unique ID,
+# which GKE uses for a token without that scope.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

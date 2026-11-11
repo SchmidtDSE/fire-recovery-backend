@@ -6,7 +6,7 @@ repos: [backend]
 status: draft
 source: agent
 authored: 2026-11-09
-revised: 2026-11-10
+revised: 2026-11-11
 owner: "fire-recovery-backend agent"
 depends_on: []
 needs_context: [dev-deployment]
@@ -570,13 +570,18 @@ never uploads it.
    - with the subprocess launcher
    - against RustFS, which replaces MinIO in CI and in `docs/DEVELOPING.md`
    - against the real providers
-2. **Provision**, before the merge. IAM details are deferred (see below).
-   - a `fire-severity-dev` namespace on josh's GKE cluster, and one on NRP Nautilus
-   - v2's bucket, its storage identity and HMAC key, as fire-recovery-iac's `josh-k8s`
-     provisions josh's
-   - the image on GHCR
-   - a kubeconfig holding each target's context, for the API
-   - a log-based alert on failed Jobs on josh's cluster
+2. **Provision**, before the merge:
+   - **On josh's GKE cluster,** via fire-recovery-iac's `environments/fire-severity-k8s/`
+     (PR #5):
+     - the `fire-severity-dev` namespace, with its dispatcher role and bindings, egress
+       policy and quota
+     - v2's bucket, with its storage identity and HMAC key
+     - the API's account
+     - the Secret Manager secrets the dev deploy maps
+   - **A first version of `severity-v2-api-key-hashes`.** Tofu creates the secret empty.
+   - **A namespace on NRP Nautilus,** requested through its portal.
+   - **The image on GHCR.** Public since its first push.
+   - **A log-based alert** on failed Jobs on josh's cluster.
 3. **Deploy.** Once the acceptance checks pass:
    1. Merge `dev` into `main`, so prod keeps v1.
    2. Merge the v2 branch into `dev`. The dev Cloud Run service then serves v2 through the
@@ -658,8 +663,11 @@ Recorded 2026-11-09.
 To set up per target when the service account gets its permissions:
 
 - **The API's identity**: the Cloud Run service's own account, with no key, bound to the
-  dispatcher role (Jobs, each Job's Secret, pods) in the target's namespace
-  (`deployment/k8s/rbac.yaml`). On NRP, which has no Google identities, a token instead.
+  dispatcher role (Jobs, each Job's Secret, pods) in the target's namespace.
+  - On GKE, fire-recovery-iac PR #5 creates this binding. It should name both the account's
+    email and its unique ID.
+  - On clusters Tofu doesn't manage, `deployment/k8s/rbac.yaml` does.
+  - On NRP, which has no Google identities, the API would use a token instead.
 - **Storage credentials for the job.** HMAC keys for v2's bucket, held by the API and passed to
   each Job's Secret, which work on any cluster. If the GCS check in §7 fails, `gs://` needs workload identity on GKE and a
   service-account key on NRP.
@@ -734,13 +742,37 @@ reading SchmidtDSE/josh and fire-recovery-iac's `josh-k8s` environment:
   the cluster, and a missing image surfacing as a failure.
 - RustFS now runs in CI (it passed in #28) and locally from pixi's `s3` environment.
 
+**2026-11-11: the Kubernetes path runs in CI, and provisioning moves to fire-recovery-iac:**
+
+- **All eight PRs pass CI.** Image builds had hung from #28 on. With no working directory, the
+  editable install ran from `/` and setuptools walked `/proc`. Building in `/app` fixed it.
+- **The Kind test passed on its first run.** Geology ran as a Job under the dispatcher's role
+  alone, resubmitting it hit the cache, and a missing image was reported as
+  `DeadlineExceeded`.
+- **The GHCR package is public,** inherited from the repository.
+- **The API's GKE token asks for `userinfo.email`.** Without that scope GKE knows a service
+  account only by its numeric ID, so a RoleBinding naming its email never matches.
+- **fire-recovery-iac PR #5 provisions severity beside josh** (`environments/fire-severity-k8s/`).
+  Before it's applied, two fixes are needed:
+  - its API RoleBinding should name the email as well as the unique ID
+  - its Cloud Run change should be dropped
+- **Ownership is split.** Tofu owns the infrastructure: the cluster objects, bucket,
+  accounts and secrets. This repository's CI owns the Cloud Run revisions, including the
+  runtime account, which changes along with the secret references at the v2 deploy.
+- **Neither Cloud Run root in fire-recovery-iac is safe to apply yet.** Tofu's dev and prod
+  services have drifted from what's live since their October 2025 import. Each root has to
+  ignore the fields CI owns first.
+- **`pixi run gke-api` runs the API locally** against josh's cluster, as Cloud Run would.
+
 **Left before merging into `dev`** (Rollout):
 
 - The acceptance fixtures on real data: a ~100 km fire, a UTM-zone straddle, Landsat, a long
   gap, and the ~38 Mpx, 48-day memory run.
-- Provisioning (`deployment/k8s/README.md`): the namespace on both clusters; v2's bucket, its
-  storage identity and HMAC key, ideally in fire-recovery-iac beside `josh-k8s`; and the
-  Secret Manager secrets the dev deploy maps.
+- Provisioning (`deployment/k8s/README.md`):
+  - fire-recovery-iac PR #5, fixed and applied
+  - a first version of `severity-v2-api-key-hashes`
+  - the namespace on NRP
+- A run on josh's cluster with `pixi run gke-api`, as the API's account.
 - The GCS S3 push check (§7), against v2's bucket once it exists.
 - Promoting `dev` to `main` before the stack lands, and refreshing `dev-deployment` (its
   `covers` include the changed workflow) once it has.

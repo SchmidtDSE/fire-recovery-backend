@@ -167,11 +167,12 @@ dispatcher's permissions, and a real analysis publishes to RustFS in the cluster
 image doesn't exist must surface as a failure on the status URL. The CI profiles are in
 `tests/fixtures/targets/`.
 
-**Against josh's GKE cluster**, once severity's namespace and bucket exist, run the API on
-your machine in place of Cloud Run. It reaches the cluster as your Application Default
-Credentials, the same way it reaches it as its own account on Cloud Run, so it needs no
-kubeconfig and no GKE plugin. Impersonating the API's account gives it exactly that account's
-permissions, which is the closer test (it needs Token Creator on the account):
+**Against josh's GKE cluster**, once fire-recovery-iac's `environments/fire-severity-k8s/` is
+applied (the namespace, bucket, accounts and secrets), run the API on your machine in place of
+Cloud Run. It reaches the cluster as your Application Default Credentials, the same way it
+reaches it as its own account on Cloud Run, so it needs no kubeconfig and no GKE plugin.
+Impersonating the API's account gives it exactly that account's permissions, which is the
+closer test (it needs Token Creator on the account):
 
 ```bash
 gcloud auth login
@@ -186,9 +187,10 @@ Secret on the cluster, so none may come from `.devcontainer/.env`. Jobs run the 
 for this branch's last push, or `SEVERITY_IMAGE` if set. The task stops if GHCR doesn't have
 that image, since a Job would otherwise wait on it until its deadline.
 
-Signed in as yourself instead, the API needs your identity to have `container.clusterViewer`
-and a RoleBinding to the dispatcher role in `fire-severity-dev`, unless your project role
-already grants both (`deployment/k8s/README.md`).
+If you sign in as yourself instead, your identity needs `container.clusterViewer` and a
+RoleBinding to the dispatcher role in `fire-severity-dev`. Being listed in that Tofu
+environment's `dispatcher_user_emails` grants both, as does a project role such as Owner
+(`deployment/k8s/README.md`).
 
 ## Environment Variables & Secrets
 

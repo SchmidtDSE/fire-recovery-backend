@@ -13,9 +13,23 @@ per analysis and reads its status. Targets work as josh's do (SchmidtDSE/josh,
 - Each Job gets its own Secret with the storage and mail settings from the API's environment,
   owned by the Job, so no cluster needs a credential Secret made by hand.
 
-Josh's cluster, namespace, bucket and identities are OpenTofu in SchmidtDSE/fire-recovery-iac
-(`environments/josh-k8s/`, PR #4). Severity's belong beside them. Until they're there, the
-manifests here describe the cluster side:
+## Who sets up what
+
+- **On josh's GKE cluster, OpenTofu does.** SchmidtDSE/fire-recovery-iac
+  `environments/fire-severity-k8s/` (PR #5), beside josh's `environments/josh-k8s/`, creates:
+  - the namespace, the dispatcher role and its bindings, egress and a quota
+  - the bucket
+  - both service accounts
+  - the secrets
+
+  A person applies it. Don't apply the manifests here to that cluster, because Tofu owns the
+  same objects.
+- **The manifests here** are for clusters Tofu doesn't manage: CI's Kind cluster and NRP. They
+  also show what Tofu creates.
+- **This repository's CI owns the Cloud Run revisions.** `gcloud run deploy` sets the image,
+  environment, secret references, runtime account, scaling and traffic on every push to `dev`
+  or `main`, and Tofu ignores those fields. The runtime account belongs with CI because it
+  changes in the same revision as the secret references, as it does at the switch to v2.
 
 | | josh | severity |
 |---|---|---|
@@ -23,8 +37,9 @@ manifests here describe the cluster side:
 | Namespace | `joshsim` | `fire-severity-dev` (`namespace.yaml`) |
 | Who dispatches | people and dev VMs, as their Google identity: `container.clusterViewer` plus a RoleBinding | the API's Cloud Run account, `fire-severity-k8s-api-sa`, the same way (`rbac.yaml`) |
 | Dispatcher role | Jobs, Secrets, pods | the same, plus `delete` and `update` for restarts |
-| Pod egress | DNS, HTTPS | DNS, HTTPS, SMTP (`networkpolicy.yaml`) |
-| Bucket | `dse-nps-josh-batch-storage` | `dse-nps-fire-severity-storage`, public read |
+| Pod egress | DNS, HTTPS | DNS, HTTPS, SMTP, for every pod in the namespace (`networkpolicy.yaml`) |
+| Quota | none | four Jobs' requests, from Tofu only (§1) |
+| Bucket | `dse-nps-josh-batch-storage` | `dse-nps-fire-severity-storage`, public read, with CORS for browsers |
 | Storage identity | `josh-k8s-gcs-sa`: `storage.objectAdmin`, `storage.bucketViewer`; HMAC key in Secret Manager as `josh-k8s-minio-{access,secret}-key` | `fire-severity-k8s-gcs-sa`, the same roles; `fire-severity-k8s-minio-{access,secret}-key` |
 | Image | `ghcr.io/schmidtdse/josh/joshsim-batch` | `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch` |
 
@@ -34,13 +49,19 @@ records beside them hold no personal data.
 ## 1. Check the cluster
 
 `podFailurePolicy`, which keeps a preempted pod from counting as a failure, needs Kubernetes
-1.26 or later:
+1.26 or later. Josh's cluster runs 1.35:
 
 ```bash
 kubectl version
 ```
 
+On josh's cluster, Tofu's `severity-v2-quota` admits exactly `MAX_ACTIVE_JOBS`
+(`src/v2/constants.py`) Jobs at the `gke-josh` profile's requests. If you change either one,
+change the quota too.
+
 ## 2. Namespace, dispatcher role, egress
+
+Tofu creates these on josh's cluster. Elsewhere:
 
 ```bash
 kubectl apply -f deployment/k8s/namespace.yaml   # on NRP, request the namespace in the portal
@@ -50,37 +71,45 @@ kubectl apply -f deployment/k8s/networkpolicy.yaml
 
 ## 3. Who may dispatch
 
-- **The API**: the Cloud Run service runs as `fire-severity-k8s-api-sa`, with
-  `roles/container.clusterViewer` on the project so it can read the cluster's endpoint and CA,
-  and the `severity-v2-api` RoleBinding (`kind: User`, the account's email) in the namespace.
-  That is how josh binds its dev VMs' accounts. No key exists for it.
-- **People**, to test or to use kubectl: the same pair for your Google identity (a RoleBinding
-  per user or group), then either `gcloud auth application-default login` for the API or
-  `gcloud container clusters get-credentials josh-k8s-gke --region us-west1 --project dse-nps`
-  for kubectl.
+- **The API.** The Cloud Run service runs as `fire-severity-k8s-api-sa`. It has
+  `roles/container.clusterViewer` on the project, to read the cluster's endpoint and CA, and the
+  `severity-v2-api` RoleBinding in the namespace. No key exists for the account.
+
+  The API asks for the `userinfo.email` scope on its token, so GKE identifies it by its email,
+  the subject in `rbac.yaml`. Tofu also binds the account's numeric unique ID, which is how GKE
+  identifies a token without that scope.
+- **People, to test.** Either list yourself in the Tofu environment's
+  `dispatcher_user_emails`, which grants `clusterViewer` and a RoleBinding, or act as the API's
+  account with Token Creator on it. Acting as the account tests exactly its permissions.
+  `docs/DEVELOPING.md` shows both, with `pixi run gke-api`. For kubectl, also run
+  `gcloud container clusters get-credentials josh-k8s-gke --region us-west1 --project dse-nps`.
 - **NRP** has no Google identities. Dispatching there from Cloud Run would need a kubeconfig
-  with a token for the `severity-v2-dispatcher` ServiceAccount: the one credential this setup
-  can't avoid, so it waits until NRP is a target.
+  with a token for the `severity-v2-dispatcher` ServiceAccount. That is the one credential this
+  setup can't avoid, so it waits until NRP is a target.
 
 ## 4. Storage
 
-Create the bucket, its service account with `storage.objectAdmin` and `storage.bucketViewer`,
-and an HMAC key in Secret Manager, as `environments/josh-k8s/` does for josh. Then grant
-`allUsers` `storage.objectViewer` on the bucket. The dev deploy maps the HMAC secrets to
-`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, and the API passes them on to each Job.
+Tofu creates the bucket and grants `allUsers` `storage.objectViewer` on it. It creates
+`fire-severity-k8s-gcs-sa` with `storage.objectAdmin` and `storage.bucketViewer` on the bucket,
+and stores an HMAC key for that account in Secret Manager, as `environments/josh-k8s/` does for
+josh. The dev deploy maps the HMAC secrets to `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, and
+the API passes them on to each Job.
 
 ## 5. API keys
 
-Programmatic clients send `X-API-Key`; the API stores only SHA-256 digests, comma-separated.
-Create the secret even with no keys yet, because the deploy maps it:
+Programmatic clients send `X-API-Key`. The API stores only SHA-256 digests, comma-separated, in
+the secret `severity-v2-api-key-hashes`. Tofu creates the secret and grants the API's account
+access to it, but sets no value.
+
+Add a version before the first deploy to dev, which maps the secret, and again whenever the keys
+change. Each version replaces the whole list, so include every key's digest:
 
 ```bash
 printf '%s' "$(printf '%s' "$KEY" | sha256sum | cut -d' ' -f1)" | \
-  gcloud secrets create severity-v2-api-key-hashes --project dse-nps --data-file=-
+  gcloud secrets versions add severity-v2-api-key-hashes --project dse-nps --data-file=-
 ```
 
-Grant `fire-severity-k8s-api-sa` `roles/secretmanager.secretAccessor` on
-`severity-v2-api-key-hashes` and the two HMAC secrets.
+With no keys yet, store a lone comma (`printf ','`). The API ignores blank entries.
 
 ## 6. The image
 
