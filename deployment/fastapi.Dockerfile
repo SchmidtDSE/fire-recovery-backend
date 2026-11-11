@@ -21,7 +21,8 @@ RUN pixi install --locked
 # extension, and DuckDB fetches extensions over plain HTTP. A Job's egress allows
 # only DNS, HTTPS and SMTP, so a fetch there waits out a timeout and fails. With the
 # extension installed here, INSTALL at run time is a no-op and LOAD reads this copy.
-RUN pixi run python -c "import duckdb; c = duckdb.connect(); c.install_extension('spatial'); c.load_extension('spatial')"
+# The env's own python, because `pixi run` re-parses its arguments and drops quotes.
+RUN /app/.pixi/envs/default/bin/python -c "import duckdb; c = duckdb.connect(); c.install_extension('spatial'); c.load_extension('spatial')"
 RUN pixi shell-hook -s bash > /shell-hook
 RUN echo "#!/bin/bash" > /entrypoint.sh
 RUN cat /shell-hook >> /entrypoint.sh
