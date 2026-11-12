@@ -59,6 +59,10 @@ odc-geo = ">=0.5.0,<0.6"
 # h3shape_to_cells_experimental, which has no stability guarantee.
 h3-py = "==4.5.0"
 obstore = ">=0.12.1,<0.13"
+# The text the pipeline publishes (method statement, emails) lives in
+# config/templates/ as Jinja templates. portolan-cli pulls jinja2 in too, but
+# the pipeline uses it directly, so it is named here.
+jinja2 = ">=3.1.6,<4"
 # Starts and watches analysis Jobs on the target cluster.
 python-kubernetes = ">=37,<38"
 # The API reaches GKE as its own Google identity (src/v2/service/k8s.py), with no key.

@@ -7,12 +7,14 @@ cache key or of what the job computed, never of the submitted perimeter.
 
 import json
 from datetime import timedelta
+from functools import lru_cache
 from importlib import metadata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import h3
 import rasterio
+import yaml
 
 from src.models.provenance import Provenance
 from src.util.date_windows import window_bounds
@@ -20,6 +22,7 @@ from src.util.geo_ops import Bounds
 from src.v2.identity.grid import Grid, metric_size
 from src.v2.identity.job_id import CanonicalRequest
 from src.v2.sensors import SENSOR_MASKS
+from src.v2.templates import render_paragraph
 
 SIDECAR_ENV = "FIRE_SEVERITY_SIDECAR"
 
@@ -30,16 +33,10 @@ H3_MAX_RESOLUTION = 15
 
 COMPOSITE = "median"
 RESAMPLING = "nearest"
-SCENE_SELECTION = (
-    "Every scene in each window; where a provider lists one Sentinel-2 acquisition "
-    "(mission, sensing start, orbit, tile) under several processings, only the "
-    "newest processing baseline"
-)
-SCALING = (
-    "Per scene: reflectance = DN * scale + offset, with the scene's own published "
-    "raster:bands scale and offset (else the product's documented rule), before "
-    "compositing"
-)
+# The method in words: config/method.yaml (descriptions and citations) and
+# config/templates/lineage.txt.j2 (the method statement).
+METHOD_FILE = Path(__file__).resolve().parents[3] / "config" / "method.yaml"
+LINEAGE_TEMPLATE = "lineage.txt.j2"
 
 # Established STAC extensions for the method record (design §5). Scientific is
 # in the Portolan profile's extension registry and rashid validates it offline;
@@ -47,35 +44,6 @@ SCALING = (
 # validating it.
 PROCESSING_EXTENSION = "https://stac-extensions.github.io/processing/v1.2.0/schema.json"
 SCIENTIFIC_EXTENSION = "https://stac-extensions.github.io/scientific/v1.0.0/schema.json"
-
-PUBLICATIONS = [
-    {
-        "citation": (
-            "Key, C.H., Benson, N.C. (2006). Landscape Assessment (LA): Sampling and "
-            "analysis methods. In: Lutes, D.C., et al., FIREMON: Fire Effects "
-            "Monitoring and Inventory System. Gen. Tech. Rep. RMRS-GTR-164-CD. USDA "
-            "Forest Service, Rocky Mountain Research Station. LA-1-55. (dNBR)"
-        ),
-        "doi": "10.2737/RMRS-GTR-164",
-    },
-    {
-        "citation": (
-            "Miller, J.D., Thode, A.E. (2007). Quantifying burn severity in a "
-            "heterogeneous landscape with a relative version of the delta "
-            "Normalized Burn Ratio (dNBR). Remote Sensing of Environment 109, "
-            "66-80. (RdNBR)"
-        ),
-        "doi": "10.1016/j.rse.2006.12.006",
-    },
-    {
-        "citation": (
-            "Parks, S.A., Dillon, G.K., Miller, C. (2014). A New Metric for "
-            "Quantifying Burn Severity: The Relativized Burn Ratio. Remote Sensing "
-            "6(3), 1827-1844. (RBR)"
-        ),
-        "doi": "10.3390/rs6031827",
-    },
-]
 
 # The method record every published item must carry. The build checks it, so
 # a change that drops one fails before anything is published.
@@ -148,31 +116,30 @@ def software_versions(git_sha: Optional[str]) -> Dict[str, str]:
     return versions
 
 
+@lru_cache(maxsize=1)
+def method() -> Dict[str, Any]:
+    """config/method.yaml: the descriptions and citations every item carries."""
+    loaded: Dict[str, Any] = yaml.safe_load(METHOD_FILE.read_text())
+    return loaded
+
+
 def lineage(canonical: CanonicalRequest, grid: Grid, provenance: Provenance) -> str:
     """The method in plain language: processing:lineage and the catalog README."""
     source = provenance.source
-    mask = SENSOR_MASKS[canonical.sensor]
-    pre, post = canonical.prefire_window, canonical.postfire_window
-    return (
-        f"Burn severity from {canonical.sensor} surface reflectance served by "
-        f"{source.provider} (STAC collection {source.collection}). For each window "
-        f"(prefire {pre[0]} to {pre[1]}, postfire {post[0]} to {post[1]}), every "
-        f"scene covering the area is used, except that where a provider lists one "
-        f"Sentinel-2 acquisition under several processings, only the newest "
-        f"processing baseline is kept. Each scene's NIR ({source.bands['nir']}) and "
-        f"SWIR ({source.bands['swir']}) digital numbers are converted to reflectance "
-        f"with that scene's own published scale and offset (reflectance = DN x scale "
-        f"+ offset). Observations with a zero digital number, or flagged in the "
-        f"{source.bands['mask']} band ({mask.description}), are excluded, and the "
-        f"per-pixel {COMPOSITE} of the remaining observations forms each window's "
-        f"composite. Scenes are read with {RESAMPLING}-neighbour resampling onto a "
-        f"{grid.resolution:g} m grid in EPSG:{grid.epsg}, aligned to the sensor's "
-        f"native pixels. NBR = (NIR - SWIR) / (NIR + SWIR) per composite; dNBR, "
-        f"RdNBR and RBR follow, each asset carrying its formula in "
-        f"processing:expression. Pixels with no clear observation in either window "
-        f"are nodata (-9999). The scenes used, with their processing baselines and "
-        f"offsets, are listed in fire:prefire_scenes and fire:postfire_scenes. "
-        f"Pipeline version {canonical.pipeline_version}."
+    return render_paragraph(
+        LINEAGE_TEMPLATE,
+        sensor=canonical.sensor,
+        provider=source.provider,
+        collection=source.collection,
+        prefire=canonical.prefire_window,
+        postfire=canonical.postfire_window,
+        bands=source.bands,
+        mask_description=SENSOR_MASKS[canonical.sensor].description,
+        composite=COMPOSITE,
+        resampling=RESAMPLING,
+        resolution=grid.resolution,
+        epsg=grid.epsg,
+        pipeline_version=canonical.pipeline_version,
     )
 
 
@@ -207,8 +174,8 @@ def build_sidecar(
         "fire:pipeline_version": canonical.pipeline_version,
         "fire:sensor": canonical.sensor,
         "fire:composite": COMPOSITE,
-        "fire:scene_selection": SCENE_SELECTION,
-        "fire:scaling": SCALING,
+        "fire:scene_selection": method()["scene_selection"],
+        "fire:scaling": method()["scaling"],
         "fire:resampling": RESAMPLING,
         "fire:prefire_window": list(canonical.prefire_window),
         "fire:postfire_window": list(canonical.postfire_window),
@@ -224,7 +191,7 @@ def build_sidecar(
         "processing:lineage": lineage(canonical, grid, provenance),
         "processing:software": software_versions(git_sha),
         "processing:version": str(canonical.pipeline_version),
-        "sci:publications": PUBLICATIONS,
+        "sci:publications": method()["publications"],
     }
     missing = missing_method_properties(properties)
     if missing:

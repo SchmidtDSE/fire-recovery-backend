@@ -1,0 +1,10 @@
+{#- The operator's failure email: everything needed to reproduce the run. -#}
+Job {{ job_id }} ({{ name }}) failed.
+
+Image: {{ image }}
+Commit: {{ git_sha }}
+
+Request:
+{{ request }}
+
+{{ trace -}}

@@ -1,0 +1,12 @@
+{#- The success email's text. The HTML version shows the thumbnail after the
+    first paragraph, so keep a blank line after it. -#}
+The fire severity analysis for {{ name }} is ready.
+
+Catalog: {{ catalog_url }}
+{% for asset, url in assets.items() %}
+{{ asset }}: {{ url }}
+{% endfor %}
+{% if status_url %}
+
+Status: {{ status_url }}
+{% endif %}

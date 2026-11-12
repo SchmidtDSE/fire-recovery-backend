@@ -1,0 +1,8 @@
+{#- The requester's failure notice: a short reason, no traceback. -#}
+The fire severity analysis for {{ name }} failed: {{ error }}
+{% if status_url %}
+
+Status: {{ status_url }}
+{% endif %}
+
+Submitting the same request again runs it again.

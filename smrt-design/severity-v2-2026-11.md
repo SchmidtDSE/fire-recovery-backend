@@ -417,6 +417,9 @@ never uploads it.
   - `fire:composite`, `fire:scene_selection`, `fire:scaling`, `fire:resampling`,
     `fire:mask`, `fire:grid`, `fire:source` and the scene lists for the parameters.
 
+  The wording lives in files, not code: `config/method.yaml` (descriptions, citations),
+  `config/templates/lineage.txt.j2` (the method statement) and `config/templates/mail/`
+  (the emails), rendered with Jinja; a template naming a missing value fails the build.
   The build fails if any of these is missing. Scientific is in the Portolan extension
   registry; Processing isn't yet, so rashid notes it (`PTL-EXT-002`) without validating it.
 - **Providers and license.** DSE is the only provider (producer, processor and host), and the
