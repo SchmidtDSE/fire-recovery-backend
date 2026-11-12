@@ -151,7 +151,7 @@ To run one job without the API, give it a canonical request:
 pixi run dev-job --request-file request.json
 ```
 
-`request.json` is the canonical form (`src/v2/job_id.py`), for example a `canonical` entry
+`request.json` is the canonical form (`src/v2/identity/job_id.py`), for example a `canonical` entry
 from `tests/fixtures/v2_job_id_vectors.json`. Set `SMTP_*` and `OPERATOR_EMAIL` to test mail;
 without them the job skips it.
 

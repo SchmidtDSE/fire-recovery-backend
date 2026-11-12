@@ -10,7 +10,7 @@ from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from src.v2.grid import Grid
+from src.v2.identity.grid import Grid
 
 JOBS_PREFIX = "v2/jobs"
 

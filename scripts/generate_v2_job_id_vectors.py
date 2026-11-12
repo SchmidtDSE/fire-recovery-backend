@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.v2.constants import PIPELINE_VERSION
-from src.v2.job_id import canonical_request
-from src.v2.request import SeverityRequest
+from src.v2.identity.job_id import canonical_request
+from src.v2.identity.request import SeverityRequest
 
 OUT = Path(__file__).parent.parent / "tests" / "fixtures" / "v2_job_id_vectors.json"
 

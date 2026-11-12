@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from src.v2 import api as severity_v2
+from src.v2.service import api as severity_v2
 from src.v2.constants import ENV_GIT_SHA, ENV_IMAGE, PIPELINE_VERSION
 
 logging.basicConfig(

@@ -101,7 +101,7 @@ flowchart LR
   post["POST /v2/severity"] -->|validate, snap, uuid5| hit{"v2/jobs/{id}.json<br/>says succeeded?"}
   hit -->|yes| done["200 + links"]
   hit -->|no| job["create Job sev-{id}<br/>409 = already running"]
-  job --> run["pod: python -m src.v2.run"]
+  job --> run["pod: python -m src.v2.job.run"]
   run --> pub[("v2/fires/{fire_id}/<br/>Portolan catalog")]
   run --> rec[("v2/jobs/{id}.json<br/>write-once result")]
   run --> mail["email the requester<br/>(and the operator on failure)"]
@@ -150,7 +150,7 @@ flowchart LR
   computed a job id is therefore the code that runs it.
 - **Local runs.** The launcher has two methods, `start(job_id, request)` and `state(job_id)`,
   with a subprocess implementation for local work and tests and a Kubernetes one for deploys.
-  `src.v2.run` is a plain CLI either way.
+  `src.v2.job.run` is a plain CLI either way.
 
 ```yaml
 apiVersion: batch/v1
@@ -173,7 +173,7 @@ spec:
       containers:
         - name: run
           image: ghcr.io/schmidtdse/fire-recovery-backend/severity-batch@sha256:<the API's own digest>
-          args: [python, -m, src.v2.run]
+          args: [python, -m, src.v2.job.run]
           env:
             - {name: SEVERITY_REQUEST, value: "<canonical request JSON>"}
             - {name: JOB_ID, value: "<job id>"}          # the job re-derives it and checks
@@ -189,7 +189,7 @@ spec:
       volumes: [{name: scratch, emptyDir: {sizeLimit: 10Gi}}]
 ```
 
-`src/v2/k8s.py` (`job_manifest`) builds this from the target profile in `config/targets/`.
+`src/v2/service/k8s.py` (`job_manifest`) builds this from the target profile in `config/targets/`.
 Profiles use josh's format (SchmidtDSE/josh, `BATCH_REMOTE.md`): JSON naming the cluster, a
 namespace, the image, resources and spot scheduling. The API reaches josh's GKE cluster with no
 key: as the Cloud Run service's own Google identity, bound to the dispatcher role in the

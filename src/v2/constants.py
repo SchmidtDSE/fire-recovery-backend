@@ -31,7 +31,7 @@ RATE_WINDOW_SECONDS = 72 * 3600
 BUSY_RETRY_AFTER_SECONDS = 60
 
 # API configuration.
-ENV_TARGET = "SEVERITY_TARGET"  # a target profile (src/v2/k8s.py), or "local"
+ENV_TARGET = "SEVERITY_TARGET"  # a target profile (src/v2/service/k8s.py), or "local"
 LOCAL_TARGET = "local"
 ENV_API_URL = (
     "SEVERITY_API_URL"  # public base URL for status links, if not the request's
