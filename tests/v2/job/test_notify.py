@@ -1,6 +1,7 @@
 """Best-effort SMTP."""
 
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Any, List, Optional
 
 import pytest
@@ -97,3 +98,33 @@ def test_unconfigured_or_no_recipient_sends_nothing() -> None:
     mailer = Mailer(SmtpSettings.from_env(ENV), smtp_ssl=FakeSmtp, smtp=FakeSmtp)
     assert mailer.send(None, "Subject", "Body") is False
     assert FakeSmtp.instances == []
+
+
+def test_send_with_an_inline_image(tmp_path: Path) -> None:
+    image = tmp_path / "rbr.thumb.jpg"
+    image.write_bytes(b"\xff\xd8 not really a jpeg")
+    body = "The analysis is ready.\n\nCatalog: https://example.org/c.json?a=1&b=2\n"
+    mailer = Mailer(SmtpSettings.from_env(ENV), smtp_ssl=FakeSmtp, smtp=FakeSmtp)
+    assert mailer.send("to@example.org", "Subject", body, image=image)
+    (message,) = FakeSmtp.instances[0].sent
+
+    plain = message.get_body(preferencelist=("plain",))
+    assert plain is not None and plain.get_content() == body
+    html_part = message.get_body(preferencelist=("html",))
+    assert html_part is not None
+    html = html_part.get_content()
+    link = '<a href="https://example.org/c.json?a=1&amp;b=2">'
+    # The picture sits between the first paragraph and the links.
+    assert html.index("The analysis is ready.") < html.index("cid:") < html.index(link)
+
+    (related,) = [p for p in message.walk() if p.get_content_type() == "image/jpeg"]
+    assert related.get_content() == image.read_bytes()
+    assert f"cid:{related['Content-ID'][1:-1]}" in html
+
+
+def test_a_missing_image_still_sends_the_text(tmp_path: Path) -> None:
+    mailer = Mailer(SmtpSettings.from_env(ENV), smtp_ssl=FakeSmtp, smtp=FakeSmtp)
+    assert mailer.send("to@example.org", "S", "Body\n", image=tmp_path / "gone.jpg")
+    (message,) = FakeSmtp.instances[0].sent
+    assert not message.is_multipart()
+    assert message.get_content() == "Body\n"

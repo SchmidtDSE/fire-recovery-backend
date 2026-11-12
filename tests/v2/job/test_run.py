@@ -9,6 +9,7 @@ import pytest
 
 from src.models.provenance import Provenance
 from src.v2.job import run as runner
+from src.v2.catalog.build import item_directory
 from src.v2.identity.grid import Grid
 from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.record import record_key
@@ -35,11 +36,15 @@ class FakeMailer:
         self.operator = operator
         self.works = works
         self.sent: List[Tuple[Optional[str], str, str]] = []
+        self.images: List[Optional[Path]] = []
 
-    def send(self, to: Optional[str], subject: str, body: str) -> bool:
+    def send(
+        self, to: Optional[str], subject: str, body: str, image: Optional[Path] = None
+    ) -> bool:
         if not to:
             return False
         self.sent.append((to, subject, body))
+        self.images.append(image)
         return self.works
 
 
@@ -106,9 +111,10 @@ def test_success_writes_one_record_and_one_email(
     assert "requester@example.org" not in json.dumps(record)
 
     assert [(to, subject) for to, subject, _ in mailer.sent] == [
-        ("requester@example.org", "Fire severity ready: Geology_Fire")
+        ("requester@example.org", "[Fire Severity Analysis: Geology_Fire] Ready")
     ]
     assert ctx.status_url in mailer.sent[0][2]
+    assert mailer.images == [item_directory(ctx.workdir, ctx.fire_id) / "rbr.thumb.jpg"]
     assert not ctx.workdir.exists()
 
 
@@ -135,11 +141,13 @@ def test_failure_is_recorded_reported_and_not_retried(
     (to_requester, subject, body), (to_operator, op_subject, op_body) = mailer.sent
     assert (to_requester, subject) == (
         "requester@example.org",
-        "Fire severity failed: Geology_Fire",
+        "[Fire Severity Analysis: Geology_Fire] Failed",
     )
     assert "Traceback" not in body
     assert to_operator == "ops@example.org"
-    assert ctx.job_id in op_subject
+    assert (
+        op_subject == f"[Fire Severity Analysis: Geology_Fire] Failed: job {ctx.job_id}"
+    )
     assert "Traceback" in op_body and ctx.canonical.to_json() in op_body
     assert not ctx.workdir.exists()
 

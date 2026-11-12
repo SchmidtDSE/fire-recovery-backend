@@ -108,6 +108,11 @@ def validate(root: Path) -> CatalogResult:
     )
 
 
+def item_directory(workdir: Path, fire_id: str) -> Path:
+    """Where the item, its COGs and its thumbnail, sits in the built catalog."""
+    return workdir / "catalog" / fire_id / fire_id / ITEM_ID
+
+
 def build_catalog(
     workdir: Path,
     fire_id: str,
@@ -124,7 +129,7 @@ def build_catalog(
     push never uploads it.
     """
     root = workdir / "catalog" / fire_id
-    item_dir = root / fire_id / ITEM_ID
+    item_dir = item_directory(workdir, fire_id)
     item_dir.mkdir(parents=True)
     for name, cog in cogs.items():
         shutil.move(str(cog), item_dir / f"{name}.tif")
