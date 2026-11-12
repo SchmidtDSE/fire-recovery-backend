@@ -5,14 +5,14 @@ These tests exercise configuration parsing and the per-provider accessors only
 validated directly, and the unknown-sensor / unknown-provider error paths are
 covered with synthetic configs.
 
-Reflectance scaling is deliberately NOT tested here because it is not our
-concern: stackstac applies the per-asset scale/offset from each item's
-``raster:bands`` metadata at stack time (``rescale=True``).
+Searches run against a fake pystac-client, so no network is needed.
+Reflectance scaling is tested with the v2 loader (tests/v2/test_load.py).
 """
 
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -23,6 +23,7 @@ from src.stac.stac_endpoint_handler import (
     StacMapping,
     StacProvider,
     StacProviderConfig,
+    in_window,
 )
 
 
@@ -57,6 +58,12 @@ class TestStacProviderConfigLoading:
             # NBR uses NIR (B5, ~0.86um) and SWIR (B7, ~2.2um).
             assert provider.nir_band == "nir08"
             assert provider.swir_band == "swir22"
+            assert provider.mask_band == "qa_pixel"
+
+    def test_sentinel2_mask_bands_are_scl(self) -> None:
+        config = StacProviderConfig.load_from_file()
+        masks = {p.mask_band.lower() for p in config.get_providers("sentinel-2")}
+        assert masks == {"scl"}
 
     def test_provider_id_parsed_to_enum(self) -> None:
         config = StacProviderConfig.load_from_file()
@@ -81,7 +88,7 @@ class TestStacProviderConfigLoading:
                             "collection": "sentinel-2-l2a",
                             "swir_band": "B12",
                             "nir_band": "B8A",
-                            "epsg_code": 4326,
+                            "mask_band": "SCL",
                         }
                     ]
                 }
@@ -106,17 +113,14 @@ class TestStacEndpointHandler:
         assert "sentinel-2" in sensors
         assert "landsat" in sensors
 
-    def test_band_names_accessor(self) -> None:
+    def test_bands_mapping(self) -> None:
         handler = StacEndpointHandler()
         landsat_provider = handler.config.get_providers("landsat")[0]
-        nir, swir = handler.get_band_names(landsat_provider)
-        assert nir == "nir08"
-        assert swir == "swir22"
-
-    def test_epsg_accessor(self) -> None:
-        handler = StacEndpointHandler()
-        provider = handler.config.get_providers("sentinel-2")[0]
-        assert handler.get_epsg_code(provider) == 4326
+        assert landsat_provider.bands() == {
+            "nir": "nir08",
+            "swir": "swir22",
+            "mask": "qa_pixel",
+        }
 
 
 class TestSensorConfigModel:
@@ -130,7 +134,7 @@ class TestSensorConfigModel:
             collection="sentinel-2-l2a",
             swir_band="swir22",
             nir_band="nir08",
-            epsg_code=4326,
+            mask_band="scl",
         )
         assert mapping.collection == "sentinel-2-l2a"
         assert mapping.id is StacProvider.ELEMENT_84
@@ -145,7 +149,7 @@ class TestSensorConfigModel:
                     collection="landsat-c2-l2",
                     swir_band="swir22",
                     nir_band="nir08",
-                    epsg_code=4326,
+                    mask_band="qa_pixel",
                 )
             ]
         )
@@ -153,65 +157,172 @@ class TestSensorConfigModel:
         assert sensor_config.providers[0].collection == "landsat-c2-l2"
 
 
-class TestRequiredWindowCoverage:
-    """Provider acceptance when the caller needs specific windows covered.
+def _items(*timestamps: str) -> List[SimpleNamespace]:
+    return [
+        SimpleNamespace(
+            id=f"item-{ts}",
+            datetime=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
+        )
+        for ts in timestamps
+    ]
 
-    A provider that returns items for the combined range can still leave one
-    window empty -- common on small AOIs, where a provider may hold only a
-    scene or two. Accepting it strands the analysis with nothing to compare.
-    """
 
-    @staticmethod
-    def _items(*timestamps: str):
-        return [
-            SimpleNamespace(
-                datetime=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
-            )
-            for ts in timestamps
+class TestInWindow:
+    """Window membership follows util.date_windows, which the loader shares."""
+
+    def test_keeps_items_inside_and_sorts_them(self) -> None:
+        items = _items(
+            "2016-11-05T18:35:42", "2016-10-16T18:33:42", "2016-11-20T00:00:00"
+        )
+        inside = in_window(items, ["2016-10-15", "2016-11-05"])
+        assert [i.id for i in inside] == [
+            "item-2016-10-16T18:33:42",
+            "item-2016-11-05T18:35:42",
         ]
 
-    def test_accepts_items_spanning_every_window(self) -> None:
-        items = self._items("2016-10-16T18:33:42", "2016-11-05T18:35:42")
-        assert StacEndpointHandler._items_cover_windows(
-            items,
-            [["2016-10-15", "2016-11-04"], ["2016-11-05", "2017-01-04"]],
-        )
-
-    def test_rejects_when_a_window_has_no_items(self) -> None:
-        # The lone scene sits in the postfire window; prefire is left empty.
-        items = self._items("2017-01-04T18:41:16")
-        assert not StacEndpointHandler._items_cover_windows(
-            items,
-            [["2016-10-15", "2016-11-04"], ["2016-11-05", "2017-01-04"]],
-        )
-
     def test_end_date_covers_the_whole_final_day(self) -> None:
-        """Mid-morning overpasses on the end date count as inside the window.
-
-        Both this and the fire severity command's time slicing read the
-        window through util.date_windows, so they cannot drift apart.
-        """
-        items = self._items("2017-01-04T18:41:16")
-        assert StacEndpointHandler._items_cover_windows(
-            items, [["2016-11-05", "2017-01-04"]]
-        )
+        """Mid-morning overpasses on the end date count as inside the window."""
+        assert in_window(_items("2017-01-04T18:41:16"), ["2016-11-05", "2017-01-04"])
 
     def test_items_without_datetime_are_ignored(self) -> None:
-        items = [SimpleNamespace(datetime=None)]
-        assert not StacEndpointHandler._items_cover_windows(
-            items, [["2016-11-05", "2017-01-04"]]
-        )
+        items = [SimpleNamespace(id="x", datetime=None)]
+        assert in_window(items, ["2016-11-05", "2017-01-04"]) == []
 
     def test_window_offset_is_honoured_not_relabelled(self) -> None:
-        """A window start carrying an offset means that instant, not UTC.
-
-        Regression: the offset used to be overwritten with UTC, so a scene
-        seven hours before the window actually opened counted as covering it.
-        """
+        """A window start carrying an offset means that instant, not UTC."""
         # The window opens at 07:00Z; this scene lands four hours earlier.
-        items = self._items("2023-06-15T03:00:00")
+        items = _items("2023-06-15T03:00:00")
+        assert in_window(items, ["2023-06-15T00:00:00-07:00", "2023-06-20"]) == []
 
-        assert not StacEndpointHandler._items_cover_windows(
-            items,
-            [["2023-06-15T00:00:00-07:00", "2023-06-20"]],
+
+class FakeClient:
+    """A pystac-client stand-in: items per (API url, window start date)."""
+
+    def __init__(self, url: str, catalog: Dict[str, Dict[str, List[str]]]):
+        self.url = url
+        self.catalog = catalog
+        self.searches: List[Dict[str, Any]] = []
+
+    def search(self, **kwargs: Any) -> SimpleNamespace:
+        self.searches.append(kwargs)
+        start = kwargs["datetime"][0].date().isoformat()
+        stamps = self.catalog.get(self.url, {}).get(start, [])
+        return SimpleNamespace(items=lambda: iter(_items(*stamps)))
+
+
+PRE = ["2023-06-01", "2023-06-09"]
+POST = ["2023-06-17", "2023-06-22"]
+E84 = "https://earth-search.aws.element84.com/v1/"
+MPC = "https://planetarycomputer.microsoft.com/api/stac/v1"
+
+
+class TestSearchWindows:
+    """Provider choice: the first in chain order with scenes in every window."""
+
+    @staticmethod
+    def _search(
+        monkeypatch: pytest.MonkeyPatch,
+        catalog: Dict[str, Dict[str, List[str]]],
+        failing: Optional[str] = None,
+    ) -> Any:
+        clients: Dict[str, FakeClient] = {}
+
+        def open_client(url: str) -> FakeClient:
+            if url == failing:
+                raise ConnectionError("provider down")
+            clients[url] = FakeClient(url, catalog)
+            return clients[url]
+
+        monkeypatch.setattr(
+            "src.stac.stac_endpoint_handler.PystacClient.open", open_client
         )
+        result = StacEndpointHandler().search_windows(
+            (-116.1, 33.8, -116.0, 33.9), [PRE, POST], "sentinel-2"
+        )
+        return result, clients
+
+    def test_first_provider_covering_both_windows_wins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog = {
+            E84: {
+                "2023-06-01": ["2023-06-04T18:40:00"],
+                "2023-06-17": ["2023-06-19T18:40:00"],
+            },
+            MPC: {
+                "2023-06-01": ["2023-06-04T18:40:00"],
+                "2023-06-17": ["2023-06-19T18:40:00"],
+            },
+        }
+        result, clients = self._search(monkeypatch, catalog)
+        assert result.provider.id is StacProvider.ELEMENT_84
+        assert [len(w) for w in result.windows] == [1, 1]
+        assert MPC not in clients
+
+    def test_each_window_is_searched_separately(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog = {
+            E84: {
+                "2023-06-01": ["2023-06-04T18:40:00"],
+                "2023-06-17": ["2023-06-19T18:40:00"],
+            }
+        }
+        _, clients = self._search(monkeypatch, catalog)
+        searches = clients[E84].searches
+        assert len(searches) == 2
+        starts = [s["datetime"][0].isoformat() for s in searches]
+        ends = [s["datetime"][1].isoformat() for s in searches]
+        assert starts == ["2023-06-01T00:00:00+00:00", "2023-06-17T00:00:00+00:00"]
+        assert ends == ["2023-06-10T00:00:00+00:00", "2023-06-23T00:00:00+00:00"]
+        assert searches[0]["collections"] == ["sentinel-2-l2a"]
+
+    def test_falls_back_when_a_window_is_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog = {
+            E84: {"2023-06-01": ["2023-06-04T18:40:00"]},
+            MPC: {
+                "2023-06-01": ["2023-06-04T18:40:00"],
+                "2023-06-17": ["2023-06-19T18:40:00"],
+            },
+        }
+        result, _ = self._search(monkeypatch, catalog)
+        assert result.provider.id is StacProvider.MICROSOFT_PLANETARY_COMPUTER
+
+    def test_falls_back_when_a_provider_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog = {
+            MPC: {
+                "2023-06-01": ["2023-06-04T18:40:00"],
+                "2023-06-17": ["2023-06-19T18:40:00"],
+            }
+        }
+        result, _ = self._search(monkeypatch, catalog, failing=E84)
+        assert result.provider.id is StacProvider.MICROSOFT_PLANETARY_COMPUTER
+
+    def test_raises_when_no_provider_covers_every_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        catalog = {E84: {"2023-06-01": ["2023-06-04T18:40:00"]}}
+        with pytest.raises(RuntimeError, match="every window"):
+            self._search(monkeypatch, catalog)
+
+
+class TestSignForRead:
+    def test_only_planetary_computer_items_are_signed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "src.stac.stac_endpoint_handler.planetary_computer.sign",
+            lambda item: ("signed", item),
+        )
+        config = StacProviderConfig.load_from_file()
+        e84, mpc = config.get_providers("sentinel-2")
+        items: List[Any] = ["a", "b"]
+        assert StacEndpointHandler.sign_for_read(e84, items) == ["a", "b"]
+        assert StacEndpointHandler.sign_for_read(mpc, items) == [
+            ("signed", "a"),
+            ("signed", "b"),
+        ]

@@ -1,0 +1,16 @@
+{
+  "type": "kubernetes",
+  "kubernetes": {
+    "context": "nautilus",
+    "namespace": "fire-severity-dev",
+    "image": "ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:latest",
+    "resources": {
+      "requests": { "cpu": "2", "memory": "2Gi", "ephemeral-storage": "10Gi" },
+      "limits": { "cpu": "2", "memory": "2Gi", "ephemeral-storage": "10Gi" }
+    },
+    "timeoutSeconds": 21600,
+    "ttlSecondsAfterFinished": 86400,
+    "threads": 2,
+    "scratchSize": "10Gi"
+  }
+}

@@ -1,94 +1,91 @@
 # Fire Recovery Backend
 
-A FastAPI service for fire severity analysis, boundary refinement, and vegetation impact assessment using Sentinel-2 or Landsat satellite imagery. 
+A FastAPI service for wildfire burn severity analysis from Sentinel-2 or Landsat imagery.
+Submit a fire perimeter and two date windows; get back a self-contained Portolan catalog of
+dNBR, RdNBR and RBR.
 
 Part of the [DSE Disturbance Toolbox](https://dse-disturbance-toolbox.org/tools/disturbance-severity/methodology/).
 
 ## What It Does
 
-This API processes satellite imagery to help assess wildfire impacts:
-
-1. **Fire Severity Analysis** - Calculates burn severity indices (NBR, dNBR, RdNBR, RBR) from Sentinel-2 or Landsat imagery
-2. **Boundary Refinement** - Crops analysis to user-drawn boundaries for precise impact areas
-3. **Vegetation Impact** - Generates statistics on fire effects across vegetation communities
+1. **Validates and keys the request.** The perimeter's buffered bounds snap to WebMercatorQuad
+   tiles, so requests that snap to the same tiles (with the same name, windows and sensor)
+   share one job id and one analysis.
+2. **Runs one bounded Kubernetes Job per analysis**, on josh's GKE cluster or NRP Nautilus. It
+   composites each window's cloud-masked scenes, using each product's own quality flags, and
+   computes every index in blocks, so memory stays flat however large the fire.
+3. **Publishes a Portolan catalog** per analysis, with the scenes, windows, grid and H3 cells it
+   covers, validated by rashid. It writes a result record and, optionally, emails the
+   requester.
 
 ### Why RBR?
 
-The API calculates multiple severity metrics, but **RBR (Relativized Burn Ratio)** is recommended for most use cases, especially in low-biomass environments like deserts. A fire that completely consumes sparse desert vegetation registers as "moderate" on dNBR scales calibrated for forests, but correctly registers as "high severity" on RBR.
+The API calculates multiple severity metrics, but **RBR (Relativized Burn Ratio)** is
+recommended for most use cases, especially in low-biomass environments like deserts. A fire
+that completely consumes sparse desert vegetation registers as "moderate" on dNBR scales
+calibrated for forests, but correctly registers as "high severity" on RBR.
 
 ## Quick Start
 
 ```bash
-# Fire severity analysis
-curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity" \
+# Submit an analysis: 202 with a status URL, or 200 with links if it already exists
+curl -X POST "http://localhost:8000/v2/severity" \
   -H "Content-Type: application/json" \
   -d '{
     "fire_event_name": "Geology_Fire",
-    "coarse_geojson": {"type": "Polygon", "coordinates": [[[-116.098276, 33.929925], [-116.098276, 33.880794], [-116.019318, 33.880794], [-116.019318, 33.929925], [-116.098276, 33.929925]]]},
-    "prefire_date_range": ["2023-06-01", "2023-06-09"],
-    "postfire_date_range": ["2023-06-17", "2023-06-22"]
+    "geometry": {"type": "Polygon", "coordinates": [[[-116.098276, 33.929925], [-116.098276, 33.880794], [-116.019318, 33.880794], [-116.019318, 33.929925], [-116.098276, 33.929925]]]},
+    "prefire_window": ["2023-06-01", "2023-06-09"],
+    "postfire_window": ["2023-06-17", "2023-06-22"]
   }'
 
-# Poll for results
-curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Geology_Fire/{job_id}"
+# Poll the status URL from the response
+curl "http://localhost:8000/v2/severity/{job_id}"
 ```
+
+## API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v2/severity` | POST | Submit an analysis, or get the existing one for the same key |
+| `/v2/severity/{job_id}` | GET | State, links when done, error when failed |
+| `/healthz` | GET | Liveness, no I/O |
+| `/version` | GET | Pipeline version, commit and Job image, no I/O |
+
+The generated OpenAPI schema is the contract: `/openapi.json`, or the interactive docs at
+`/docs`. [docs/ENDPOINTS.md](docs/ENDPOINTS.md) summarizes it.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [docs/ENDPOINTS.md](docs/ENDPOINTS.md) | Complete API reference with curl examples |
-| [docs/DESIGN.md](docs/DESIGN.md) | Architecture and design patterns |
-| [docs/DEVELOPING.md](docs/DEVELOPING.md) | Development setup, testing, and CI/CD |
-
-## API Overview
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/fire-recovery/process/analyze_fire_severity` | POST | Start fire severity analysis |
-| `/fire-recovery/result/analyze_fire_severity/{name}/{job_id}` | GET | Get severity analysis results |
-| `/fire-recovery/process/refine` | POST | Refine boundary and crop COGs |
-| `/fire-recovery/result/refine/{name}/{job_id}` | GET | Get refinement results |
-| `/fire-recovery/process/resolve_against_veg_map` | POST | Analyze vegetation impacts |
-| `/fire-recovery/result/resolve_against_veg_map/{name}/{job_id}` | GET | Get vegetation analysis results |
-| `/fire-recovery/upload/geojson` | POST | Upload GeoJSON boundary |
-| `/fire-recovery/upload/shapefile` | POST | Upload zipped shapefile |
-| `/fire-recovery/healthz` | GET | Health check |
-
-Interactive API docs available at `/docs` (Swagger UI) or `/redoc` when running locally.
-
-## Typical Workflow
-
-```
-1. POST /process/analyze_fire_severity  →  Get coarse severity COGs
-2. [User views COGs, draws refined boundary]
-3. POST /process/refine                 →  Get refined severity COGs
-4. POST /process/resolve_against_veg_map →  Get vegetation impact statistics
-```
+| [smrt-design/severity-v2-2026-11.md](smrt-design/severity-v2-2026-11.md) | The v2 design |
+| [docs/ENDPOINTS.md](docs/ENDPOINTS.md) | API summary |
+| [docs/DEVELOPING.md](docs/DEVELOPING.md) | Development setup, storage, testing and CI/CD |
+| [deployment/k8s/README.md](deployment/k8s/README.md) | Provisioning a cluster for the analysis Jobs |
 
 ## Output Products
 
-- **Cloud Optimized GeoTIFFs (COGs)**: Pre/post NBR, dNBR, RdNBR, RBR rasters for web visualization
-- **Boundary GeoJSON**: Coarse and refined fire perimeters
-- **Vegetation Matrix**: CSV/JSON with hectares affected by severity class per vegetation type
-- **STAC Metadata**: Catalog entries for all assets with spatial/temporal metadata
+Each analysis is published under `v2/fires/{fire_id}/` as a Portolan catalog:
+
+- **Cloud Optimized GeoTIFFs**: dNBR, RdNBR and RBR on the sensor's native UTM grid, with
+  overviews and embedded statistics
+- **STAC metadata**: the scenes, windows, grid, mask, provider and H3 cells, plus an
+  `items.parquet` mirror for querying across fires
+- **A thumbnail**: RBR on a fixed 0 to 0.5 ramp
 
 ## Technology Stack
 
-- **FastAPI** - Async Python web framework
-- **Sentinel-2 L2A & Landsat C2 L2** - Satellite imagery via Element 84 and Microsoft Planetary Computer
-- **Cloud Optimized GeoTIFF** - Web-optimized raster format
-- **STAC** - SpatioTemporal Asset Catalog for metadata
-- **Google Cloud Storage** - Asset storage (S3-compatible)
+- **FastAPI** on Cloud Run for the API; **Kubernetes Jobs** for the analyses
+- **Sentinel-2 L2A and Landsat C2 L2** via Element 84 and Microsoft Planetary Computer, read
+  with odc-stac
+- **portolan-cli and rashid** to build and validate the catalogs
+- **S3-compatible storage**: Google Cloud Storage in production, RustFS in CI and local
+  development
 
 ## Development
 
-See [docs/DEVELOPING.md](docs/DEVELOPING.md) for:
-- Pixi environment setup
-- Running locally with MinIO
-- Testing (pytest, contract tests)
-- CI/CD pipeline
-- Environment variables and secrets
+See [docs/DEVELOPING.md](docs/DEVELOPING.md) for the Pixi environment, running the API and a
+job locally, storage, tests and CI/CD.
 
 ## License
 

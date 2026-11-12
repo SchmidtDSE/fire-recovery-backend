@@ -4,6 +4,10 @@ FROM ghcr.io/prefix-dev/pixi:0.45.0-bookworm-slim
 # Install CA certificates for TLS (required by obstore/rustls)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# The project's own directory. The base image sets none, and building the repo's
+# editable package at / walks the whole filesystem, /proc's links back to / included.
+WORKDIR /app
+
 # Copy pixi environment files
 COPY pixi.toml pixi.toml
 COPY pixi.lock pixi.lock
@@ -13,6 +17,12 @@ COPY . .
 
 # Configure pixi as our entrypoint
 RUN pixi install --locked
+# The catalog step (portolan, through geoparquet_io) loads DuckDB's spatial
+# extension, and DuckDB fetches extensions over plain HTTP. A Job's egress allows
+# only DNS, HTTPS and SMTP, so a fetch there waits out a timeout and fails. With the
+# extension installed here, INSTALL at run time is a no-op and LOAD reads this copy.
+# The env's own python, because `pixi run` re-parses its arguments and drops quotes.
+RUN /app/.pixi/envs/default/bin/python -c "import duckdb; c = duckdb.connect(); c.install_extension('spatial'); c.load_extension('spatial')"
 RUN pixi shell-hook -s bash > /shell-hook
 RUN echo "#!/bin/bash" > /entrypoint.sh
 RUN cat /shell-hook >> /entrypoint.sh

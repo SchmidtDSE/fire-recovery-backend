@@ -1,0 +1,18 @@
+# Packaging only, so portolan can load the enrich plugin: it finds plugins
+# through the "portolan" entry-point group, which needs an installed
+# distribution. pixi installs this repo as an editable path dependency, and
+# pixi.toml stays the project manifest.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fire-recovery-backend"
+version = "2.0.0"
+requires-python = ">=3.12"
+
+[project.entry-points.portolan]
+fire-severity = "src.v2.portolan_plugin"
+
+[tool.setuptools.packages.find]
+include = ["src*"]

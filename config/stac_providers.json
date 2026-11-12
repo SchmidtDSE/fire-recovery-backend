@@ -9,7 +9,7 @@
           "collection": "sentinel-2-l2a",
           "swir_band": "swir22",
           "nir_band": "nir08",
-          "epsg_code": 4326
+          "mask_band": "scl"
         },
         {
           "id": "MICROSOFT_PLANETARY_COMPUTER",
@@ -18,7 +18,7 @@
           "collection": "sentinel-2-l2a",
           "swir_band": "B12",
           "nir_band": "B8A",
-          "epsg_code": 4326
+          "mask_band": "SCL"
         }
       ]
     },
@@ -31,7 +31,7 @@
           "collection": "landsat-c2-l2",
           "swir_band": "swir22",
           "nir_band": "nir08",
-          "epsg_code": 4326
+          "mask_band": "qa_pixel"
         },
         {
           "id": "ELEMENT_84",
@@ -40,7 +40,7 @@
           "collection": "landsat-c2-l2",
           "swir_band": "swir22",
           "nir_band": "nir08",
-          "epsg_code": 4326
+          "mask_band": "qa_pixel"
         }
       ]
     }

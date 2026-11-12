@@ -1,0 +1,8 @@
+# The namespace analysis Jobs run in. On NRP, create it through the NRP portal
+# instead; namespaces there are requested, not applied.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fire-severity-dev
+  labels:
+    app: severity-v2

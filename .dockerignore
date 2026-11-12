@@ -1,0 +1,12 @@
+# Not needed in the image. Docker doesn't read .gitignore, so local secrets and
+# environments are kept out here.
+.git
+.pixi
+.rustfs
+.devcontainer
+.env
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+exploratory/tmp

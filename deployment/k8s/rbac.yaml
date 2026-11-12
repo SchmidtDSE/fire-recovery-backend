@@ -1,0 +1,64 @@
+# Who may dispatch analysis Jobs, with josh's role (fire-recovery-iac,
+# environments/josh-k8s/kubernetes.tf): create and read Jobs, give each its own
+# credentials Secret, and read pods to report why a Job failed (for example
+# OOMKilled). Delete and update cover restarts. Nothing else.
+#
+# No keys: the API on Cloud Run is bound as its own Google identity, as josh
+# binds its machines' service accounts. The ServiceAccount is for clusters without
+# Google identities (NRP, and CI's Kind cluster), with short-lived tokens from
+# `kubectl create token`.
+#
+# On josh's GKE cluster, fire-recovery-iac (environments/fire-severity-k8s/)
+# creates these objects. Apply this file only where Tofu doesn't (README.md).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: severity-v2-dispatcher
+  namespace: fire-severity-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: severity-v2-dispatcher
+  namespace: fire-severity-dev
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: severity-v2-dispatcher
+  namespace: fire-severity-dev
+subjects:
+  - kind: ServiceAccount
+    name: severity-v2-dispatcher
+    namespace: fire-severity-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: severity-v2-dispatcher
+---
+# The API's Cloud Run service account. Its token has the userinfo.email scope, so
+# GKE identifies it by email. Tofu also binds the account's numeric unique ID,
+# which GKE uses for a token without that scope.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: severity-v2-api
+  namespace: fire-severity-dev
+subjects:
+  - kind: User
+    name: fire-severity-k8s-api-sa@dse-nps.iam.gserviceaccount.com
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: severity-v2-dispatcher

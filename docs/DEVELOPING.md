@@ -90,10 +90,15 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
 
 **Pipeline Stages:**
 
-1. **Quality Checks** (parallel execution):
+1. **Quality Checks** (parallel execution, on pushes and on PRs against any branch, so every
+   PR in a stack is checked):
    - MyPy type checking
    - Ruff linting and formatting
    - Pytest (all tests including contract tests)
+   - A build of `deployment/fastapi.Dockerfile`. A PR from this repository also pushes it to
+     GHCR as `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch:{sha}`.
+   - Kubernetes integration tests (`.github/workflows/test-k8s.yaml`; see
+     [Testing the Kubernetes path](#testing-the-kubernetes-path))
 
 2. **Schema Publishing** (after quality checks pass):
    - Generates OpenAPI schema
@@ -101,10 +106,15 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
    - Only runs on `dev` and `main` branches
 
 3. **Deployment** (after schema publishing):
-   - Builds Docker image via Cloud Build
+   - `dev`: builds the image once and pushes it to GHCR (`severity-batch:{sha}` and
+     `:latest`, as josh publishes `joshsim-batch`), where the analysis Jobs pull it, and to
+     Artifact Registry. Cloud Run deploys it by digest, and the API starts Jobs with the same
+     digest (`SEVERITY_IMAGE`).
+   - `main`: builds via Cloud Build (unchanged until prod moves to v2)
    - Deploys to Cloud Run
    - `dev` branch: Auto-deploys to dev environment
    - `main` branch: Requires manual approval for production
+   - One deploy per branch runs at a time; a later push waits for the earlier one
 
 **Security:**
 - Pull requests only run quality checks (no deployment, no secrets)
@@ -120,268 +130,175 @@ The repository uses a unified CI/CD pipeline defined in `.github/workflows/ci-cd
 - Push to `main` branch: Automatically publishes schema, waits for approval to deploy to production
 - Pull requests: Only run quality checks
 
+### Running v2 locally
+
+The API and the analysis job are the same code. Locally, the API starts each job as a child
+process instead of a Kubernetes Job (`SEVERITY_TARGET=local`, the default).
+
+1. Start RustFS and create `dev-bucket` (see
+   [Local storage with RustFS](#local-storage-with-rustfs) below).
+2. Run the API against it. The task sets every `S3_*` variable, so nothing falls back to
+   `.devcontainer/.env` or the production bucket.
+   ```bash
+   pixi run dev-api
+   ```
+3. Submit an analysis (see the README), then poll the `status_url` it returns. The job reads
+   real imagery from Element 84 or Planetary Computer and publishes to `dev-bucket`.
+
+To run one job without the API, give it a canonical request:
+
+```bash
+pixi run dev-job --request-file request.json
+```
+
+`request.json` is the canonical form (`src/v2/job_id.py`), for example a `canonical` entry
+from `tests/fixtures/v2_job_id_vectors.json`. Set `SMTP_*` and `OPERATOR_EMAIL` to test mail;
+without them the job skips it.
+
+### Testing the Kubernetes path
+
+Targets work as josh's do (`deployment/k8s/README.md`): a profile in `config/targets/` names
+the cluster, the API reaches it with no key, and the API gives each Job a Secret with its own
+storage settings.
+
+**In CI**, the Kubernetes integration tests run the whole path on a Kind cluster on every PR,
+as josh's `test-k8s.yaml` does. The API dispatches through a context with only the
+dispatcher's permissions, and a real analysis publishes to RustFS in the cluster. A Job whose
+image doesn't exist must surface as a failure on the status URL. The CI profiles are in
+`tests/fixtures/targets/`.
+
+**Against josh's GKE cluster**, once fire-recovery-iac's `environments/fire-severity-k8s/` is
+applied (the namespace, bucket, accounts and secrets), run the API on your machine in place of
+Cloud Run. It reaches the cluster as your Application Default Credentials, the same way it
+reaches it as its own account on Cloud Run, so it needs no kubeconfig and no GKE plugin.
+Impersonating the API's account gives it exactly that account's permissions, which is the
+closer test (it needs Token Creator on the account):
+
+```bash
+gcloud auth login
+gcloud auth application-default login \
+  --impersonate-service-account=fire-severity-k8s-api-sa@dse-nps.iam.gserviceaccount.com
+pixi run gke-api
+```
+
+`gke-api` (`scripts/gke-api.sh`) fixes every storage setting to v2's bucket, reads the bucket
+key from Secret Manager and turns mail off. The API copies these settings into each Job's
+Secret on the cluster, so none may come from `.devcontainer/.env`. Jobs run the image CI built
+for this branch's last push, or `SEVERITY_IMAGE` if set. The task stops if GHCR doesn't have
+that image, since a Job would otherwise wait on it until its deadline.
+
+If you sign in as yourself instead, your identity needs `container.clusterViewer` and a
+RoleBinding to the dispatcher role in `fire-severity-dev`. Being listed in that Tofu
+environment's `dispatcher_user_emails` grants both, as does a project role such as Owner
+(`deployment/k8s/README.md`).
+
 ## Environment Variables & Secrets
 
 ### Overview
 
-The fire-recovery-backend uses **S3-compatible storage abstraction** (via `MinioCloudStorage`) that works with:
-- **Google Cloud Storage (GCS)** in production (Cloud Run)
-- **MinIO** for local development and testing
+Storage is reached over the S3 protocol, so any S3-compatible endpoint works
+(`src/v2/store.py`; `portolan push` uses the same settings):
 
-### S3_* Naming Convention
+- **Google Cloud Storage** through its S3 endpoint with HMAC keys, in production (Cloud Run and
+  the analysis Jobs)
+- **RustFS** in CI and for local development (it replaces MinIO, whose community image is
+  deprecated)
 
-All environment variables use the **S3_* naming convention** to reflect that both GCS and MinIO use S3-compatible protocols.
+### Storage variables (S3_*)
 
-### Environment Variable Inventory
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `S3_ACCESS_KEY_ID` | Yes | Access key (an HMAC key on GCS) | — |
+| `S3_SECRET_ACCESS_KEY` | Yes | Secret key | — |
+| `S3_ENDPOINT` | No | Host and port, no scheme | `storage.googleapis.com` |
+| `S3_SECURE` | No | `True` for HTTPS, `False` for a local HTTP endpoint | `True` |
+| `S3_BUCKET` | No | Bucket | `dse-nps-fire-severity-storage` (v2's own) |
+| `S3_REGION` | No | Region used to sign requests | `auto` |
+| `S3_PUBLIC_BASE_URL` | No | Base of the public URLs in API responses | `{scheme}://{endpoint}/{bucket}` |
 
-#### Storage Credentials (S3_*)
+The defaults point at the **production** bucket. Set `S3_ENDPOINT` and `S3_BUCKET` explicitly
+for anything else.
 
-| Variable | Context | Required | Description | Example Value |
-|----------|---------|----------|-------------|---------------|
-| `S3_ACCESS_KEY_ID` | All | Yes | S3-compatible access key for storage | `minioadmin` (local), `GOOG1E...` (GCS) |
-| `S3_SECRET_ACCESS_KEY` | All | Yes | S3-compatible secret key for storage | `minioadmin` (local), `abc123...` (GCS) |
+### Local storage with RustFS
 
-#### Storage Configuration (S3_*)
+Pixi's `s3` environment has RustFS from conda-forge, at the version CI runs, and the AWS CLI.
+It is separate from the default environment, so neither reaches the image.
 
-| Variable | Context | Required | Description | Example Value |
-|----------|---------|----------|-------------|---------------|
-| `S3_ENDPOINT` | All | Yes | S3-compatible endpoint URL | `localhost:9000` (local), `storage.googleapis.com` (GCS) |
-| `S3_SECURE` | All | Yes | Use HTTPS for connections | `False` (local MinIO), `True` (GCS) |
-| `S3_BUCKET` | All | Yes | Bucket name for storage | `test-bucket` (local), `fire-recovery-temp` (GCS) |
-
-#### Application Configuration
-
-| Variable | Context | Required | Description | Example Value |
-|----------|---------|----------|-------------|---------------|
-| `RUN_LOCAL` | Local Development | Optional | Use local MinIO for satellite data processing | `True` |
-
-### Setup Instructions by Environment
-
-#### Local Development (Running the App)
-
-For local development, you need credentials to connect to **either** local MinIO **or** Google Cloud Storage.
-
-**Option 1: Using Local MinIO (Recommended for Development)**
-
-1. Start MinIO locally using Docker:
+1. Start RustFS on `127.0.0.1:9000` and leave it running. Its data goes in `.rustfs/`.
    ```bash
-   docker run -d \
-     -p 9000:9000 -p 9001:9001 \
-     -e "MINIO_ROOT_USER=minioadmin" \
-     -e "MINIO_ROOT_PASSWORD=minioadmin" \
-     -v /tmp/minio-data:/data \
-     quay.io/minio/minio server /data --console-address ":9001"
+   pixi run -e s3 s3-server
    ```
 
-2. Create `.devcontainer/.env`:
-   ```dotenv
-   # S3-compatible storage credentials
-   S3_ACCESS_KEY_ID=minioadmin
-   S3_SECRET_ACCESS_KEY=minioadmin
-   RUN_LOCAL=True
-   ```
-
-   **Note:** The `RUN_LOCAL=True` setting tells the spectral index processor to use local MinIO.
-
-**Option 2: Using Google Cloud Storage**
-
-1. Create GCS HMAC credentials:
-   - Go to [Google Cloud Console > Cloud Storage > Settings > Interoperability](https://console.cloud.google.com/storage/settings;tab=interoperability)
-   - Create a new HMAC key for your service account
-   - Save the Access Key and Secret
-
-2. Create `.devcontainer/.env`:
-   ```dotenv
-   # S3-compatible storage credentials
-   S3_ACCESS_KEY_ID=GOOG1E...your-access-key
-   S3_SECRET_ACCESS_KEY=...your-secret-key
-   RUN_LOCAL=False
-   ```
-
-#### Testing (pytest)
-
-Tests use a separate configuration file to isolate test credentials from app credentials.
-
-**For Local Testing with MinIO:**
-
-1. Ensure MinIO is running (see Local Development setup above)
-
-2. Create `.devcontainer/test.env`:
-   ```dotenv
-   # S3-compatible storage configuration
-   S3_ENDPOINT=localhost:9000
-   S3_ACCESS_KEY_ID=minioadmin
-   S3_SECRET_ACCESS_KEY=minioadmin
-   S3_SECURE=False
-   S3_BUCKET=test-bucket
-   ```
-
-3. Run tests:
+2. Create `dev-bucket`. Running it again does nothing.
    ```bash
-   pixi run pytest
+   pixi run -e s3 s3-bucket
    ```
 
-**For Testing Against GCS:**
+3. `pixi run dev-api`, `pixi run dev-job` and `pixi run storage-test` use it, with fixed local
+   settings in `pixi.toml`. `.devcontainer/.env` doesn't need changing.
 
-If you want to run tests against Google Cloud Storage instead of local MinIO:
-
-1. Create `.devcontainer/test.env`:
-   ```dotenv
-   # S3-compatible storage configuration
-   S3_ENDPOINT=storage.googleapis.com
-   S3_ACCESS_KEY_ID=GOOG1E...your-access-key
-   S3_SECRET_ACCESS_KEY=...your-secret-key
-   S3_SECURE=True
-   S3_BUCKET=fire-recovery-temp
-   ```
-
-   **Warning:** Running tests against GCS will incur storage costs and may leave test artifacts in your bucket.
-
-#### CI/CD (GitHub Actions)
-
-The GitHub Actions workflow (`.github/workflows/pytest.yml`) automatically:
-
-1. Starts a MinIO service container
-2. Creates both `.env` and `test.env` files with S3_* credentials
-3. Sets environment variables for the test run
-
-**Environment variables set in CI:**
-
-```yaml
-# S3-compatible storage configuration
-S3_ENDPOINT=localhost:9000
-S3_ACCESS_KEY_ID=minioadmin
-S3_SECRET_ACCESS_KEY=minioadmin
-S3_SECURE=False
-S3_BUCKET=test-bucket
-RUN_LOCAL=True
+The AWS CLI in the `s3` environment points at RustFS, so you can look at what a run published:
+```bash
+pixi run -e s3 aws s3 ls s3://dev-bucket --recursive
 ```
 
-No configuration needed - this happens automatically in CI.
+### Tests
 
-#### Production (Cloud Run)
+`pixi run pytest` needs no storage. Two groups of tests are opt-in:
 
-Production deployments use Google Cloud Storage with HMAC credentials.
+- **Network tests** read real STAC APIs and imagery: `pixi run pytest -m network`.
+- **Storage tests** push a catalog with a COG over 5 MiB to a real S3-compatible store. They
+  run only with `RUN_STORAGE_TESTS=1` and an explicit `S3_ENDPOINT`, and refuse the production
+  bucket. With RustFS running and `dev-bucket` created (above), this sets both and runs them:
+  ```bash
+  pixi run storage-test
+  ```
 
-**Required Secret Manager secrets:**
+pytest loads `.devcontainer/test.env` and `.devcontainer/.env` if they exist (`pytest.ini`).
 
-1. `S3_ACCESS_KEY_ID` - GCS HMAC access key
-2. `S3_SECRET_ACCESS_KEY` - GCS HMAC secret key
+### CI/CD (GitHub Actions)
 
-These are injected into the Cloud Run service as environment variables. See your Cloud Run service configuration or deployment scripts for details.
+The `pytest` job runs RustFS as a service container, creates `test-bucket` with the AWS CLI,
+and sets the `S3_*` variables and `RUN_STORAGE_TESTS=1` for the whole job, so the storage tests
+run on every PR.
 
-### Credential Resolution Flow
+### Production (Cloud Run)
 
-When `MinioCloudStorage` is instantiated, it resolves credentials in this order:
-
-```python
-# 1. Constructor arguments (highest priority)
-storage = MinioCloudStorage(
-    access_key="explicit_key",
-    secret_key="explicit_secret"
-)
-
-# 2. S3_* environment variables
-# Checks: S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
-```
-
-**Example resolution in testing:**
-- Test creates `MinioCloudStorage` with explicit credentials as arguments
-- Constructor arguments take precedence, so test credentials are used
-
-**Example resolution in production:**
-- App creates `MinioCloudStorage` without explicit credentials
-- Falls back to `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` environment variables
-- Production S3-compatible credentials are used
+The API reads the result records with GCS HMAC credentials, injected as `S3_ACCESS_KEY_ID` and
+`S3_SECRET_ACCESS_KEY` from Secret Manager. Analysis Jobs get the same variables from the
+`severity-v2` Secret in their namespace.
 
 ### Security Best Practices
 
-#### Local Development
-
-1. **Never commit `.env` or `test.env` files**
-   - These are already in `.gitignore` as `.devcontainer/.env` and `.devcontainer/test.env`
-   - Always verify with `git status` before committing
-
-2. **Use local MinIO for development when possible**
-   - Avoids exposing real cloud credentials
-   - Prevents accidental costs or data exposure
-   - Faster iteration without network latency
-
-3. **Store real credentials securely**
-   - Use a password manager for GCS HMAC keys
-   - Don't store in plain text files outside the project
-   - Don't share credentials via chat/email
+1. **Never commit `.env` or `test.env` files.** `.devcontainer/.env` and
+   `.devcontainer/test.env` are in `.gitignore`; check `git status` before committing.
+2. **Develop against RustFS, not the production bucket.** Local credentials meant for
+   production are dangerous with the production defaults above; the storage tests refuse the
+   production bucket for that reason.
+3. **Store real credentials securely,** in a password manager, never in chat or email.
 
 #### Credential Rotation
 
-If credentials are accidentally exposed (committed to git, shared publicly, etc.):
+**Local RustFS credentials** are fixed in `pixi.toml` and local-only: RustFS listens on
+`127.0.0.1`.
 
-**For local MinIO credentials:**
-1. No action needed - these are local-only mock credentials
-2. Restart MinIO with new credentials if concerned
-
-**For GCS HMAC credentials:**
-1. **Immediately** delete the exposed HMAC key in [Google Cloud Console](https://console.cloud.google.com/storage/settings;tab=interoperability)
-2. Generate a new HMAC key
-3. Update secrets in:
-   - Local `.devcontainer/.env` file
-   - Cloud Run Secret Manager secrets
-   - Any CI/CD secrets (if used)
-4. If committed to git:
-   - Rotate credentials BEFORE removing from git history
-   - Use tools like `git-filter-repo` to purge from history
-   - Force push to remote (coordinate with team)
-   - Consider the repository compromised; may need to regenerate all credentials
-
-#### What's in .gitignore
-
-The following files are excluded from version control for security:
-
-```
-.devcontainer/.env          # Local app credentials
-.devcontainer/test.env      # Test credentials
-github-actions-key.json     # Service account keys (if used)
-```
-
-Always check `.gitignore` before adding new credential files.
+**GCS HMAC credentials**, if exposed:
+1. **Immediately** delete the exposed HMAC key in the
+   [Google Cloud Console](https://console.cloud.google.com/storage/settings;tab=interoperability).
+2. Generate a new HMAC key.
+3. Update it in your local `.devcontainer/.env`, in Secret Manager for Cloud Run, and in each
+   cluster's `severity-v2` Secret.
+4. If it was committed to git, rotate before purging history (for example with
+   `git-filter-repo`), and treat the repository as compromised.
 
 ### Troubleshooting
 
-#### "S3 credentials must be provided" Error
-
-**Cause:** `MinioCloudStorage` cannot find S3_* credentials.
-
-**Solution:**
-- For app startup: Ensure `.devcontainer/.env` has `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`
-- For tests: Ensure `.devcontainer/test.env` has `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`
-
-#### Tests Skip with "S3-compatible storage credentials not available"
-
-**Cause:** The `minio_available` fixture checks for required environment variables and doesn't find them.
-
-**Solution:**
-1. Verify `.devcontainer/test.env` exists with all required S3_* variables
-2. Restart your development container to reload environment variables
-3. Check that pytest is loading the test environment (see `tests/conftest.py`)
-
-#### MinIO Connection Refused in CI
-
-**Cause:** MinIO service container isn't ready before tests run.
-
-**Solution:**
-- The workflow includes a health check and readiness verification
-- If this persists, increase wait time in `.github/workflows/pytest.yml`
-- Check GitHub Actions logs for MinIO startup errors
-
-#### Production App Can't Access GCS
-
-**Cause:** GCS HMAC credentials are missing or invalid in Cloud Run environment.
-
-**Solution:**
-1. Verify secrets exist in Secret Manager: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
-2. Verify Cloud Run service is configured to inject these as environment variables
-3. Check Cloud Run logs for authentication errors
-4. Test credentials locally by temporarily setting them in `.devcontainer/.env`
+- **"Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY"**: the process has no storage
+  credentials. Add them to `.devcontainer/.env` locally, or check the Secret in the cluster.
+- **Storage tests skip**: set `RUN_STORAGE_TESTS=1` and `S3_ENDPOINT`, and use a bucket other
+  than the production ones (`dse-nps-fire-severity-storage`, v1's `fire-recovery-store`).
+- **RustFS not ready in CI**: the workflow waits up to a minute for it to answer; check the
+  service container's log in the run.
 
 ### Development Container
 

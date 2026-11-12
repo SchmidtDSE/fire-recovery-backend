@@ -1,0 +1,278 @@
+{
+ "source": "v1 IndexRegistry calculators (src/computation, deleted in severity v2 PR 1)",
+ "units": "inputs are scaled surface reflectance; outputs are the v1 float64 results",
+ "pixels": [
+  {
+   "name": "healthy_to_burned",
+   "prefire": {
+    "nir": [
+     0.3,
+     0.32,
+     0.31
+    ],
+    "swir": [
+     0.1,
+     0.11,
+     0.12
+    ]
+   },
+   "postfire": {
+    "nir": [
+     0.15,
+     0.14,
+     0.16
+    ],
+    "swir": [
+     0.25,
+     0.26,
+     0.24
+    ]
+   },
+   "expected": {
+    "prefire_nbr": 0.4761904761904762,
+    "postfire_nbr": -0.25,
+    "dnbr": 0.7261904761904763,
+    "rdnbr": 1.0523499779970902,
+    "rbr": 0.4916024628477484
+   }
+  },
+  {
+   "name": "unchanged",
+   "prefire": {
+    "nir": [
+     0.25,
+     0.25,
+     0.25
+    ],
+    "swir": [
+     0.15,
+     0.15,
+     0.15
+    ]
+   },
+   "postfire": {
+    "nir": [
+     0.25,
+     0.25,
+     0.25
+    ],
+    "swir": [
+     0.15,
+     0.15,
+     0.15
+    ]
+   },
+   "expected": {
+    "prefire_nbr": 0.25,
+    "postfire_nbr": 0.25,
+    "dnbr": 0.0,
+    "rdnbr": 0.0,
+    "rbr": 0.0
+   }
+  },
+  {
+   "name": "prefire_nbr_zero",
+   "prefire": {
+    "nir": [
+     0.2,
+     0.2,
+     0.2
+    ],
+    "swir": [
+     0.2,
+     0.2,
+     0.2
+    ]
+   },
+   "postfire": {
+    "nir": [
+     0.1,
+     0.1,
+     0.1
+    ],
+    "swir": [
+     0.3,
+     0.3,
+     0.3
+    ]
+   },
+   "expected": {
+    "prefire_nbr": 0.0,
+    "postfire_nbr": -0.49999999999999994,
+    "dnbr": 0.49999999999999994,
+    "rdnbr": 499.99999999999994,
+    "rbr": 0.4995004995004995
+   }
+  },
+  {
+   "name": "prefire_nbr_negative",
+   "prefire": {
+    "nir": [
+     0.1,
+     0.12,
+     0.11
+    ],
+    "swir": [
+     0.3,
+     0.28,
+     0.29
+    ]
+   },
+   "postfire": {
+    "nir": [
+     0.08,
+     0.09,
+     0.1
+    ],
+    "swir": [
+     0.35,
+     0.33,
+     0.34
+    ]
+   },
+   "expected": {
+    "prefire_nbr": -0.45,
+    "postfire_nbr": -0.5813953488372092,
+    "dnbr": 0.1313953488372092,
+    "rdnbr": 0.19587262128486516,
+    "rbr": 0.238467057780779
+   }
+  },
+  {
+   "name": "regrowth",
+   "prefire": {
+    "nir": [
+     0.12,
+     0.13,
+     0.12
+    ],
+    "swir": [
+     0.25,
+     0.24,
+     0.26
+    ]
+   },
+   "postfire": {
+    "nir": [
+     0.3,
+     0.29,
+     0.31
+    ],
+    "swir": [
+     0.12,
+     0.11,
+     0.13
+    ]
+   },
+   "expected": {
+    "prefire_nbr": -0.35135135135135137,
+    "postfire_nbr": 0.42857142857142855,
+    "dnbr": -0.7799227799227799,
+    "rdnbr": -1.3157724574669394,
+    "rbr": -1.2005301350893565
+   }
+  },
+  {
+   "name": "missing_obs",
+   "prefire": {
+    "nir": [
+     0.3,
+     null,
+     0.34
+    ],
+    "swir": [
+     0.1,
+     0.14,
+     null
+    ]
+   },
+   "postfire": {
+    "nir": [
+     null,
+     0.15,
+     0.17
+    ],
+    "swir": [
+     0.24,
+     null,
+     0.26
+    ]
+   },
+   "expected": {
+    "prefire_nbr": 0.4545454545454546,
+    "postfire_nbr": -0.2195121951219512,
+    "dnbr": 0.6740576496674058,
+    "rdnbr": 0.9997890643357346,
+    "rbr": 0.4630962554707054
+   }
+  },
+  {
+   "name": "all_missing_postfire",
+   "prefire": {
+    "nir": [
+     0.3,
+     0.31,
+     0.32
+    ],
+    "swir": [
+     0.1,
+     0.1,
+     0.1
+    ]
+   },
+   "postfire": {
+    "nir": [
+     null,
+     null,
+     null
+    ],
+    "swir": [
+     null,
+     null,
+     null
+    ]
+   },
+   "expected": {
+    "prefire_nbr": 0.5121951219512194,
+    "postfire_nbr": null,
+    "dnbr": null,
+    "rdnbr": null,
+    "rbr": null
+   }
+  },
+  {
+   "name": "near_saturation",
+   "prefire": {
+    "nir": [
+     0.95,
+     0.96,
+     0.97
+    ],
+    "swir": [
+     0.05,
+     0.04,
+     0.06
+    ]
+   },
+   "postfire": {
+    "nir": [
+     0.5,
+     0.52,
+     0.51
+    ],
+    "swir": [
+     0.45,
+     0.44,
+     0.46
+    ]
+   },
+   "expected": {
+    "prefire_nbr": 0.9009900990099009,
+    "postfire_nbr": 0.0625,
+    "dnbr": 0.8384900990099009,
+    "rdnbr": 0.883360406205564,
+    "rbr": 0.44084882431637523
+   }
+  }
+ ]
+}

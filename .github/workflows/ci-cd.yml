@@ -3,8 +3,15 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main, dev]
+  # Every base branch, so each PR in a stack gets checks. The jobs that use
+  # secrets (publish-schema, deploy) run only on push to dev or main.
   pull_request:
-    branches: [main, dev]
+
+# A new push to a PR cancels that PR's checks still running. Pushes to dev and
+# main always run to the end (their deploys queue, see the deploy job).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Job 1: Type checking (runs in parallel, no secrets)
@@ -17,7 +24,7 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
         with:
-          pixi-version: v0.40.0
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
           cache: true
 
       - name: Run mypy
@@ -33,7 +40,7 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
         with:
-          pixi-version: v0.40.0
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
           cache: true
 
       - name: Run ruff check
@@ -47,23 +54,25 @@ jobs:
     name: Pytest
     runs-on: ubuntu-latest
 
+    # RustFS, the S3-compatible store for CI and local development (MinIO's
+    # community image is deprecated). The storage tests push a catalog to it.
     services:
-      minio:
-        image: bitnamilegacy/minio:latest
+      rustfs:
+        image: rustfs/rustfs:1.0.4
         ports:
           - 9000:9000
-          - 9001:9001
         env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-          MINIO_DEFAULT_BUCKETS: test-bucket:download
-          MINIO_SCHEME: http
-          BITNAMI_DEBUG: false
-        options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/ready || curl -f http://localhost:9000/minio/health/live"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          RUSTFS_ACCESS_KEY: ci-access-key
+          RUSTFS_SECRET_KEY: ci-secret-key
+
+    env:
+      S3_ENDPOINT: localhost:9000
+      S3_ACCESS_KEY_ID: ci-access-key
+      S3_SECRET_ACCESS_KEY: ci-secret-key
+      S3_SECURE: "False"
+      S3_BUCKET: test-bucket
+      S3_REGION: us-east-1
+      RUN_STORAGE_TESTS: "1"
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -71,69 +80,31 @@ jobs:
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
         with:
-          pixi-version: v0.40.0
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
 
-      - name: Create test environment files
+      - name: Wait for RustFS and create the test bucket
+        env:
+          AWS_ACCESS_KEY_ID: ci-access-key
+          AWS_SECRET_ACCESS_KEY: ci-secret-key
+          AWS_DEFAULT_REGION: us-east-1
         run: |
-          mkdir -p .devcontainer
-
-          # Create test.env with S3_* variables (new standard)
-          cat > .devcontainer/test.env << EOF
-          S3_ENDPOINT=localhost:9000
-          S3_ACCESS_KEY_ID=minioadmin
-          S3_SECRET_ACCESS_KEY=minioadmin
-          S3_SECURE=False
-          S3_BUCKET=test-bucket
-          EOF
-
-          # Create .env with S3_* variables (new standard)
-          cat > .devcontainer/.env << EOF
-          S3_ACCESS_KEY_ID=minioadmin
-          S3_SECRET_ACCESS_KEY=minioadmin
-          RUN_LOCAL=True
-          EOF
-
-      - name: Verify MinIO is ready
-        run: |
-          for i in {1..30}; do
-            if curl -f http://localhost:9000/minio/health/ready; then
-              echo "MinIO is ready!"
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null "http://$S3_ENDPOINT/"; then
+              echo "RustFS is answering"
               break
             fi
-            echo "Waiting for MinIO... (attempt $i/30)"
+            echo "Waiting for RustFS... (attempt $i/30)"
             sleep 2
           done
+          aws --endpoint-url "http://$S3_ENDPOINT" s3 mb "s3://$S3_BUCKET"
 
-      - name: Initialize STAC catalog
-        env:
-          S3_ENDPOINT: localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
-          S3_SECURE: "False"
-          S3_BUCKET: test-bucket
-        run: pixi run python -m src.scripts.init_stac_catalog
-
-      - name: Run all tests (including contract tests)
-        env:
-          S3_ENDPOINT: localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
-          S3_SECURE: "False"
-          S3_BUCKET: test-bucket
-          RUN_LOCAL: "True"
+      - name: Run all tests (including contract and storage tests)
         run: pixi run pytest --verbose
 
       - name: Generate baseline schema for artifact
         if: always()
-        env:
-          S3_ENDPOINT: localhost:9000
-          S3_ACCESS_KEY_ID: minioadmin
-          S3_SECRET_ACCESS_KEY: minioadmin
-          S3_SECURE: "False"
-          S3_BUCKET: test-bucket
-          RUN_LOCAL: "True"
         run: pixi run python -m scripts.generate_baseline_schema
 
       - name: Upload baseline schema as artifact
@@ -154,12 +125,55 @@ jobs:
             **/*.log
           retention-days: 7
 
-  # Job 4: Publish OpenAPI schema to GCP (needs all quality checks to pass)
+  # Job 4: Build the image, so a Dockerfile or lock problem shows up on the PR
+  # rather than at deploy time. A PR from this repository also pushes it to
+  # GHCR by commit, as josh publishes joshsim-batch, so a cluster can run the
+  # branch before it merges (deployment/k8s/README.md).
+  image:
+    name: Build Image
+    runs-on: ubuntu-latest
+    # A healthy build takes minutes; a stuck one shouldn't hold a runner for hours.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # The PR's own commit, not the merge, so the tag names what's in it.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build deployment/fastapi.Dockerfile
+        run: |
+          docker build --file deployment/fastapi.Dockerfile \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            --tag fire-recovery-backend:ci .
+
+      # Jobs run with egress limited to DNS, HTTPS and SMTP, and the Kind test
+      # leaves that policy out, so check here that the catalog step's DuckDB
+      # extension loads with no network at all.
+      - name: Check the image loads DuckDB spatial offline
+        run: |
+          docker run --rm --network none fire-recovery-backend:ci \
+            python -c "import duckdb; c = duckdb.connect(); c.execute('INSTALL spatial'); c.execute('LOAD spatial')"
+
+      - name: Push this PR's image to GHCR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          IMAGE: ghcr.io/schmidtdse/fire-recovery-backend/severity-batch
+          SHA: ${{ github.event.pull_request.head.sha }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag fire-recovery-backend:ci "$IMAGE:$SHA"
+          docker push "$IMAGE:$SHA"
+
+  # Job 5: Publish OpenAPI schema to GCP (needs all quality checks to pass)
   # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
   publish-schema:
     name: Publish OpenAPI Schema
     runs-on: ubuntu-latest
-    needs: [mypy, ruff, pytest]  # Waits for ALL quality checks to succeed
+    needs: [mypy, ruff, pytest, image]  # Waits for ALL quality checks to succeed
     # Only run on push to dev/main (not PRs)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
 
@@ -225,12 +239,17 @@ jobs:
           echo "  Commit: https://storage.googleapis.com/fire-recovery-store/openapi-schemas/${{ github.sha }}.json"
           echo "  Branch: https://storage.googleapis.com/fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json"
 
-  # Job 5: Deploy to Cloud Run (needs schema publish to succeed)
+  # Job 6: Deploy to Cloud Run (needs schema publish to succeed)
   # SECURITY: Only runs on dev/main branches, uses environment-scoped secrets
   deploy:
     name: Deploy to Cloud Run
     runs-on: ubuntu-latest
     needs: [publish-schema]  # Waits for schema publishing to succeed
+    # One deploy per branch at a time, in push order: a later push waits rather
+    # than racing an earlier one for the same image tag.
+    concurrency:
+      group: deploy-${{ github.ref_name }}
+      cancel-in-progress: false
     # Only run on push to dev/main (not PRs)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
 
@@ -243,6 +262,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: write  # push the image to GHCR, where the clusters pull it
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -264,6 +284,40 @@ jobs:
 
       - name: Set environment variable for branch
         run: echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      # One build, pushed to GHCR (the analysis Jobs pull it from any cluster)
+      # and to Artifact Registry (Cloud Run pulls it). Both carry the same
+      # digest, and the API starts Jobs with it, so the code that derived a job
+      # id is the code that runs it.
+      - name: Build the image once and push it to GHCR and Artifact Registry
+        id: image
+        if: github.ref_name == 'dev'
+        env:
+          # Named and tagged as josh's joshsim-batch: {sha} and latest.
+          GHCR_IMAGE: ghcr.io/schmidtdse/fire-recovery-backend/severity-batch
+          AR_IMAGE: us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          # A BuildKit builder exports the image once and pushes that same
+          # manifest to every tag.
+          docker buildx create --use --name severity-builder
+          docker buildx build \
+            --file deployment/fastapi.Dockerfile \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            --tag "$GHCR_IMAGE:$GITHUB_SHA" --tag "$GHCR_IMAGE:latest" \
+            --tag "$AR_IMAGE:$GITHUB_SHA" --tag "$AR_IMAGE:latest" \
+            --provenance=false \
+            --push .
+          ghcr_digest=$(docker buildx imagetools inspect "$GHCR_IMAGE:$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)
+          ar_digest=$(docker buildx imagetools inspect "$AR_IMAGE:$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)
+          if [ -z "$ghcr_digest" ] || [ "$ghcr_digest" != "$ar_digest" ]; then
+            echo "Digests differ or are missing: GHCR '$ghcr_digest', Artifact Registry '$ar_digest'"
+            exit 1
+          fi
+          echo "Pushed $ghcr_digest to both registries"
+          echo "digest=$ghcr_digest" >> "$GITHUB_OUTPUT"
 
       - name: Build and Deploy to Cloud Run
         id: deploy
@@ -307,28 +361,41 @@ jobs:
 
           if [ "${{ env.BRANCH_NAME }}" = "dev" ]; then
             echo "Deploying to DEV..."
+            DIGEST="${{ steps.image.outputs.digest }}"
+            DEV_URL="https://fire-recovery-backend-dev-113009620257.us-central1.run.app"
 
-            gcloud builds submit \
-              --config deployment/dev-cloudbuild.yml \
-              --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
-              .
-
+            # Env vars and secrets are merged into the service's. The service
+            # runs as its own account, which reaches josh's cluster with no key
+            # (a RoleBinding in the namespace). v2 uses its own bucket and HMAC
+            # key, which the API passes on to each Job. The account and secrets
+            # come from fire-recovery-iac (environments/fire-severity-k8s/), and
+            # the API key secret needs a version (deployment/k8s/README.md §5).
+            # This deploy owns the revision, including its runtime account.
+            # Analyses run as Jobs, so the API itself needs little: one small
+            # instance, with CPU billed only while it serves a request. It stays
+            # warm and single because the anonymous rate limit lives in its memory
+            # (src/v2/constants.py).
             gcloud run deploy fire-recovery-backend-dev \
-              --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev:latest \
+              --image "us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/dev@$DIGEST" \
               --platform managed \
-              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --service-account=fire-severity-k8s-api-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
+              --cpu 1 \
+              --memory 512Mi \
+              --cpu-throttling \
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
-              --tag "sha-${GITHUB_SHA:0:7}"
+              --tag "sha-${GITHUB_SHA:0:7}" \
+              --update-env-vars "SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend/severity-batch@$DIGEST,GIT_SHA=$GITHUB_SHA,SEVERITY_TARGET=gke-josh,SEVERITY_API_URL=$DEV_URL,S3_BUCKET=dse-nps-fire-severity-storage" \
+              --update-secrets "SEVERITY_API_KEY_HASHES=severity-v2-api-key-hashes:latest,S3_ACCESS_KEY_ID=fire-severity-k8s-minio-access-key:latest,S3_SECRET_ACCESS_KEY=fire-severity-k8s-minio-secret-key:latest"
 
             # Ensure 100% traffic goes to the new revision
             gcloud run services update-traffic fire-recovery-backend-dev \
               --region us-central1 \
               --to-latest
 
-            echo "url=https://fire-recovery-backend-dev-<hash>-uc.a.run.app" >> $GITHUB_OUTPUT
+            echo "url=$DEV_URL" >> $GITHUB_OUTPUT
           fi
 
       - name: Display deployment URL

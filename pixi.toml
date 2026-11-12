@@ -11,37 +11,121 @@ ruff-check = "ruff check ."
 ruff-format = "ruff format ."
 ruff-fix = "ruff check . --fix"
 
+# Local runs against RustFS: start it with `pixi run -e s3 s3-server` and create the bucket
+# with `pixi run -e s3 s3-bucket` first. Each task sets every S3_* variable, so nothing falls
+# back to .devcontainer/.env or the production bucket.
+[tasks.storage-test]
+cmd = "python -m pytest -m storage"
+env = { RUN_STORAGE_TESTS = "1", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
+
+# The API on :8000, starting each analysis as a child process.
+[tasks.dev-api]
+cmd = "uvicorn src.app:app --port 8000"
+env = { SEVERITY_TARGET = "local", S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
+
+# The API on :8000 dispatching to josh's GKE cluster, standing in for Cloud Run. Sign in
+# with `gcloud auth application-default login` first; see docs/DEVELOPING.md.
+[tasks.gke-api]
+cmd = "bash scripts/gke-api.sh"
+
+# One analysis without the API: `pixi run dev-job --request-file request.json`.
+[tasks.dev-job]
+cmd = "python -m src.v2.run"
+env = { S3_ENDPOINT = "127.0.0.1:9000", S3_SECURE = "False", S3_BUCKET = "dev-bucket", S3_REGION = "us-east-1", S3_ACCESS_KEY_ID = "dev-access-key", S3_SECRET_ACCESS_KEY = "dev-secret-key" }
+
 [dependencies]
+python = "3.12.*"
 numpy = ">=2.2.4,<3"
-rasterio = ">=1.4.3,<2"
+rasterio = ">=1.4.4,<2"
+pyproj = ">=3.7.1,<4"
+shapely = ">=2.1.0,<3"
 fastapi = ">=0.115.12,<0.116"
 uvicorn = ">=0.34.2,<0.35"
-coiled = ">=1.92.0,<2"
-dask = ">=2025.3.0,<2026"
-rio-cogeo = ">=5.4.1,<6"
-pystac = ">=1.13.0,<2"
-stackstac = ">=0.5.1,<0.6"
-geopandas = ">=1.0.1,<2"
-pixi-kernel = ">=0.6.3,<0.7"
-rioxarray = ">=0.18.2,<0.19"
+python-dotenv = ">=1.1.0,<2"
+# portolan-cli 0.9 uses MediaType.VND_APACHE_PARQUET (pystac 1.14+), though it
+# declares pystac>=1.10.
+pystac = ">=1.14,<2"
 pystac-client = ">=0.8.6,<0.9"
+planetary-computer = ">=1.0.0,<2"
+geojson-pydantic = ">=2.0.0,<3"
+# The cache key's tile snap (OGC WebMercatorQuad). Pinned exactly: an upgrade
+# that moved a tile edge would re-key every analysis.
+morecantile = "==7.1.0"
+xarray = ">=2025.3.1"
+dask-core = ">=2025.3.0"
+odc-stac = ">=0.5.3,<0.6"
+odc-geo = ">=0.5.0,<0.6"
+# H3 cells recorded for GLEN. Pinned exactly: the covering uses
+# h3shape_to_cells_experimental, which has no stability guarantee.
+h3-py = "==4.5.0"
+obstore = ">=0.12.1,<0.13"
+# Starts and watches analysis Jobs on the target cluster.
+python-kubernetes = ">=37,<38"
+# The API reaches GKE as its own Google identity (src/v2/k8s.py), with no key.
+google-auth = ">=2.40,<3"
+# botocore (via portolan-cli's geoparquet-io) needs python-dateutil<3.
+python-dateutil = ">=2.8,<3"
+# portolan-cli's and rashid's compiled dependencies, from conda-forge rather
+# than PyPI: a pip wheel (pyarrow first among them) loads the system libstdc++,
+# and then conda's GDAL and PROJ fail to import.
+rio-cogeo = ">=6"
+pyarrow = ">=23.0.1,<27"
+python-duckdb = ">=1.5.6,<1.6"
+geopandas = ">=1.0.1,<2"
+pyogrio = ">=0.7"
+pillow = ">=13"
+matplotlib-base = ">=3.8"
+lxml = ">=6.1"
+cryptography = ">=46.0.7"
+aiohttp = ">=3.14.4"
+pyyaml = ">=6"
+# portolan-cli's floors on packages the rest of the env also uses.
+requests = ">=2.33"
+certifi = ">=2026.10.19"
+click = ">=8.4,<8.6"
+pygments = ">=2.20"
+jsonschema = ">=4.26"
+idna = ">=3.15"
+urllib3 = ">=2.7"
+psutil = ">=7"
+# proj depends on sqlite; left unconstrained the solver picks a 2020 build
+# whose libsqlite3 shadows libsqlite's, and GDAL then fails to load.
+sqlite = ">=3.50"
+pixi-kernel = ">=0.6.3,<0.7"
 pytest = ">=8.3.5,<9"
 pytest-asyncio = ">=0.26.0,<0.27"
-httpx = ">=0.28.1,<0.29"
-jsonschema = ">=4.25.1,<5"
-typing = ">=3.10.0.0,<4"
-msgspec = ">=0.19.0,<0.20"
-minio = ">=7.2.15,<8"
-planetary-computer = ">=1.0.0,<2"
-xvec = ">=0.3.1,<0.4"
-exactextract = ">=0.2.2,<0.3"
-fastapi-cache2 = ">=0.2.2,<0.3"
-mypy = ">=1.16.0,<2"
 pytest-dotenv = ">=0.5.2,<0.6"
-obstore = ">=0.11.1,<0.12"
-stac-check = ">=1.3.3,<2"
+httpx = ">=0.28.1,<0.29"
+mypy = ">=1.16.0,<2"
 ruff = ">=0.12.9,<0.13"
-geojson-pydantic = ">=2.0.0,<3"
+types-pyyaml = ">=6"
 
 [pypi-dependencies]
-stac-pydantic = ">=3.2.0, <4"
+# Pinned exactly; bump deliberately and rerun the acceptance fixtures.
+portolan-cli = "==0.9.0"
+rashid = "==0.3.0"
+# This repo, so portolan finds the enrich plugin (see pyproject.toml).
+fire-recovery-backend = { path = ".", editable = true }
+
+# Local S3: the RustFS version CI runs as a service container (keep it in step with
+# rustfs/rustfs in .github/workflows/ci-cd.yml), and the AWS CLI to create the bucket. Its
+# own environment keeps both out of the image, which installs only the default one.
+[feature.s3.dependencies]
+rustfs = "==1.0.4"
+awscli = ">=2.38,<3"
+
+# Local-only settings, so any `pixi run -e s3 aws ...` reaches local RustFS.
+[feature.s3.activation.env]
+RUSTFS_ACCESS_KEY = "dev-access-key"
+RUSTFS_SECRET_KEY = "dev-secret-key"
+AWS_ENDPOINT_URL = "http://127.0.0.1:9000"
+AWS_ACCESS_KEY_ID = "dev-access-key"
+AWS_SECRET_ACCESS_KEY = "dev-secret-key"
+AWS_DEFAULT_REGION = "us-east-1"
+
+[feature.s3.tasks]
+s3-server = "mkdir -p .rustfs && rustfs server --address 127.0.0.1:9000 .rustfs"
+s3-bucket = "aws s3api head-bucket --bucket dev-bucket 2> /dev/null || aws s3 mb s3://dev-bucket"
+
+[environments]
+s3 = { features = ["s3"], no-default-feature = true }

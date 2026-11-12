@@ -1,95 +1,47 @@
-"""Tests for source-data provenance, the record of which scenes were used."""
+"""The provenance record written into each item's properties."""
 
-import logging
+import json
+from pathlib import Path
 
-import pytest
+import pystac
 
-from src.models.provenance import STAC_PROPERTY_KEY, SourceDataProvenance
+from src.models.provenance import Provenance, Scene, SourceData
+from src.stac.stac_endpoint_handler import StacProviderConfig
 
-
-def make_provenance(**overrides) -> SourceDataProvenance:
-    defaults = dict(
-        provider="Microsoft Planetary Computer",
-        provider_id="MICROSOFT_PLANETARY_COMPUTER",
-        collection="sentinel-2-l2a",
-        sensor="sentinel-2",
-        prefire_scene_count=2,
-        postfire_scene_count=7,
+ITEM = pystac.Item.from_dict(
+    json.loads(
+        (
+            Path(__file__).parent.parent / "fixtures" / "stac_items" / "e84_s2.json"
+        ).read_text()
     )
-    defaults.update(overrides)
-    return SourceDataProvenance(**defaults)
+)
 
 
-class TestStacPropertyRoundTrip:
-    """Provenance survives the trip through STAC item properties.
-
-    The API rebuilds its response from the stored STAC item rather than from
-    the command result, so this round trip is the whole delivery path.
-    """
-
-    def test_round_trip_preserves_every_field(self) -> None:
-        original = make_provenance()
-
-        recovered = SourceDataProvenance.from_stac_properties(
-            original.to_stac_properties()
-        )
-
-        assert recovered == original
-
-    def test_nests_under_a_single_property_key(self) -> None:
-        properties = make_provenance().to_stac_properties()
-
-        assert list(properties) == [STAC_PROPERTY_KEY]
-
-    def test_merges_alongside_other_item_properties(self) -> None:
-        provenance = make_provenance()
-        properties = {
-            "fire_event_name": "Geology_Fire",
-            "product_type": "fire_severity",
-            **provenance.to_stac_properties(),
-        }
-
-        assert SourceDataProvenance.from_stac_properties(properties) == provenance
-        assert properties["fire_event_name"] == "Geology_Fire"
+def test_scene_from_item() -> None:
+    scene = Scene.from_item(ITEM)
+    assert scene.id == "S2A_11SNT_20230609_0_L2A"
+    assert scene.datetime.startswith("2023-06-09T") and scene.datetime.endswith("Z")
+    assert scene.href is not None and scene.href.endswith(ITEM.id)
 
 
-class TestMissingOrUnusableProvenance:
-    """Items predating provenance stay readable rather than erroring."""
+def test_source_from_mapping() -> None:
+    provider = StacProviderConfig.load_from_file().get_providers("sentinel-2")[1]
+    source = SourceData.from_mapping(provider, "sentinel-2")
+    assert source.provider == "Microsoft Planetary Computer"
+    assert source.provider_id == "MICROSOFT_PLANETARY_COMPUTER"
+    assert source.api == provider.url
+    assert source.collection == "sentinel-2-l2a"
+    assert source.bands == {"nir": "B8A", "swir": "B12", "mask": "SCL"}
 
-    def test_properties_without_the_key_give_none(self) -> None:
-        assert (
-            SourceDataProvenance.from_stac_properties({"fire_event_name": "Geology"})
-            is None
-        )
 
-    def test_empty_properties_give_none(self) -> None:
-        assert SourceDataProvenance.from_stac_properties({}) is None
-
-    def test_none_properties_give_none(self) -> None:
-        assert SourceDataProvenance.from_stac_properties(None) is None
-
-    def test_incomplete_fragment_gives_none(self) -> None:
-        assert (
-            SourceDataProvenance.from_stac_properties(
-                {STAC_PROPERTY_KEY: {"provider": "Element 84"}}
-            )
-            is None
-        )
-
-    def test_non_object_fragment_gives_none(self) -> None:
-        assert (
-            SourceDataProvenance.from_stac_properties({STAC_PROPERTY_KEY: "Element 84"})
-            is None
-        )
-
-    def test_unreadable_fragment_is_logged(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """A malformed fragment means something wrote badly, not that the item
-        predates provenance -- the two should not look alike in the logs."""
-        with caplog.at_level(logging.WARNING):
-            SourceDataProvenance.from_stac_properties(
-                {STAC_PROPERTY_KEY: {"provider": "Element 84"}}
-            )
-
-        assert STAC_PROPERTY_KEY in caplog.text
+def test_stac_properties() -> None:
+    provider = StacProviderConfig.load_from_file().get_providers("sentinel-2")[0]
+    provenance = Provenance(
+        source=SourceData.from_mapping(provider, "sentinel-2"),
+        prefire_scenes=[Scene.from_item(ITEM)],
+        postfire_scenes=[],
+    )
+    props = provenance.to_stac_properties()
+    assert set(props) == {"fire:source", "fire:prefire_scenes", "fire:postfire_scenes"}
+    assert props["fire:prefire_scenes"][0]["id"] == ITEM.id
+    assert props["fire:source"]["sensor"] == "sentinel-2"

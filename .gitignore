@@ -24,3 +24,6 @@ __pycache__/
 
 # Claude
 .claude
+
+# Local RustFS data (pixi run -e s3 s3-server)
+.rustfs/

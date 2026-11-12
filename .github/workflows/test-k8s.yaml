@@ -1,0 +1,199 @@
+name: Kubernetes Integration Tests
+
+# The analysis-Job path end to end on a throwaway Kind cluster, as josh tests
+# its Kubernetes target (SchmidtDSE/josh, .github/workflows/test-k8s.yaml):
+# - the API dispatches through a kubeconfig context holding only the
+#   dispatcher's permissions (deployment/k8s/rbac.yaml)
+# - each Job gets its own credentials Secret, owned by the Job
+# - the analysis reads real imagery and publishes to RustFS in the cluster
+# - a platform failure (an image that doesn't exist) reaches the status URL
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+# A new push to a PR cancels that PR's run still in progress.
+concurrency:
+  group: k8s-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-k8s:
+    name: Test Kubernetes Jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NAMESPACE: fire-severity-dev
+      SEVERITY_TARGETS_DIR: tests/fixtures/targets
+      # The API reaches RustFS through a port-forward; the profiles point pods
+      # at its service inside the cluster.
+      S3_ENDPOINT: 127.0.0.1:9000
+      S3_SECURE: "False"
+      S3_BUCKET: dev-bucket
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: dev-access-key
+      S3_SECRET_ACCESS_KEY: dev-secret-key
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Free disk space for the image, twice over (Docker and Kind)
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@ba3bb36eb2066252b2363392b7739741bb777659 # v0.8.1
+        with:
+          pixi-version: v0.45.0  # matches deployment/fastapi.Dockerfile
+          cache: true
+          environments: default s3
+
+      - name: Build the image
+        run: docker build --file deployment/fastapi.Dockerfile --tag fire-recovery-backend:ci .
+
+      - name: Create a Kind cluster
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          cluster_name: kind
+          wait: 300s
+
+      - name: Load the image into Kind
+        run: kind load docker-image fire-recovery-backend:ci --name kind
+
+      # networkpolicy.yaml is left out: it allows no traffic to RustFS's port.
+      - name: Namespace and dispatcher role
+        run: |
+          kubectl apply -f deployment/k8s/namespace.yaml
+          kubectl apply -f deployment/k8s/rbac.yaml
+
+      - name: RustFS in the cluster
+        run: |
+          kubectl -n "$NAMESPACE" apply -f - <<'EOF'
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: rustfs
+          spec:
+            replicas: 1
+            selector:
+              matchLabels: {app: rustfs}
+            template:
+              metadata:
+                labels: {app: rustfs}
+              spec:
+                containers:
+                  - name: rustfs
+                    image: rustfs/rustfs:1.0.4
+                    env:
+                      - {name: RUSTFS_ACCESS_KEY, value: dev-access-key}
+                      - {name: RUSTFS_SECRET_KEY, value: dev-secret-key}
+                    ports:
+                      - containerPort: 9000
+                    readinessProbe:
+                      tcpSocket: {port: 9000}
+                      periodSeconds: 2
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: rustfs
+          spec:
+            selector: {app: rustfs}
+            ports:
+              - port: 9000
+                targetPort: 9000
+          EOF
+          kubectl -n "$NAMESPACE" rollout status deployment/rustfs --timeout=180s
+
+      - name: Port-forward RustFS and create the bucket
+        run: |
+          nohup kubectl -n "$NAMESPACE" port-forward svc/rustfs 9000:9000 > /tmp/port-forward.log 2>&1 &
+          curl -s -o /dev/null --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:9000/
+          pixi run -e s3 s3-bucket
+
+      - name: A context with only the dispatcher's permissions
+        run: |
+          TOKEN=$(kubectl -n "$NAMESPACE" create token severity-v2-dispatcher --duration=2h)
+          kubectl config set-credentials kind-dispatcher --token="$TOKEN"
+          kubectl config set-context kind-dispatcher --cluster=kind-kind --user=kind-dispatcher --namespace="$NAMESPACE"
+          kubectl --context kind-dispatcher auth can-i create jobs
+          kubectl --context kind-dispatcher auth can-i create secrets
+          # (`! cmd` can't fail a step under bash -e, hence the ifs.)
+          if kubectl --context kind-dispatcher auth can-i create deployments; then
+            echo "The dispatcher can do more than dispatch"
+            exit 1
+          fi
+
+      - name: Start the API against the cluster
+        env:
+          SEVERITY_TARGET: ci-kind
+        run: |
+          nohup pixi run uvicorn src.app:app --port 8000 > /tmp/api.log 2>&1 &
+          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/healthz
+
+      - name: Run an analysis as a Kubernetes Job
+        run: |
+          body=$(jq -c '. + {email: "requester@example.org"}' tests/fixtures/v2_geology_request.json)
+          accepted=$(curl -sf -X POST http://127.0.0.1:8000/v2/severity -H 'Content-Type: application/json' -d "$body")
+          echo "$accepted"
+          job_id=$(echo "$accepted" | jq -r .job_id)
+          echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
+
+          # The requester's address is in the Job's Secret, not in its spec,
+          # and the Secret belongs to the Job.
+          job_spec=$(kubectl -n "$NAMESPACE" get job "sev-$job_id" -o json)
+          if grep -q requester@example.org <<< "$job_spec"; then
+            echo "The requester's address is in the Job spec"
+            exit 1
+          fi
+          kubectl -n "$NAMESPACE" get secret "sev-creds-$job_id" -o jsonpath='{.data.NOTIFY_EMAIL}' | base64 -d | grep -qx requester@example.org
+          [ "$(kubectl -n "$NAMESPACE" get secret "sev-creds-$job_id" -o jsonpath='{.metadata.ownerReferences[0].kind}')" = Job ]
+
+          state=pending
+          for _ in $(seq 1 120); do
+            status=$(curl -sf "http://127.0.0.1:8000/v2/severity/$job_id")
+            state=$(echo "$status" | jq -r .state)
+            echo "$(date +%T) $state"
+            [ "$state" = succeeded ] || [ "$state" = failed ] && break
+            sleep 5
+          done
+          echo "$status" | jq .
+          [ "$state" = succeeded ]
+
+          # Resubmitting is a cache hit, and starts nothing.
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/v2/severity -H 'Content-Type: application/json' -d "$body")" = 200 ]
+          pixi run -e s3 aws s3 ls s3://dev-bucket --recursive
+
+      - name: A failure the platform causes reaches the status URL
+        env:
+          SEVERITY_TARGET: ci-kind-bad-image
+        run: |
+          nohup pixi run uvicorn src.app:app --port 8001 > /tmp/api-bad-image.log 2>&1 &
+          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:8001/healthz
+          body=$(jq -c '.fire_event_name = "Geology_Fire_bad_image"' tests/fixtures/v2_geology_request.json)
+          job_id=$(curl -sf -X POST http://127.0.0.1:8001/v2/severity -H 'Content-Type: application/json' -d "$body" | jq -r .job_id)
+          state=pending
+          for _ in $(seq 1 60); do
+            status=$(curl -sf "http://127.0.0.1:8001/v2/severity/$job_id")
+            state=$(echo "$status" | jq -r .state)
+            echo "$(date +%T) $state"
+            [ "$state" = failed ] || [ "$state" = succeeded ] && break
+            sleep 5
+          done
+          echo "$status" | jq .
+          [ "$state" = failed ]
+          echo "$status" | jq -r .error | grep -q DeadlineExceeded
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get jobs,pods,secrets -o wide || true
+          kubectl -n "$NAMESPACE" describe jobs || true
+          kubectl -n "$NAMESPACE" describe pods || true
+          for pod in $(kubectl -n "$NAMESPACE" get pods -o name); do
+            echo "=== $pod"
+            kubectl -n "$NAMESPACE" logs "$pod" --all-containers --tail=200 || true
+          done
+          for log in /tmp/api.log /tmp/api-bad-image.log /tmp/port-forward.log; do
+            echo "=== $log"
+            cat "$log" || true
+          done
