@@ -4,8 +4,9 @@
 # the output for an identical request would change: an index formula, the
 # compositing, the mask, the grid rules, the scene selection, or DEFAULT_SENSOR.
 # 2: one processing per Sentinel-2 acquisition, each scene scaled with its own
-# offset (2026-11).
-PIPELINE_VERSION = 2
+# offset (2026-11). 3: an observation is clear only if both reflectances are
+# above 0, as designed; DN 1-1000 under the -0.1 offset no longer pass (2026-11).
+PIPELINE_VERSION = 3
 
 # Environment variables the deploy sets, reported by GET /version.
 ENV_GIT_SHA = "GIT_SHA"

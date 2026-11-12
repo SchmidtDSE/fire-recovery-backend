@@ -276,6 +276,11 @@ status, so the pattern is already in use here.
      0–5).
    - **Smoke:** no standard smoke flag exists. SWIR sees through most smoke, thick plumes are
      usually flagged as cloud, and the median absorbs the rest.
+   - **Reflectance:** an observation counts only if both its NIR and SWIR reflectance, after
+     its own scale and offset, are above 0. That excludes nodata (DN 0) under either
+     convention and, under the −0.1 offset, the darkest pixels (DN 1–1000), which would
+     put NBR outside [−1, 1]. Until pipeline version 3 the check ran on DNs, which let
+     those through (0.43% of the Dome Fire's pixels changed).
    - A pixel with no clear observation in a window becomes nodata.
 5. **Plan.** Pick a block side so that one band of one window over the block, every day
    included, stays at or below 32 MiB at uint16. Only the scenes that touch a block are read

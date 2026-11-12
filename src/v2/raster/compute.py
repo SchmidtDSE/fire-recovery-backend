@@ -57,13 +57,24 @@ class Observations:
     # Each time step's acquisition date, or None when the load gives no times.
     days: Optional[List[Any]]
 
-    def reflectance(self, band: str, rows: slice) -> np.ndarray:
-        """Float32 reflectance of a strip of rows, NaN where not clear."""
-        dn = self.nir if band == "nir" else self.swir
-        values = dn[:, rows].astype(np.float32) * np.float32(self.scale)
-        values += np.float32(self.offset)
-        values[~self.ok[:, rows]] = np.nan
-        return values
+    def reflectances(self, rows: slice) -> tuple[np.ndarray, np.ndarray]:
+        """Float32 NIR and SWIR reflectance of a strip of rows, NaN where not clear.
+
+        Clear means the flags are clear and both reflectances are above 0
+        (design §2), so a band never enters a composite without the other.
+        Nodata (DN 0) is 0 or below under either convention. Under the -0.1
+        offset, DN 1 to 1000 are 0 or below too: dark pixels that would push
+        NBR outside [-1, 1].
+        """
+        nir = self.nir[:, rows].astype(np.float32) * np.float32(self.scale)
+        nir += np.float32(self.offset)
+        swir = self.swir[:, rows].astype(np.float32) * np.float32(self.scale)
+        swir += np.float32(self.offset)
+        with np.errstate(invalid="ignore"):
+            unclear = ~self.ok[:, rows] | ~(nir > 0) | ~(swir > 0)
+        nir[unclear] = np.nan
+        swir[unclear] = np.nan
+        return nir, swir
 
 
 @dataclass(frozen=True)
@@ -135,52 +146,61 @@ def window_medians(
     if not observations:
         empty = np.full(shape, np.nan, dtype=np.float32)
         return empty, empty.copy()
-    return clear_median(observations, "nir"), clear_median(observations, "swir")
+    return clear_median(observations)
 
 
 def same_day_merged(
-    observations: Sequence[Observations], band: str, rows: slice
-) -> np.ndarray:
-    """Every group's reflectance for a strip, one time step per acquisition date.
+    observations: Sequence[Observations], rows: slice
+) -> tuple[np.ndarray, np.ndarray]:
+    """Every group's NIR and SWIR reflectance for a strip, one time step per
+    acquisition date.
 
     One group passes through as loaded. When groups share a date (one overpass,
     adjacent tiles published under different scalings), their steps merge as
-    odc-stac's solar-day grouping merges tiles: the first clear value wins, in
-    group order. A tile overlap then counts once, not twice.
+    odc-stac's solar-day grouping merges tiles: the first clear observation
+    wins, in group order. A tile overlap then counts once, not twice.
     """
     if len(observations) == 1:
-        return observations[0].reflectance(band, rows)
-    by_day: Dict[Any, np.ndarray] = {}
+        return observations[0].reflectances(rows)
+    by_day: Dict[Any, tuple[np.ndarray, np.ndarray]] = {}
     for number, obs in enumerate(observations):
-        values = obs.reflectance(band, rows)
-        for step in range(values.shape[0]):
+        nir, swir = obs.reflectances(rows)
+        for step in range(nir.shape[0]):
             day = obs.days[step] if obs.days is not None else (number, step)
             if day in by_day:
-                merged = by_day[day]
-                gap = np.isnan(merged)
-                merged[gap] = values[step][gap]
+                merged_nir, merged_swir = by_day[day]
+                # Both bands are NaN together, so NIR marks the gaps.
+                gap = np.isnan(merged_nir)
+                merged_nir[gap] = nir[step][gap]
+                merged_swir[gap] = swir[step][gap]
             else:
-                by_day[day] = values[step]
-    return np.stack(list(by_day.values()))
+                by_day[day] = (nir[step], swir[step])
+    steps = list(by_day.values())
+    return np.stack([s[0] for s in steps]), np.stack([s[1] for s in steps])
 
 
-def clear_median(observations: Sequence[Observations], band: str) -> np.ndarray:
-    """Per-pixel median reflectance over time of the clear observations.
+def clear_median(
+    observations: Sequence[Observations],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-pixel median NIR and SWIR reflectance over time of the clear
+    observations.
 
-    Works through rows in strips, so the float32 copy and the median's sort
+    Works through rows in strips, so the float32 copies and the median's sort
     stay small however large the block. NaN where a pixel has no clear
     observation.
     """
     _, height, width = observations[0].nir.shape
-    out = np.empty((height, width), dtype=np.float32)
+    nir_out = np.empty((height, width), dtype=np.float32)
+    swir_out = np.empty((height, width), dtype=np.float32)
     for top in range(0, height, MEDIAN_STRIP_ROWS):
         rows = slice(top, top + MEDIAN_STRIP_ROWS)
-        reflectance = same_day_merged(observations, band, rows)
+        nir, swir = same_day_merged(observations, rows)
         with warnings.catch_warnings():
             # An all-NaN pixel is a pixel with no clear observation.
             warnings.simplefilter("ignore", RuntimeWarning)
-            out[rows] = np.nanmedian(reflectance, axis=0)
-    return out
+            nir_out[rows] = np.nanmedian(nir, axis=0)
+            swir_out[rows] = np.nanmedian(swir, axis=0)
+    return nir_out, swir_out
 
 
 def compute_rasters(

@@ -16,9 +16,11 @@ def flagged(flags: np.ndarray, spec: MaskSpec) -> np.ndarray:
 def clear(
     nir: np.ndarray, swir: np.ndarray, flags: np.ndarray, spec: MaskSpec
 ) -> np.ndarray:
-    """True for observations to composite: positive reflectance, flags clear.
+    """True for observations with data whose flags are clear.
 
-    Reflectance of 0 is the products' nodata, and NaN fails the comparison too.
+    A digital number of 0 is the products' nodata, and NaN fails the comparison
+    too. Reflectance must also be above 0, which needs each scene's scale and
+    offset: the compute step checks that (``Observations.reflectances``).
     """
     with np.errstate(invalid="ignore"):
         valid = (nir > 0) & (swir > 0)
