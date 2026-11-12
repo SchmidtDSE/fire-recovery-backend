@@ -34,6 +34,7 @@ API_ENV = {
     "S3_ACCESS_KEY_ID": "key",
     "S3_SECRET_ACCESS_KEY": "secret",
     "SMTP_USER": "sender@example.org",
+    "GIT_SHA": "abc1234",
     "UNRELATED": "never copied",
 }
 
@@ -197,12 +198,21 @@ def test_job_manifest() -> None:
     assert env["JOB_ID"] == JOB_ID
     assert env["SEVERITY_IMAGE"] == IMAGE
     assert env["SEVERITY_WORKDIR"] == "/scratch"
+    # No build given, no GIT_SHA: the record then says null, not a wrong commit.
+    assert "GIT_SHA" not in env
     # The address is in the Job's Secret, never in its spec.
     assert "NOTIFY_EMAIL" not in env
     assert "someone@example.org" not in json.dumps(manifest)
     assert container["envFrom"] == [{"secretRef": {"name": f"sev-creds-{JOB_ID}"}}]
     assert container["resources"]["limits"]["memory"] == "2Gi"
     assert pod["volumes"] == [{"name": "scratch", "emptyDir": {"sizeLimit": "10Gi"}}]
+
+
+def test_job_manifest_carries_the_apis_build() -> None:
+    manifest = job_manifest(spec(), TargetProfile.load("gke-josh"), IMAGE, "abc1234")
+    container = manifest["spec"]["template"]["spec"]["containers"][0]
+    env = {item["name"]: item["value"] for item in container["env"]}
+    assert env["GIT_SHA"] == "abc1234"
 
 
 def test_job_manifest_off_spot_has_no_scheduling_constraints() -> None:
@@ -357,7 +367,10 @@ def test_kubernetes_launcher() -> None:
     assert jobs.status(JOB_ID) == JobStatus("unknown")
     assert jobs.start(spec(email="someone@example.org"))
     assert batch.created[0]["metadata"]["name"] == job_name(JOB_ID)
+    container = batch.created[0]["spec"]["template"]["spec"]["containers"][0]
+    assert {"name": "GIT_SHA", "value": "abc1234"} in container["env"]
     secret = core.secrets[secret_name(JOB_ID)]
+    assert "GIT_SHA" not in secret["stringData"]
     assert secret["metadata"]["ownerReferences"][0]["uid"] == "uid-1"
     assert secret["stringData"]["NOTIFY_EMAIL"] == "someone@example.org"
     assert not jobs.start(spec())  # 409: already exists, its Secret untouched

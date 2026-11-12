@@ -230,8 +230,11 @@ jobs:
           destination: fire-recovery-store/openapi-schemas
           parent: false
           process_gcloudignore: false
+          # Overwritten on every push. Without this, GCS serves public objects
+          # with max-age=3600, so readers can get the old schema for an hour.
           headers: |-
             content-type: application/json
+            cache-control: no-cache
 
       - name: Display schema URLs
         run: |

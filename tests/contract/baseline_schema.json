@@ -1340,10 +1340,10 @@
         ]
       }
     },
-    "/healthz": {
+    "/health": {
       "get": {
         "description": "Liveness check. Touches no storage and no cluster.",
-        "operationId": "healthz_healthz_get",
+        "operationId": "health_health_get",
         "responses": {
           "200": {
             "content": {
@@ -1356,7 +1356,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Healthz",
+        "summary": "Health",
         "tags": [
           "Health"
         ]

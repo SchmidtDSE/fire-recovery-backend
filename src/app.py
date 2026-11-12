@@ -2,7 +2,7 @@
 
 The severity v2 routes are mounted here. The two endpoints defined in this
 module do no I/O, so they answer even when storage or the cluster is degraded:
-``/healthz`` for liveness and ``/version`` for provenance.
+``/health`` for liveness and ``/version`` for provenance.
 """
 
 import logging
@@ -103,8 +103,10 @@ async def root() -> dict[str, str]:
     }
 
 
-@app.get("/healthz", response_model=HealthResponse, tags=["Health"])
-async def healthz() -> HealthResponse:
+# Not /healthz: Cloud Run's frontend answers some root paths ending in "z"
+# itself, so /healthz never reaches the app there.
+@app.get("/health", response_model=HealthResponse, tags=["Health"])
+async def health() -> HealthResponse:
     """Liveness check. Touches no storage and no cluster."""
     return HealthResponse(status="ok")
 

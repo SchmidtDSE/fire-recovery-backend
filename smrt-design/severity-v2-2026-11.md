@@ -75,7 +75,7 @@ same catalog has 0 errors and 0 warnings.
 - per-analysis catalogs with provenance
 - running each analysis as a Kubernetes Job, on either of two clusters
 - replacing MinIO with RustFS in CI and local development
-- `/healthz` and `/version`
+- `/health` and `/version`
 
 **Out of scope for v2:**
 
@@ -492,7 +492,8 @@ never uploads it.
   - An API key lifts that limit for programmatic clients. Keys are a hashed list from Secret
     Manager, as with josh's `JOSH_API_KEYS`.
   - Cache hits cost nothing and aren't limited.
-- **`/healthz` and `/version`** sit at the root and do no I/O. `/healthz` is liveness.
+- **`/health` and `/version`** sit at the root and do no I/O. `/health` is liveness. Not
+  `/healthz`: Cloud Run's frontend answers some root paths ending in "z" itself.
   `/version` returns the pipeline version, the commit, and the image Jobs run.
 - Once built, the generated OpenAPI schema is the contract, not this section.
 
