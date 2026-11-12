@@ -128,7 +128,7 @@ jobs:
           SEVERITY_TARGET: ci-kind
         run: |
           nohup pixi run uvicorn src.app:app --port 8000 > /tmp/api.log 2>&1 &
-          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/healthz
+          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/health
 
       - name: Run an analysis as a Kubernetes Job
         run: |
@@ -168,7 +168,7 @@ jobs:
           SEVERITY_TARGET: ci-kind-bad-image
         run: |
           nohup pixi run uvicorn src.app:app --port 8001 > /tmp/api-bad-image.log 2>&1 &
-          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:8001/healthz
+          curl -sf --retry 60 --retry-connrefused --retry-delay 1 http://127.0.0.1:8001/health
           body=$(jq -c '.fire_event_name = "Geology_Fire_bad_image"' tests/fixtures/v2_geology_request.json)
           job_id=$(curl -sf -X POST http://127.0.0.1:8001/v2/severity -H 'Content-Type: application/json' -d "$body" | jq -r .job_id)
           state=pending

@@ -20,14 +20,14 @@ def resolve_response_schema(
     return schema
 
 
-class TestHealthzContract:
-    """GET /healthz: liveness, no I/O."""
+class TestHealthContract:
+    """GET /health: liveness, no I/O."""
 
-    PATH = "/healthz"
+    PATH = "/health"
 
     def test_response_shape(self, openapi_schema: Dict[str, Any]) -> None:
         schema = resolve_response_schema(openapi_schema, self.PATH, "get", "200")
-        assert schema is not None, "/healthz 200 response schema not found"
+        assert schema is not None, "/health 200 response schema not found"
         assert schema.get("required") == ["status"]
         assert schema["properties"]["status"]["type"] == "string"
 

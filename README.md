@@ -48,7 +48,7 @@ curl "http://localhost:8000/v2/severity/{job_id}"
 |----------|--------|-------------|
 | `/v2/severity` | POST | Submit an analysis, or get the existing one for the same key |
 | `/v2/severity/{job_id}` | GET | State, links when done, error when failed |
-| `/healthz` | GET | Liveness, no I/O |
+| `/health` | GET | Liveness, no I/O |
 | `/version` | GET | Pipeline version, commit and Job image, no I/O |
 
 The generated OpenAPI schema is the contract: `/openapi.json`, or the interactive docs at

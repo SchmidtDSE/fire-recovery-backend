@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from tests.contract.helpers import SchemaValidator
 
-CRITICAL_ENDPOINTS = ["/healthz", "/version", "/v2/severity", "/v2/severity/{job_id}"]
+CRITICAL_ENDPOINTS = ["/health", "/version", "/v2/severity", "/v2/severity/{job_id}"]
 
 DOCUMENTED_MODELS = [
     "HealthResponse",
