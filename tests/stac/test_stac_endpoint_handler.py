@@ -162,6 +162,7 @@ def _items(*timestamps: str) -> List[SimpleNamespace]:
         SimpleNamespace(
             id=f"item-{ts}",
             datetime=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
+            properties={},
         )
         for ts in timestamps
     ]

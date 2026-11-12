@@ -13,7 +13,7 @@ import math
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 import numpy as np
 import rasterio
@@ -24,7 +24,7 @@ from rasterio.windows import Window
 from src.stac.stac_endpoint_handler import StacMapping
 from src.v2.identity.grid import Grid
 from src.v2.raster.indices import INDICES, Composites, Index
-from src.v2.raster.load import geobox, load_block
+from src.v2.raster.load import ScaledScenes, geobox, load_block
 from src.v2.raster.mask import clear
 from src.v2.sensors import SENSOR_MASKS
 
@@ -46,12 +46,24 @@ TIFF_BLOCK = 512
 
 
 @dataclass(frozen=True)
-class WindowScenes:
-    """One date window's scenes and the reflectance scaling they share."""
+class Observations:
+    """One scaling group's reads over a block: (time, y, x) DNs and clear flags."""
 
-    items: List[Item]
+    nir: np.ndarray
+    swir: np.ndarray
+    ok: np.ndarray
     scale: float
     offset: float
+    # Each time step's acquisition date, or None when the load gives no times.
+    days: Optional[List[Any]]
+
+    def reflectance(self, band: str, rows: slice) -> np.ndarray:
+        """Float32 reflectance of a strip of rows, NaN where not clear."""
+        dn = self.nir if band == "nir" else self.swir
+        values = dn[:, rows].astype(np.float32) * np.float32(self.scale)
+        values += np.float32(self.offset)
+        values[~self.ok[:, rows]] = np.nan
+        return values
 
 
 @dataclass(frozen=True)
@@ -78,6 +90,11 @@ def acquisition_days(items: Sequence[Item]) -> int:
     return len({item.datetime.date() for item in items if item.datetime is not None})
 
 
+def loaded_days(window: Sequence[ScaledScenes]) -> int:
+    """Time steps one band of a window holds in memory: each group loads its own."""
+    return sum(acquisition_days(group.items) for group in window)
+
+
 def blocks(height: int, width: int, side: int) -> Iterator[Block]:
     """The grid's blocks, row by row; edge blocks are clipped."""
     for row in range(0, height, side):
@@ -86,7 +103,7 @@ def blocks(height: int, width: int, side: int) -> Iterator[Block]:
 
 
 def window_medians(
-    scenes: WindowScenes,
+    window: Sequence[ScaledScenes],
     provider: StacMapping,
     sensor: str,
     block: GeoBox,
@@ -94,39 +111,71 @@ def window_medians(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Median NIR and SWIR reflectance of the clear observations over a block.
 
+    Each scaling group is read and converted with its own scale and offset.
     NaN where a pixel has no clear observation in the window.
     """
     shape = (block.shape.y, block.shape.x)
-    loaded = load_block(scenes.items, provider, sensor, block, threads)
-    if loaded is None or loaded.sizes.get("time", 0) == 0:
+    observations = []
+    for group in window:
+        loaded = load_block(group.items, provider, sensor, block, threads)
+        if loaded is None or loaded.sizes.get("time", 0) == 0:
+            continue
+        nir = loaded[provider.nir_band].values
+        swir = loaded[provider.swir_band].values
+        ok = clear(nir, swir, loaded[provider.mask_band].values, SENSOR_MASKS[sensor])
+        days = (
+            list(loaded["time"].values.astype("datetime64[D]"))
+            if "time" in loaded.coords
+            else None
+        )
+        del loaded
+        observations.append(
+            Observations(nir, swir, ok, group.scale, group.offset, days)
+        )
+    if not observations:
         empty = np.full(shape, np.nan, dtype=np.float32)
         return empty, empty.copy()
-    nir = loaded[provider.nir_band].values
-    swir = loaded[provider.swir_band].values
-    ok = clear(nir, swir, loaded[provider.mask_band].values, SENSOR_MASKS[sensor])
-    del loaded
-    return (
-        clear_median(nir, ok, scenes.scale, scenes.offset),
-        clear_median(swir, ok, scenes.scale, scenes.offset),
-    )
+    return clear_median(observations, "nir"), clear_median(observations, "swir")
 
 
-def clear_median(
-    dn: np.ndarray, ok: np.ndarray, scale: float, offset: float
+def same_day_merged(
+    observations: Sequence[Observations], band: str, rows: slice
 ) -> np.ndarray:
+    """Every group's reflectance for a strip, one time step per acquisition date.
+
+    One group passes through as loaded. When groups share a date (one overpass,
+    adjacent tiles published under different scalings), their steps merge as
+    odc-stac's solar-day grouping merges tiles: the first clear value wins, in
+    group order. A tile overlap then counts once, not twice.
+    """
+    if len(observations) == 1:
+        return observations[0].reflectance(band, rows)
+    by_day: Dict[Any, np.ndarray] = {}
+    for number, obs in enumerate(observations):
+        values = obs.reflectance(band, rows)
+        for step in range(values.shape[0]):
+            day = obs.days[step] if obs.days is not None else (number, step)
+            if day in by_day:
+                merged = by_day[day]
+                gap = np.isnan(merged)
+                merged[gap] = values[step][gap]
+            else:
+                by_day[day] = values[step]
+    return np.stack(list(by_day.values()))
+
+
+def clear_median(observations: Sequence[Observations], band: str) -> np.ndarray:
     """Per-pixel median reflectance over time of the clear observations.
 
-    ``dn`` is (time, y, x) digital numbers. Works through rows in strips, so
-    the float32 copy and the median's sort stay small however large the block.
-    NaN where a pixel has no clear observation.
+    Works through rows in strips, so the float32 copy and the median's sort
+    stay small however large the block. NaN where a pixel has no clear
+    observation.
     """
-    _, height, width = dn.shape
+    _, height, width = observations[0].nir.shape
     out = np.empty((height, width), dtype=np.float32)
     for top in range(0, height, MEDIAN_STRIP_ROWS):
         rows = slice(top, top + MEDIAN_STRIP_ROWS)
-        reflectance = dn[:, rows].astype(np.float32) * np.float32(scale)
-        reflectance += np.float32(offset)
-        reflectance[~ok[:, rows]] = np.nan
+        reflectance = same_day_merged(observations, band, rows)
         with warnings.catch_warnings():
             # An all-NaN pixel is a pixel with no clear observation.
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -135,8 +184,8 @@ def clear_median(
 
 
 def compute_rasters(
-    prefire: WindowScenes,
-    postfire: WindowScenes,
+    prefire: Sequence[ScaledScenes],
+    postfire: Sequence[ScaledScenes],
     provider: StacMapping,
     sensor: str,
     grid: Grid,
@@ -151,9 +200,7 @@ def compute_rasters(
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     full = geobox(grid)
-    side = block_side(
-        max(acquisition_days(prefire.items), acquisition_days(postfire.items))
-    )
+    side = block_side(max(loaded_days(prefire), loaded_days(postfire)))
     profile = {
         "driver": "GTiff",
         "width": grid.width,

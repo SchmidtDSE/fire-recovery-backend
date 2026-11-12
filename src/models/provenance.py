@@ -31,15 +31,26 @@ class Scene(BaseModel):
     id: str = Field(..., description="STAC item id")
     datetime: str = Field(..., description="Acquisition time, ISO 8601 in UTC")
     href: Optional[str] = Field(None, description="The STAC item's own URL")
+    processing_baseline: Optional[str] = Field(
+        None, description="Sentinel-2 processing baseline (s2:processing_baseline)"
+    )
+    offset: Optional[float] = Field(
+        None,
+        description="The reflectance offset this scene was converted with "
+        "(reflectance = DN * scale + offset)",
+    )
 
     @classmethod
-    def from_item(cls, item: Item) -> "Scene":
+    def from_item(cls, item: Item, offset: Optional[float] = None) -> "Scene":
         if item.datetime is None:
             raise ValueError(f"Item {item.id} has no datetime")
+        baseline = item.properties.get("s2:processing_baseline")
         return cls(
             id=item.id,
             datetime=item.datetime.isoformat().replace("+00:00", "Z"),
             href=item.get_self_href(),
+            processing_baseline=str(baseline) if baseline is not None else None,
+            offset=offset,
         )
 
 
