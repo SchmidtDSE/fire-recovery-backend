@@ -2,8 +2,10 @@
 
 # Part of every job id and recorded in every published item. Bump it whenever
 # the output for an identical request would change: an index formula, the
-# compositing, the mask, the grid rules, or DEFAULT_SENSOR.
-PIPELINE_VERSION = 1
+# compositing, the mask, the grid rules, the scene selection, or DEFAULT_SENSOR.
+# 2: one processing per Sentinel-2 acquisition, each scene scaled with its own
+# offset (2026-11).
+PIPELINE_VERSION = 2
 
 # Environment variables the deploy sets, reported by GET /version.
 ENV_GIT_SHA = "GIT_SHA"

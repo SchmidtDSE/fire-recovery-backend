@@ -12,8 +12,8 @@ from src.v2.raster.load import (
     asset_scaling,
     geobox,
     intersecting,
+    scaling_groups,
     stac_cfg,
-    window_scaling,
 )
 from src.v2.sensors import fallback_scaling
 
@@ -44,15 +44,33 @@ def test_asset_scaling(name: str, key: str, sensor: str, expected: tuple) -> Non
     assert (scale, offset) == pytest.approx(expected)
 
 
-def test_window_scaling_is_shared() -> None:
-    assert window_scaling([item("e84_s2")], E84_S2, "sentinel-2") == pytest.approx(
-        (1e-4, -0.1)
+def test_one_scaling_is_one_group() -> None:
+    (group,) = scaling_groups([item("e84_s2")], E84_S2, "sentinel-2")
+    assert (group.scale, group.offset) == pytest.approx((1e-4, -0.1))
+    assert [i.id for i in group.items] == ["S2A_11SNT_20230609_0_L2A"]
+
+
+def test_a_window_across_the_baseline_change_groups_by_scaling() -> None:
+    # 2021 (baseline 03.00, offset 0) and 2023 (05.09, offset -0.1): each
+    # scene keeps its own pair, newer convention first.
+    new, old = scaling_groups(
+        [item("e84_s2_2021"), item("e84_s2")], E84_S2, "sentinel-2"
+    )
+    assert (new.offset, [i.id for i in new.items]) == (
+        pytest.approx(-0.1),
+        ["S2A_11SNT_20230609_0_L2A"],
+    )
+    assert (old.offset, [i.id for i in old.items]) == (
+        0.0,
+        ["S2A_11SNT_20210609_0_L2A"],
     )
 
 
-def test_window_across_the_processing_baseline_change_is_rejected() -> None:
-    with pytest.raises(ValueError, match="processing-baseline"):
-        window_scaling([item("e84_s2"), item("e84_s2_2021")], E84_S2, "sentinel-2")
+def test_a_scene_whose_bands_scale_differently_is_rejected() -> None:
+    odd = item("e84_s2")
+    odd.assets["swir22"].extra_fields["raster:bands"][0]["offset"] = 0.0
+    with pytest.raises(ValueError, match="scales its NIR and SWIR differently"):
+        scaling_groups([odd], E84_S2, "sentinel-2")
 
 
 def test_missing_asset_is_an_error() -> None:

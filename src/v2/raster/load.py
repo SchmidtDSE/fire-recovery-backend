@@ -3,10 +3,11 @@
 odc-stac reads projection v2 (``proj:code``) directly, groups the tiles of one
 overpass into one time step (``groupby="solar_day"``), and reads native uint16
 (design §2). It doesn't apply ``raster:bands`` scale and offset, so
-``window_scaling`` finds them and the compute step applies them.
+``scaling_groups`` finds each scene's own and the compute step applies them.
 """
 
-from typing import Any, Dict, List, Optional, Sequence
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import odc.stac
 import planetary_computer
@@ -36,28 +37,45 @@ def asset_scaling(item: Item, asset_key: str, sensor: str) -> tuple[float, float
     return fallback_scaling(sensor, item.properties)
 
 
-def window_scaling(
+@dataclass(frozen=True)
+class ScaledScenes:
+    """Scenes that share one reflectance scaling: reflectance = DN * scale + offset."""
+
+    items: List[Item]
+    scale: float
+    offset: float
+
+
+def scaling_groups(
     items: Sequence[Item], provider: StacMapping, sensor: str
-) -> tuple[float, float]:
-    """The single (scale, offset) every reflectance asset in a window shares.
+) -> List[ScaledScenes]:
+    """A window's scenes grouped by the scaling each one publishes.
+
+    Each scene is converted with its own pair, as ESA's product specification
+    defines it: Sentinel-2 L2A from processing baseline 04.00 on (January
+    2022, and ESA's reprocessed archive) adds an offset of -0.1, earlier
+    products none. Usually a window is one group. Groups are ordered by
+    (scale, offset), so the newer convention comes first.
 
     Raises:
-        ValueError: if the window mixes scalings. A Sentinel-2 window that
-            straddles the January 2022 processing-baseline change does, and is
-            rejected for now (decision 20).
+        ValueError: if a scene's NIR and SWIR scale differently, or a scene's
+            scaling can't be determined.
     """
-    pairs = {
-        asset_scaling(item, key, sensor)
-        for item in items
-        for key in (provider.nir_band, provider.swir_band)
-    }
-    if len(pairs) != 1:
-        raise ValueError(
-            f"The window mixes reflectance scalings {sorted(pairs)}. A Sentinel-2 "
-            f"window can't straddle the January 2022 processing-baseline change; "
-            f"move it to one side."
-        )
-    return pairs.pop()
+    groups: Dict[Tuple[float, float], List[Item]] = {}
+    for item in items:
+        pairs = {
+            asset_scaling(item, key, sensor)
+            for key in (provider.nir_band, provider.swir_band)
+        }
+        if len(pairs) != 1:
+            raise ValueError(
+                f"Item {item.id} scales its NIR and SWIR differently: {sorted(pairs)}"
+            )
+        groups.setdefault(pairs.pop(), []).append(item)
+    return [
+        ScaledScenes(members, scale, offset)
+        for (scale, offset), members in sorted(groups.items())
+    ]
 
 
 def stac_cfg(provider: StacMapping, sensor: str) -> Dict[str, Any]:

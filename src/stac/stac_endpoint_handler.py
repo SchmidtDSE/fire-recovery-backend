@@ -10,7 +10,7 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import planetary_computer
 from pydantic import BaseModel
@@ -131,6 +131,60 @@ def in_window(items: Sequence[Item], window: Sequence[str]) -> List[Item]:
     return sorted(inside, key=lambda item: (item.datetime, item.id))
 
 
+def acquisition_key(item: Item) -> Optional[Tuple[str, str, str, str]]:
+    """What one Sentinel-2 acquisition of one tile shares across its processings.
+
+    The product URI names the mission, sensing start, relative orbit and tile,
+    e.g. ``S2A_MSIL2A_20200803T181931_N0214_R127_T11SPV_20200803T224210.SAFE``.
+    Two processings of one acquisition differ only in the baseline (``N0214``)
+    and the processing time; their timestamps can differ by a millisecond, so
+    the datetime can't identify them. None for items without a product URI.
+    """
+    uri = item.properties.get("s2:product_uri")
+    if not isinstance(uri, str):
+        return None
+    parts = uri.split("_")
+    if len(parts) < 7:
+        return None
+    return (parts[0], parts[2], parts[4], parts[5])
+
+
+def processing_baseline(item: Item) -> Tuple[int, ...]:
+    """``s2:processing_baseline`` as numbers ("05.00" -> (5, 0)); (-1,) if absent."""
+    value = item.properties.get("s2:processing_baseline")
+    try:
+        return tuple(int(part) for part in str(value).split("."))
+    except ValueError:
+        return (-1,)
+
+
+def latest_processing(items: Sequence[Item]) -> List[Item]:
+    """One item per acquisition: the one with the newest processing baseline.
+
+    Element 84 lists Sentinel-2 acquisitions from before 2022 twice: ESA's
+    original processing (offset 0) and its Collection 1 reprocessing (baseline
+    05.00, offset -0.1). Compositing both would read every scene twice and
+    merge two processings of one acquisition. The reprocessing is ESA's
+    consistent archive and matches current products, so it wins. Items that
+    aren't Sentinel-2 products pass through. Sorted by datetime then id.
+    """
+    newest: Dict[Tuple[str, str, str, str], Item] = {}
+    kept: List[Item] = []
+    for item in items:
+        key = acquisition_key(item)
+        if key is None:
+            kept.append(item)
+            continue
+        current = newest.get(key)
+        if current is None or (processing_baseline(item), item.id) > (
+            processing_baseline(current),
+            current.id,
+        ):
+            newest[key] = item
+    kept.extend(newest.values())
+    return sorted(kept, key=lambda item: (item.datetime, item.id))
+
+
 class StacEndpointHandler:
     """Searches the configured providers for a sensor, in order."""
 
@@ -173,15 +227,17 @@ class StacEndpointHandler:
             try:
                 client = PystacClient.open(provider.url)
                 found = tuple(
-                    in_window(
-                        list(
-                            client.search(
-                                collections=[provider.collection],
-                                bbox=list(bbox),
-                                datetime=list(window_bounds(window[0], window[1])),
-                            ).items()
-                        ),
-                        window,
+                    latest_processing(
+                        in_window(
+                            list(
+                                client.search(
+                                    collections=[provider.collection],
+                                    bbox=list(bbox),
+                                    datetime=list(window_bounds(window[0], window[1])),
+                                ).items()
+                            ),
+                            window,
+                        )
                     )
                     for window in windows
                 )

@@ -16,14 +16,15 @@ from src.v2.raster.compute import (
     BLOCK_BUDGET_BYTES,
     BYTES_PER_SAMPLE,
     NODATA,
-    WindowScenes,
+    Observations,
     block_side,
     blocks,
+    clear_median,
     compute_rasters,
 )
 from src.v2.identity.grid import Grid
 from src.v2.raster.indices import INDICES, Composites
-from src.v2.raster.load import geobox
+from src.v2.raster.load import ScaledScenes, geobox
 
 PROVIDER = StacProviderConfig.load_from_file().get_providers("sentinel-2")[0]
 GRID = Grid(epsg=32611, resolution=20, bounds=(580000, 3750000, 583400, 3753000))
@@ -117,8 +118,8 @@ def test_block_loop_matches_whole_array(
 
     monkeypatch.setattr("src.v2.raster.compute.load_block", load_block)
     monkeypatch.setattr("src.v2.raster.compute.block_side", lambda days: 64)
-    pre = WindowScenes(items=fake_items("pre", 5), scale=SCALE, offset=OFFSET)
-    post = WindowScenes(items=fake_items("post", 7), scale=SCALE, offset=OFFSET)
+    pre = [ScaledScenes(items=fake_items("pre", 5), scale=SCALE, offset=OFFSET)]
+    post = [ScaledScenes(items=fake_items("post", 7), scale=SCALE, offset=OFFSET)]
     paths = compute_rasters(
         pre, post, PROVIDER, "sentinel-2", GRID, tmp_path, threads=1
     )
@@ -144,9 +145,54 @@ def test_block_without_scenes_is_nodata(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("src.v2.raster.compute.load_block", lambda *args: None)
-    scenes = WindowScenes(items=[], scale=SCALE, offset=OFFSET)
+    scenes = [ScaledScenes(items=[], scale=SCALE, offset=OFFSET)]
     paths = compute_rasters(
         scenes, scenes, PROVIDER, "sentinel-2", GRID, tmp_path, threads=1
     )
     with rasterio.open(paths["rbr"]) as ds:
         assert (ds.read(1) == NODATA).all()
+
+
+def observations(
+    dn: List[List[float]], offset: float, days: Optional[List[str]] = None
+) -> Observations:
+    """One-pixel-wide stacks: each inner list is a pixel row's DNs over time."""
+    stack = np.array(dn, dtype=np.uint16).T[:, :, None]  # (time, y, x=1)
+    return Observations(
+        nir=stack,
+        swir=stack,
+        ok=stack > 0,
+        scale=SCALE,
+        offset=offset,
+        days=[np.datetime64(d) for d in days] if days else None,
+    )
+
+
+def test_each_group_is_converted_with_its_own_offset() -> None:
+    # The same reflectances, stored under both conventions (design §2): 0.35,
+    # 0.25 and 0.30 in the old products, 0.40 and 0.20 in the new (+1000 DN).
+    old = observations([[3500, 2500, 3000]], offset=0.0)
+    new = observations([[5000, 3000]], offset=-0.1)
+    (median,) = clear_median([new, old], "nir")[:, 0]
+    assert median == pytest.approx(np.median([0.35, 0.25, 0.30, 0.40, 0.20]))
+
+
+def test_one_group_matches_the_single_scaling_arithmetic() -> None:
+    dn = [[1200, 0, 3400, 2900], [4100, 3300, 0, 0]]
+    (only,) = [observations(dn, offset=OFFSET)]
+    got = clear_median([only], "nir")[:, 0]
+    want = []
+    for row in dn:
+        values = np.array([v for v in row if v], dtype=np.float32)
+        want.append(np.median(values * np.float32(SCALE) + np.float32(OFFSET)))
+    np.testing.assert_array_equal(got, np.array(want, dtype=np.float32))
+
+
+def test_groups_sharing_a_date_count_that_overpass_once() -> None:
+    # Adjacent tiles of one overpass under different scalings overlap at this
+    # pixel: the first clear value wins, as odc-stac merges a solar day.
+    new = observations([[4000, 3000]], offset=-0.1, days=["2020-08-03", "2020-08-08"])
+    old = observations([[3000, 9000]], offset=0.0, days=["2020-08-03", "2020-08-13"])
+    (median,) = clear_median([new, old], "nir")[:, 0]
+    # 08-03 once (0.30 from the first group), 08-08 0.20, 08-13 0.90.
+    assert median == pytest.approx(np.median([0.30, 0.20, 0.90]))

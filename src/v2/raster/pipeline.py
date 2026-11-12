@@ -3,17 +3,17 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import odc.stac
 
 from src.models.provenance import Provenance, Scene, SourceData
 from src.stac.stac_endpoint_handler import StacEndpointHandler
 from src.v2.raster.cog import write_cog
-from src.v2.raster.compute import WindowScenes, compute_rasters
+from src.v2.raster.compute import compute_rasters
 from src.v2.identity.grid import Grid, raster_grid
 from src.v2.identity.job_id import CanonicalRequest
-from src.v2.raster.load import window_scaling
+from src.v2.raster.load import ScaledScenes, scaling_groups
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,13 @@ class ComputeResult:
     provenance: Provenance
 
 
+def scenes(window: List[ScaledScenes]) -> List[Scene]:
+    """The window's scenes for provenance, each with the offset it was converted
+    with, in datetime then id order."""
+    found = [Scene.from_item(item, g.offset) for g in window for item in g.items]
+    return sorted(found, key=lambda scene: (scene.datetime, scene.id))
+
+
 def compute(
     canonical: CanonicalRequest,
     workdir: Path,
@@ -42,7 +49,7 @@ def compute(
 
     Raises:
         RuntimeError: if no provider has scenes in both windows.
-        ValueError: if a window mixes reflectance scalings.
+        ValueError: if a scene's reflectance scaling can't be determined.
     """
     grid = raster_grid(canonical.tiles, canonical.sensor)
     handler = handler or StacEndpointHandler()
@@ -52,12 +59,15 @@ def compute(
         canonical.sensor,
     )
     pre_items, post_items = search.windows
-    prefire = WindowScenes(
-        pre_items, *window_scaling(pre_items, search.provider, canonical.sensor)
-    )
-    postfire = WindowScenes(
-        post_items, *window_scaling(post_items, search.provider, canonical.sensor)
-    )
+    prefire = scaling_groups(pre_items, search.provider, canonical.sensor)
+    postfire = scaling_groups(post_items, search.provider, canonical.sensor)
+    for name, window in (("prefire", prefire), ("postfire", postfire)):
+        if len(window) > 1:
+            logger.info(
+                f"The {name} window mixes scalings "
+                f"{[(g.scale, g.offset, len(g.items)) for g in window]}; "
+                f"each scene is converted with its own"
+            )
     odc.stac.configure_rio(
         cloud_defaults=True,
         GDAL_HTTP_MAX_RETRY=GDAL_HTTP_MAX_RETRY,
@@ -80,8 +90,8 @@ def compute(
         raw.unlink()
     provenance = Provenance(
         source=SourceData.from_mapping(search.provider, canonical.sensor),
-        prefire_scenes=[Scene.from_item(item) for item in pre_items],
-        postfire_scenes=[Scene.from_item(item) for item in post_items],
+        prefire_scenes=scenes(prefire),
+        postfire_scenes=scenes(postfire),
     )
     logger.info(
         f"Computed {sorted(cogs)} on a {grid.width}x{grid.height} grid from "

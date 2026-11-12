@@ -251,9 +251,18 @@ status, so the pattern is already in use here.
    - It reads native uint16, 4× smaller than stackstac's float64. Each band's type and nodata
      are passed to it (`stac_cfg`), because Planetary Computer's Sentinel-2 items publish no
      `raster:bands` and would otherwise load as float32.
-   - It doesn't apply `raster:bands` scale and offset, so we do, after asserting they are
-     identical across the window. Sentinel-2 windows that straddle the January 2022
-     processing-baseline change fail that check, and are rejected for now.
+   - It doesn't apply `raster:bands` scale and offset, so we do: each scene with its own
+     published pair, before the median (ESA's conversion, reflectance = DN × scale + offset).
+     Scenes sharing a pair load together; a window that straddles the January 2022
+     processing-baseline change is two groups, merged by date so an overpass counts once.
+     Most windows are one group, and then the arithmetic is unchanged. A scene whose NIR
+     and SWIR scale differently, or that publishes no usable scaling, still fails the job.
+   - Element 84 lists pre-2022 Sentinel-2 acquisitions twice: ESA's original processing
+     (offset 0) and its Collection 1 reprocessing (baseline 05.00, offset −0.1), with
+     timestamps a millisecond apart (found November 2026 on the Dome Fire, 2020). The search
+     keeps one item per acquisition (mission, sensing start, orbit and tile, from
+     `s2:product_uri`): the newest baseline, ESA's consistent archive. Each scene's baseline
+     and offset are recorded in `fire:prefire_scenes` and `fire:postfire_scenes`.
    - Planetary Computer's Sentinel-2 items carry no scale or offset at all (checked November
      2026). For them, the scaling comes from the product's rule: 1e-4, with −0.1 from
      processing baseline 04.00 (`s2:processing_baseline`). v1 read these items unscaled, so
@@ -649,7 +658,7 @@ Recorded 2026-11-09.
 | 17 | Snapping | OGC WebMercatorQuad tiles about an eighth of the box, via morecantile. H3 cells are recorded for GLEN but don't set the key (§2, §6). |
 | 18 | Email sender | A Namecheap Private Email mailbox on the project domain, over SMTP. Only jobs send mail (§8). |
 | 19 | Numbers | Placeholders for now (§6). |
-| 20 | Mixed processing baselines | Rejected for now (§2). |
+| 20 | Mixed processing baselines | Each scene converted with its own published scale and offset; one processing per acquisition, the newest baseline (§2). |
 | 21 | RustFS | Part of v2: it replaces MinIO in CI and local development (§7). |
 | 22 | Email on platform failures | Not for now. The status URL and the operator alert are enough (§1). |
 | 23 | Other clusters | Supported through the target profile, with nothing GKE-specific in the dispatch path. Each cluster is monitored with its own tools (§1). |
