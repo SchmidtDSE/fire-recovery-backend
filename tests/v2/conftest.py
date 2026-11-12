@@ -10,10 +10,10 @@ import rasterio
 
 from src.models.provenance import Provenance, Scene, SourceData
 from src.stac.stac_endpoint_handler import StacProviderConfig
-from src.v2.cog import write_cog
-from src.v2.grid import Grid, raster_grid
-from src.v2.job_id import CanonicalRequest, canonical_request
-from src.v2.request import SeverityRequest
+from src.v2.raster.cog import write_cog
+from src.v2.identity.grid import Grid, raster_grid
+from src.v2.identity.job_id import CanonicalRequest, canonical_request
+from src.v2.identity.request import SeverityRequest
 
 VECTORS = Path(__file__).parent.parent / "fixtures" / "v2_job_id_vectors.json"
 

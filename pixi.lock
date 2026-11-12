@@ -1649,7 +1649,7 @@ packages:
 - pypi: .
   name: fire-recovery-backend
   version: 2.0.0
-  sha256: 776e6c9c84a520cdc831f18e8ae0dad1ba87284f542412477d8edce847f5e392
+  sha256: 4bbef4857b51975a8686bb38b2be94ea5716d1f11658fdd5166fc3c8eefe10cb
   requires_python: '>=3.12'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
