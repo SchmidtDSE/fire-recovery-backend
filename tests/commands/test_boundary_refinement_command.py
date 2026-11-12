@@ -34,7 +34,7 @@ def mock_storage_factory() -> Mock:
 def mock_stac_manager() -> Mock:
     """Create mock STAC manager"""
     manager = Mock(spec=STACJSONManager)
-    manager.get_item_by_id = AsyncMock()
+    manager.get_item_by_fire_event_and_id = AsyncMock()
     manager.create_fire_severity_item = AsyncMock(
         return_value="mock://stac/severity.json"
     )
@@ -258,7 +258,9 @@ class TestBoundaryRefinementCommand:
             "mock://refined_rbr.tif",
         ]
 
-        valid_context.stac_manager.get_item_by_id.return_value = sample_stac_item
+        valid_context.stac_manager.get_item_by_fire_event_and_id.return_value = (
+            sample_stac_item
+        )
 
         # Execute command
         result = await command.execute(valid_context)
@@ -294,8 +296,8 @@ class TestBoundaryRefinementCommand:
         assert any("refined_rbr" in str(call) for call in call_args_list)
 
         # Verify STAC operations
-        valid_context.stac_manager.get_item_by_id.assert_called_once_with(
-            "test-fire-2024-severity-test-job-123"
+        valid_context.stac_manager.get_item_by_fire_event_and_id.assert_called_once_with(
+            "test-fire-2024", "test-fire-2024-severity-test-job-123"
         )
         valid_context.stac_manager.create_fire_severity_item.assert_called_once()
         valid_context.stac_manager.create_boundary_item.assert_called_once()
@@ -315,7 +317,7 @@ class TestBoundaryRefinementCommand:
             [-120.0, 35.0, -119.0, 36.0],
         )
 
-        valid_context.stac_manager.get_item_by_id.return_value = (
+        valid_context.stac_manager.get_item_by_fire_event_and_id.return_value = (
             None  # No STAC item found
         )
 
@@ -374,7 +376,9 @@ class TestBoundaryRefinementCommand:
             "mock://refined_rbr.tif",  # Success
         ]
 
-        valid_context.stac_manager.get_item_by_id.return_value = sample_stac_item
+        valid_context.stac_manager.get_item_by_fire_event_and_id.return_value = (
+            sample_stac_item
+        )
 
         # Execute command
         result = await command.execute(valid_context)
@@ -434,7 +438,9 @@ class TestBoundaryRefinementCommand:
         # All COG processing fails
         mock_process_cog.side_effect = Exception("COG processing failed")
 
-        valid_context.stac_manager.get_item_by_id.return_value = sample_stac_item
+        valid_context.stac_manager.get_item_by_fire_event_and_id.return_value = (
+            sample_stac_item
+        )
 
         # Execute command
         result = await command.execute(valid_context)
@@ -490,7 +496,9 @@ class TestBoundaryRefinementCommand:
             "mock://refined_rbr.tif",
         ]
 
-        valid_context.stac_manager.get_item_by_id.return_value = sample_stac_item
+        valid_context.stac_manager.get_item_by_fire_event_and_id.return_value = (
+            sample_stac_item
+        )
         valid_context.stac_manager.create_fire_severity_item.side_effect = Exception(
             "STAC creation failed"
         )
@@ -630,7 +638,9 @@ class TestBoundaryRefinementCommandIntegration:
             "mock://refined_rbr_v1.tif",
         ]
 
-        valid_context.stac_manager.get_item_by_id.return_value = sample_stac_item
+        valid_context.stac_manager.get_item_by_fire_event_and_id.return_value = (
+            sample_stac_item
+        )
         valid_context.metadata = {"refinement_iteration": 1}
 
         # Execute first refinement

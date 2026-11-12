@@ -115,6 +115,7 @@ def mock_stac_manager() -> Mock:
     manager.create_boundary_item = AsyncMock(return_value="mock://stac/boundary.json")
     manager.create_veg_matrix_item = AsyncMock(return_value="mock://stac/veg.json")
     manager.get_item_by_id = AsyncMock()
+    manager.get_item_by_fire_event_and_id = AsyncMock()
     manager.get_items_by_id_and_coarseness = AsyncMock(return_value=None)
     return manager
 
@@ -350,7 +351,7 @@ class TestBoundaryRefinementWithMultiPolygon:
             "mock://refined_rbr.tif",
         ]
 
-        mock_stac_manager.get_item_by_id.return_value = sample_stac_item
+        mock_stac_manager.get_item_by_fire_event_and_id.return_value = sample_stac_item
 
         # Execute command
         command = BoundaryRefinementCommand()
@@ -424,7 +425,7 @@ class TestBoundaryRefinementWithMultiPolygon:
             "mock://refined_rbr.tif",
         ]
 
-        mock_stac_manager.get_item_by_id.return_value = sample_stac_item
+        mock_stac_manager.get_item_by_fire_event_and_id.return_value = sample_stac_item
 
         # Execute command
         command = BoundaryRefinementCommand()
@@ -656,7 +657,7 @@ class TestBackwardCompatibility:
                 "rbr": {"href": "mock://rbr.tif"},
             },
         }
-        mock_stac_manager.get_item_by_id.return_value = sample_stac_item
+        mock_stac_manager.get_item_by_fire_event_and_id.return_value = sample_stac_item
 
         # Execute command
         command = BoundaryRefinementCommand()

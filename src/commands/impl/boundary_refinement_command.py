@@ -128,8 +128,13 @@ class BoundaryRefinementCommand(Command):
             logger.info(f"Refined boundary uploaded: {geojson_url}")
 
             # Step 2: Get the original/coarse fire severity COG URLs from STAC
+            # Search only this fire's folder: get_item_by_id reads every item in stac/.
             stac_id = f"{context.fire_event_name}-severity-{context.job_id}"
-            original_cog_item = await context.stac_manager.get_item_by_id(stac_id)
+            original_cog_item = (
+                await context.stac_manager.get_item_by_fire_event_and_id(
+                    context.fire_event_name, stac_id
+                )
+            )
             if not original_cog_item:
                 execution_time_ms = (time.time() - start_time) * 1000
                 return CommandResult.failure(
