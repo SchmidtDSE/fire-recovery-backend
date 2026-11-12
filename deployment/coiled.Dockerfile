@@ -1,5 +1,5 @@
 # Using pixi image as a base
-FROM ghcr.io/prefix-dev/pixi:0.45.0-bullseye-slim
+FROM ghcr.io/prefix-dev/pixi:0.45.0-bookworm-slim
 
 # Copy pixi environment files
 COPY pixi.toml pixi.toml

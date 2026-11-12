@@ -1,5 +1,5 @@
 # Using pixi image as a base
-FROM ghcr.io/prefix-dev/pixi:0.45.0-bullseye-slim
+FROM ghcr.io/prefix-dev/pixi:0.45.0-bookworm-slim
 
 # Install CA certificates for TLS (required by obstore/rustls)
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*

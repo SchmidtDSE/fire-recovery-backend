@@ -194,11 +194,16 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           project_id: dse-nps
 
+      - name: Rename schema copies to their published object names
+        run: |
+          cp baseline_schema.json "${{ github.sha }}.json"
+          cp baseline_schema.json "${{ github.ref_name }}.json"
+
       - name: Upload commit-specific schema to GCP
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
         with:
-          path: baseline_schema.json
-          destination: fire-recovery-store/openapi-schemas/${{ github.sha }}.json
+          path: ${{ github.sha }}.json
+          destination: fire-recovery-store/openapi-schemas
           parent: false
           process_gcloudignore: false
           headers: |-
@@ -207,8 +212,8 @@ jobs:
       - name: Upload branch-specific schema to GCP
         uses: google-github-actions/upload-cloud-storage@c0f6160ff80057923ff50e5e567695cea181ec23 # v2
         with:
-          path: baseline_schema.json
-          destination: fire-recovery-store/openapi-schemas/${{ github.ref_name }}.json
+          path: ${{ github.ref_name }}.json
+          destination: fire-recovery-store/openapi-schemas
           parent: false
           process_gcloudignore: false
           headers: |-
@@ -271,14 +276,25 @@ jobs:
               --service-account="projects/dse-nps/serviceAccounts/github-actions-sa@dse-nps.iam.gserviceaccount.com" \
               .
 
+            # Prod runs as its own account (fire-recovery-iac, environments/prod),
+            # which needs secretAccessor on the two storage-key secrets. The code
+            # reads the keys on every analysis, from the same secrets as dev's
+            # service. This deploy owns the revision, including its runtime account.
+            # The size and CPU allocation match dev's live service: analyses run as
+            # background tasks after the response, so CPU must stay allocated between
+            # requests, and live prod throttles it.
             gcloud run deploy fire-recovery-backend-prod \
               --image us-central1-docker.pkg.dev/dse-nps/fire-recovery-backend/prod:latest \
               --platform managed \
-              --service-account=github-actions-sa@dse-nps.iam.gserviceaccount.com \
+              --service-account=fire-recovery-backend-prod-sa@dse-nps.iam.gserviceaccount.com \
               --region us-central1 \
+              --cpu 8 \
+              --memory 32Gi \
+              --no-cpu-throttling \
               --min-instances 1 \
               --max-instances 1 \
               --allow-unauthenticated \
+              --update-secrets "S3_ACCESS_KEY_ID=fire-recovery-backend-minio-key:latest,S3_SECRET_ACCESS_KEY=fire-recovery-backend-minio-secret:latest" \
               --tag "sha-${GITHUB_SHA:0:7}"
 
             # Ensure 100% traffic goes to the new revision
