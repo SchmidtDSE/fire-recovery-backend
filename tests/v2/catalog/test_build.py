@@ -10,7 +10,12 @@ from src.models.provenance import Provenance
 from src.v2.catalog.build import CatalogError, build_catalog, validate
 from src.v2.identity.grid import Grid
 from src.v2.identity.job_id import CanonicalRequest, fire_id
-from src.v2.catalog.sidecar import build_sidecar
+from src.v2.catalog.sidecar import (
+    PROCESSING_EXTENSION,
+    SCIENTIFIC_EXTENSION,
+    build_sidecar,
+    missing_method_properties,
+)
 
 
 def test_build_catalog_passes_rashid(
@@ -42,6 +47,20 @@ def test_build_catalog_passes_rashid(
     assert item["assets"]["thumbnail"]["file:checksum"]
     assert item["properties"]["fire:job_id"] == job_id
     assert item["properties"]["fire:h3"]["cells"]
+    # The method record survives portolan: both extensions declared, every
+    # method property present, each index carrying its formula.
+    assert {PROCESSING_EXTENSION, SCIENTIFIC_EXTENSION} <= set(item["stac_extensions"])
+    assert missing_method_properties(item["properties"]) == []
+    for name in ("dnbr", "rdnbr", "rbr"):
+        assert item["assets"][name]["processing:expression"]["format"] == "numpy"
+    # rashid validates Scientific; Processing isn't in the Portolan registry,
+    # which rashid notes once and doesn't fail.
+    notes = {(f["rule_id"], f.get("actual")) for f in result.findings}
+    assert ("PTL-EXT-002", PROCESSING_EXTENSION) in notes
+    assert not [f for f in result.findings if f["severity"] in ("error", "warning")]
+    # The README states the same method as the STAC.
+    readme = (result.root / "README.md").read_text()
+    assert "newest processing baseline" in readme
     collection = json.loads((result.root / fid / "collection.json").read_text())
     assert collection["assets"]["thumbnail"]["href"] == "./severity/rbr.thumb.jpg"
     assert (result.root / fid / "items.parquet").exists()

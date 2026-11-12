@@ -65,7 +65,9 @@ def stages(
         return f"https://store.example/v2/fires/{fid}/catalog.json"
 
     monkeypatch.setattr(runner, "compute", compute)
-    monkeypatch.setattr(runner, "build_sidecar", lambda *args: {"properties": {}})
+    monkeypatch.setattr(
+        runner, "build_sidecar", lambda *args, **kwargs: {"properties": {}}
+    )
     monkeypatch.setattr(
         runner,
         "build_catalog",

@@ -85,7 +85,12 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
     canonical = ctx.canonical
     result = compute(canonical, ctx.workdir, ctx.threads)
     sidecar = build_sidecar(
-        canonical, ctx.job_id, result.grid, result.provenance, result.cogs
+        canonical,
+        ctx.job_id,
+        result.grid,
+        result.provenance,
+        result.cogs,
+        git_sha=ctx.git_sha,
     )
     source = result.provenance.source
     catalog = build_catalog(

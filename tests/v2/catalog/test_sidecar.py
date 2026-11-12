@@ -9,7 +9,15 @@ import pytest
 from src.models.provenance import Provenance
 from src.v2.identity.grid import Grid
 from src.v2.identity.job_id import CanonicalRequest
-from src.v2.catalog.sidecar import band_metadata, build_sidecar, h3_cover
+from src.v2.catalog.sidecar import (
+    METHOD_PROPERTIES,
+    PROCESSING_EXTENSION,
+    SCIENTIFIC_EXTENSION,
+    band_metadata,
+    build_sidecar,
+    h3_cover,
+    missing_method_properties,
+)
 
 
 @pytest.mark.parametrize(
@@ -72,3 +80,43 @@ def test_build_sidecar(
     assert set(sidecar["bands"]) == {"dnbr", "rdnbr", "rbr"}
     # Nothing in the sidecar depends on the submitted perimeter.
     assert "fire:buffer_m" not in props
+
+
+def test_the_method_record_is_complete(
+    canonical: CanonicalRequest,
+    grid: Grid,
+    provenance: Provenance,
+    index_cogs: Dict[str, Path],
+) -> None:
+    sidecar = build_sidecar(
+        canonical, canonical.job_id(), grid, provenance, index_cogs, git_sha="abc1234"
+    )
+    props = sidecar["properties"]
+    assert missing_method_properties(props) == []
+    assert sidecar["stac_extensions"] == [PROCESSING_EXTENSION, SCIENTIFIC_EXTENSION]
+    assert props["processing:software"]["fire-recovery-backend"] == "abc1234"
+    assert {"odc-stac", "GDAL", "portolan-cli", "rashid"} <= set(
+        props["processing:software"]
+    )
+    assert props["processing:version"] == str(canonical.pipeline_version)
+    assert [p["doi"] for p in props["sci:publications"]] == [
+        "10.2737/RMRS-GTR-164",
+        "10.1016/j.rse.2006.12.006",
+        "10.3390/rs6031827",
+    ]
+    lineage = props["processing:lineage"]
+    for fact in (
+        "median",
+        "nearest",
+        "newest processing baseline",
+        "DN x scale + offset",
+    ):
+        assert fact in lineage
+    assert canonical.prefire_window[0] in lineage
+
+
+def test_an_incomplete_method_record_is_caught() -> None:
+    props = {key: "x" for key in METHOD_PROPERTIES}
+    del props["fire:scaling"]
+    props["fire:resampling"] = ""
+    assert missing_method_properties(props) == ["fire:scaling", "fire:resampling"]

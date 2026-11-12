@@ -21,6 +21,11 @@ RDNBR_ZERO_DENOMINATOR = np.float32(0.001)
 RBR_OFFSET = np.float32(1.001)
 
 
+# How each window's NBR is formed, for the published expressions' context.
+NBR_EXPRESSION = "(nir - swir) / (nir + swir)"
+EXPRESSION_FORMAT = "numpy"
+
+
 def nbr(nir: np.ndarray, swir: np.ndarray) -> np.ndarray:
     """Normalized Burn Ratio, (NIR - SWIR) / (NIR + SWIR), as float32."""
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -65,6 +70,9 @@ class Index:
     description: str
     needs: tuple[str, ...]
     fn: Callable[[Composites], np.ndarray]
+    # The formula, published as the asset's processing:expression. Written in
+    # numpy over the Composites fields, and tested against ``fn``.
+    expression: str
 
     def compute(self, composites: Composites) -> np.ndarray:
         """The index as float32; NaN wherever an input is missing."""
@@ -91,6 +99,7 @@ DNBR = Index(
     description="Prefire NBR minus postfire NBR, where NBR = (NIR - SWIR) / (NIR + SWIR).",
     needs=("nir", "swir"),
     fn=_dnbr,
+    expression="prefire_nbr - postfire_nbr",
 )
 RDNBR = Index(
     name="rdnbr",
@@ -101,6 +110,10 @@ RDNBR = Index(
     ),
     needs=("nir", "swir"),
     fn=_rdnbr,
+    expression=(
+        "(prefire_nbr - postfire_nbr) / where(sqrt(abs(prefire_nbr)) != 0, "
+        "sqrt(abs(prefire_nbr)), 0.001)"
+    ),
 )
 RBR = Index(
     name="rbr",
@@ -108,6 +121,7 @@ RBR = Index(
     description="dNBR / (prefire NBR + 1.001) (Parks et al. 2014).",
     needs=("nir", "swir"),
     fn=_rbr,
+    expression="(prefire_nbr - postfire_nbr) / (prefire_nbr + 1.001)",
 )
 
 INDICES: tuple[Index, ...] = (DNBR, RDNBR, RBR)

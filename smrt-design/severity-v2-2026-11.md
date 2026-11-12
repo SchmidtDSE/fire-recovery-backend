@@ -406,6 +406,19 @@ never uploads it.
 
 - **Lineage lives in properties.** Portolan restores `links` after plugins run, so scene
   lineage goes in properties (with hrefs) rather than in `derived_from` links.
+  A post-build edit would add them, but leaves portolan's `items.parquet` stale and
+  `check --fix` doesn't refresh it, so this waits on portolan-cli (checked November 2026).
+- **The method record.** Each item states how it was computed, in established STAC fields
+  where they exist:
+  - `processing:lineage` (the method in plain language, also the README's processing
+    notes), `processing:software` (commit and library versions), `processing:version`.
+  - `processing:expression` on each index asset: its formula, tested against the code.
+  - `sci:publications`: the dNBR, RdNBR and RBR papers.
+  - `fire:composite`, `fire:scene_selection`, `fire:scaling`, `fire:resampling`,
+    `fire:mask`, `fire:grid`, `fire:source` and the scene lists for the parameters.
+
+  The build fails if any of these is missing. Scientific is in the Portolan extension
+  registry; Processing isn't yet, so rashid notes it (`PTL-EXT-002`) without validating it.
 - **Providers and license.** DSE is the only provider (producer, processor and host), and the
   license is CC-BY-4.0. These, the contact details and the README's provenance text all come
   from `.portolan/metadata.yaml`.
