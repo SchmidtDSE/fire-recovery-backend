@@ -1,9 +1,10 @@
 """Best-effort email over SMTP (design §8).
 
-A Gmail account with an app password is the whole setup: SMTP over SSL on 465,
-or STARTTLS on 587, through the standard library. A failed send is logged and
-never fails the job; the result is on the status URL either way. Only Jobs send
-mail, so the API holds no mail credentials.
+Any SMTP mailbox works, over SSL on 465 or STARTTLS on 587, through the standard
+library. The deployments use a Namecheap Private Email mailbox on the project's
+domain. A failed send is logged and never fails the job; the result is on the
+status URL either way. Only Jobs send mail: the API holds the credentials only
+to pass them on to each Job's Secret.
 """
 
 import logging
@@ -15,7 +16,7 @@ from typing import Any, Callable, Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SMTP_HOST = "smtp.gmail.com"
+DEFAULT_SMTP_HOST = "mail.privateemail.com"
 SMTP_SSL_PORT = 465
 SMTP_TIMEOUT_SECONDS = 30
 

@@ -6,7 +6,7 @@ repos: [backend]
 status: draft
 source: agent
 authored: 2026-11-09
-revised: 2026-11-11
+revised: 2026-11-12
 owner: "fire-recovery-backend agent"
 depends_on: []
 needs_context: [dev-deployment]
@@ -525,20 +525,18 @@ never uploads it.
 
 ### 8. Notification
 
-- **Sender.** A new Gmail account, sending over SMTP with an app password (which needs 2-step
-  verification), through the standard library.
-  - That is the whole setup: one account, one app password, and the credentials in the API's
-    environment, which it passes to each Job's Secret.
-  - Moving to a relay later is a configuration change.
+- **Sender.** A Namecheap Private Email mailbox on the project's domain,
+  `noreply@dse-disturbance-toolbox.org`, over SMTP with SSL on 465, through the standard library.
+  - The domain needs SPF, DKIM and DMARC records for mail from it to land in inboxes.
+  - The password and the operator's address are in Secret Manager. The API's environment
+    carries them, and the API passes them to each Job's Secret.
+  - Any SMTP mailbox or relay works, so changing provider is a configuration change.
   - GCP blocks outbound port 25 only, so ports 465 and 587 work from GKE. Check NRP's egress
     rules when it's set up.
-- **Not the Gmail API.**
-  - With a service account, it needs Workspace domain-wide delegation.
-  - With a personal account, it needs an OAuth refresh token, and that token expires after 7
-    days while the app is in testing.
 - **Only jobs send mail.** On success, the link. On failure, a short notice to the requester
   and the traceback to the operator. A cache hit needs no email, because the API's response
-  already carries the links. The API therefore holds no mail credentials.
+  already carries the links. The API holds the mail credentials only to pass them on, and
+  never sends.
 - **Best-effort.** A failed send is logged and never fails the job. The result is on the status
   URL either way.
 - **Addresses.** The operator address is configuration. The requester's address reaches the pod
@@ -648,7 +646,7 @@ Recorded 2026-11-09.
 | 15 | Cache | Keyed on the snapped buffered bounds (§6). |
 | 16 | Where jobs run | Kubernetes Jobs on josh's GKE cluster, with NRP Nautilus as a second target. IAM comes later (§1). |
 | 17 | Snapping | OGC WebMercatorQuad tiles about an eighth of the box, via morecantile. H3 cells are recorded for GLEN but don't set the key (§2, §6). |
-| 18 | Email sender | A new Gmail account over SMTP. Only jobs send mail (§8). |
+| 18 | Email sender | A Namecheap Private Email mailbox on the project domain, over SMTP. Only jobs send mail (§8). |
 | 19 | Numbers | Placeholders for now (§6). |
 | 20 | Mixed processing baselines | Rejected for now (§2). |
 | 21 | RustFS | Part of v2: it replaces MinIO in CI and local development (§7). |
@@ -674,7 +672,8 @@ To set up per target when the service account gets its permissions:
 - **Storage credentials for the job.** HMAC keys for v2's bucket, held by the API and passed to
   each Job's Secret, which work on any cluster. If the GCS check in §7 fails, `gs://` needs workload identity on GKE and a
   service-account key on NRP.
-- **The SMTP credentials.**
+- **The SMTP credentials.** Resolved: `severity-v2-smtp-password` and
+  `severity-v2-operator-email` in Secret Manager, readable only by the API's account.
 - **Outbound SMTP on NRP.** Unconfirmed. Email is best-effort until it is (§8).
 - **The image** needs none, because it is public on GHCR.
 
