@@ -72,3 +72,21 @@ def test_registry() -> None:
 def test_nbr_of_zero_reflectance_is_nan() -> None:
     zero = np.zeros(1, dtype=np.float32)
     assert np.isnan(nbr(zero, zero)[0])
+
+
+@pytest.mark.parametrize("index", INDICES, ids=lambda index: index.name)
+def test_the_published_expression_computes_the_index(index: Any) -> None:
+    # processing:expression must say exactly what the code computes, including
+    # RdNBR's zero-denominator rule.
+    rng = np.random.default_rng(7)
+    nir = rng.uniform(0.01, 0.6, 500).astype(np.float32)
+    swir = rng.uniform(0.01, 0.6, 500).astype(np.float32)
+    swir[:5] = nir[:5]  # prefire NBR exactly 0
+    composites = Composites.from_medians(nir, swir, swir, nir)
+    namespace = {"where": np.where, "sqrt": np.sqrt, "abs": np.abs}
+    namespace.update(vars(composites))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        published = eval(index.expression, {"__builtins__": {}}, namespace)
+    np.testing.assert_allclose(
+        np.asarray(published, dtype=np.float32), index.compute(composites), rtol=1e-6
+    )

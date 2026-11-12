@@ -65,7 +65,9 @@ def stages(
         return f"https://store.example/v2/fires/{fid}/catalog.json"
 
     monkeypatch.setattr(runner, "compute", compute)
-    monkeypatch.setattr(runner, "build_sidecar", lambda *args: {"properties": {}})
+    monkeypatch.setattr(
+        runner, "build_sidecar", lambda *args, **kwargs: {"properties": {}}
+    )
     monkeypatch.setattr(
         runner,
         "build_catalog",
@@ -218,3 +220,16 @@ def test_main_needs_a_request(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (
         main([], store_factory=FakeStore, mailer_factory=FakeMailer) == EXIT_BAD_INPUT
     )  # type: ignore[arg-type]
+
+
+def test_a_broken_mail_template_never_changes_the_outcome(
+    ctx: RunContext, stages: Dict[str, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*args: Any, **kwargs: Any) -> str:
+        raise RuntimeError("template error")
+
+    monkeypatch.setattr(runner, "render", broken)
+    store, mailer = FakeStore(), FakeMailer()
+    assert run(ctx, store, mailer) == EXIT_OK  # type: ignore[arg-type]
+    assert store.objects[record_key(ctx.job_id)]["state"] == "succeeded"
+    assert mailer.sent == []

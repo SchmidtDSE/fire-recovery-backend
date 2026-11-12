@@ -72,10 +72,18 @@ def run_tool(args: Sequence[str], cwd: Path, env: Mapping[str, str]) -> str:
     return result.stdout
 
 
-def write_metadata(root: Path, source_url: Optional[str]) -> None:
-    """.portolan/metadata.yaml: contact, license, providers, source and notes."""
+def write_metadata(
+    root: Path, source_url: Optional[str], processing_notes: Optional[str] = None
+) -> None:
+    """.portolan/metadata.yaml: contact, license, providers, source and notes.
+
+    ``processing_notes`` is the item's processing:lineage, so the README states
+    the same method as the STAC.
+    """
     metadata = yaml.safe_load(METADATA_TEMPLATE.read_text())
     metadata["source_url"] = source_url or ""
+    if processing_notes:
+        metadata["processing_notes"] = processing_notes
     (root / ".portolan" / "metadata.yaml").write_text(
         yaml.safe_dump(metadata, sort_keys=False)
     )
@@ -146,7 +154,7 @@ def build_catalog(
         cwd=root,
         env=env,
     )  # fmt: skip
-    write_metadata(root, source_url)
+    write_metadata(root, source_url, sidecar["properties"].get("processing:lineage"))
     run_tool([portolan, "add", f"{fire_id}/", "--datetime", item_datetime], root, env)
     run_tool([portolan, "check", "--fix"], root, env)
     run_tool([portolan, "readme"], root, env)

@@ -21,7 +21,7 @@ import tempfile
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from src.v2.catalog.build import build_catalog
 from src.v2.constants import ENV_GIT_SHA, ENV_IMAGE
@@ -34,6 +34,7 @@ from src.v2.catalog.publish import catalog_prefix, publish
 from src.v2.record import ResultRecord, record_key
 from src.v2.catalog.sidecar import build_sidecar
 from src.v2.store import Store
+from src.v2.templates import render
 
 logger = logging.getLogger("src.v2.job.run")
 
@@ -85,7 +86,12 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
     canonical = ctx.canonical
     result = compute(canonical, ctx.workdir, ctx.threads)
     sidecar = build_sidecar(
-        canonical, ctx.job_id, result.grid, result.provenance, result.cogs
+        canonical,
+        ctx.job_id,
+        result.grid,
+        result.provenance,
+        result.cogs,
+        git_sha=ctx.git_sha,
     )
     source = result.provenance.source
     catalog = build_catalog(
@@ -135,41 +141,56 @@ def subject(ctx: RunContext, outcome: str) -> str:
     return f"[Fire Severity Analysis: {ctx.canonical.fire_event_name}] {outcome}"
 
 
-def status_line(ctx: RunContext) -> str:
-    return f"\nStatus: {ctx.status_url}\n" if ctx.status_url else ""
+def mail_body(template: str, **values: Any) -> Optional[str]:
+    """A message body from config/templates/mail/, or None if it can't render.
+
+    Mail is best-effort: a broken template is logged and that message skipped,
+    and it never changes the job's outcome.
+    """
+    try:
+        return render(f"mail/{template}", **values)
+    except Exception as e:
+        logger.warning(f"Could not render mail/{template}: {e}")
+        return None
 
 
 def notify_success(ctx: RunContext, record: ResultRecord, mailer: Mailer) -> None:
-    name = ctx.canonical.fire_event_name
-    mailer.send(
-        ctx.notify_email,
-        subject(ctx, "Ready"),
-        f"The fire severity analysis for {name} is ready.\n\n"
-        f"Catalog: {record.catalog_url}\n"
-        + "".join(f"{asset}: {url}\n" for asset, url in record.assets.items())
-        + status_line(ctx),
-        image=item_directory(ctx.workdir, ctx.fire_id) / THUMBNAIL_FILE,
+    body = mail_body(
+        "ready.txt.j2",
+        name=ctx.canonical.fire_event_name,
+        catalog_url=record.catalog_url,
+        assets=record.assets,
+        status_url=ctx.status_url,
     )
+    if body is not None:
+        mailer.send(
+            ctx.notify_email,
+            subject(ctx, "Ready"),
+            body,
+            image=item_directory(ctx.workdir, ctx.fire_id) / THUMBNAIL_FILE,
+        )
 
 
 def notify_failure(
     ctx: RunContext, error: BaseException, trace: str, mailer: Mailer
 ) -> None:
     name = ctx.canonical.fire_event_name
-    mailer.send(
-        ctx.notify_email,
-        subject(ctx, "Failed"),
-        f"The fire severity analysis for {name} failed: {summarize(error)}\n"
-        f"{status_line(ctx)}\n"
-        f"Submitting the same request again runs it again.\n",
+    notice = mail_body(
+        "failed.txt.j2", name=name, error=summarize(error), status_url=ctx.status_url
     )
-    mailer.send(
-        mailer.operator,
-        subject(ctx, f"Failed: job {ctx.job_id}"),
-        f"Job {ctx.job_id} ({name}) failed.\n\n"
-        f"Image: {ctx.image}\nCommit: {ctx.git_sha}\n\n"
-        f"Request:\n{ctx.canonical.to_json()}\n\n{trace}",
+    if notice is not None:
+        mailer.send(ctx.notify_email, subject(ctx, "Failed"), notice)
+    report = mail_body(
+        "operator.txt.j2",
+        job_id=ctx.job_id,
+        name=name,
+        image=ctx.image,
+        git_sha=ctx.git_sha,
+        request=ctx.canonical.to_json(),
+        trace=trace,
     )
+    if report is not None:
+        mailer.send(mailer.operator, subject(ctx, f"Failed: job {ctx.job_id}"), report)
 
 
 def run(ctx: RunContext, store: Store, mailer: Mailer) -> int:

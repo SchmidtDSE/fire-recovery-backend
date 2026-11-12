@@ -1,0 +1,32 @@
+{#-
+  The method statement: each item's processing:lineage, and its catalog
+  README's processing notes. Rendered as one paragraph: line breaks here are
+  for editing only. Values come from lineage() in src/v2/catalog/sidecar.py;
+  a name it doesn't pass fails the build.
+-#}
+Burn severity from {{ sensor }} surface reflectance served by {{ provider }}
+(STAC collection {{ collection }}).
+
+For each window (prefire {{ prefire[0] }} to {{ prefire[1] }}, postfire
+{{ postfire[0] }} to {{ postfire[1] }}), every scene covering the area is used,
+except that where a provider lists one Sentinel-2 acquisition under several
+processings, only the newest processing baseline is kept.
+
+Each scene's NIR ({{ bands.nir }}) and SWIR ({{ bands.swir }}) digital numbers
+are converted to reflectance with that scene's own published scale and offset
+(reflectance = DN x scale + offset). Observations with a zero digital number, or
+flagged in the {{ bands.mask }} band ({{ mask_description }}), are excluded, and
+the per-pixel {{ composite }} of the remaining observations forms each window's
+composite.
+
+Scenes are read with {{ resampling }}-neighbour resampling onto a
+{{ "%g" | format(resolution) }} m grid in EPSG:{{ epsg }}, aligned to the
+sensor's native pixels.
+
+NBR = (NIR - SWIR) / (NIR + SWIR) per composite; dNBR, RdNBR and RBR follow,
+each asset carrying its formula in processing:expression. Pixels with no clear
+observation in either window are nodata (-9999).
+
+The scenes used, with their processing baselines and offsets, are listed in
+fire:prefire_scenes and fire:postfire_scenes. Pipeline version
+{{ pipeline_version }}.

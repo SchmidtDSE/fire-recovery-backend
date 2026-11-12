@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 
 from portolan_cli.hookspecs import hookimpl as portolan_hookimpl
 
-from src.v2.raster.indices import INDICES
+from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES
 from src.v2.catalog.sidecar import SIDECAR_ENV
 
 ITEM_ID = "severity"
@@ -47,6 +47,10 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
     if sidecar is None:
         return
     item["properties"].update(sidecar["properties"])
+    extensions = item.setdefault("stac_extensions", [])
+    for uri in sidecar.get("stac_extensions", []):
+        if uri not in extensions:
+            extensions.append(uri)
     assets = item.setdefault("assets", {})
     # portolan keys an item's primary file "data"; give every index its own key.
     primary = assets.get("data")
@@ -60,6 +64,10 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
             continue
         asset["title"] = index.title
         asset["description"] = index.description
+        asset["processing:expression"] = {
+            "format": EXPRESSION_FORMAT,
+            "expression": index.expression,
+        }
         asset["bands"] = [
             dict(band, name=name, unit=BAND_UNIT) for band in sidecar["bands"][name]
         ]
