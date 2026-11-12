@@ -111,14 +111,45 @@ printf '%s' "$(printf '%s' "$KEY" | sha256sum | cut -d' ' -f1)" | \
 
 With no keys yet, store a lone comma (`printf ','`). The API ignores blank entries.
 
-## 6. The image
+## 6. Mail
+
+Jobs email the requester when an analysis finishes, and the operator when one fails. They send
+through a Namecheap Private Email mailbox, `noreply@dse-disturbance-toolbox.org`, over SSL on port
+465. The dev deploy sets the host, port and user; the password and the operator's address are
+secrets. Tofu (`environments/fire-severity-k8s/secrets.tf`) creates `severity-v2-smtp-password` and
+`severity-v2-operator-email` and grants the API's account access to each, but sets no value.
+
+Add both values before the first deploy that maps them:
+
+```bash
+read -rs P && printf '%s' "$P" | gcloud secrets versions add severity-v2-smtp-password --project dse-nps --data-file=-; unset P
+read -r E && printf '%s' "$E" | gcloud secrets versions add severity-v2-operator-email --project dse-nps --data-file=-; unset E
+```
+
+- **Test a new password locally first,** with the same code the Jobs run. `send` never raises,
+  so logging shows why a send failed:
+
+  ```bash
+  read -rs P; SMTP_USER=noreply@dse-disturbance-toolbox.org SMTP_PASSWORD="$P" pixi run python -c \
+    'import logging; logging.basicConfig(); from src.v2.job.notify import Mailer, SmtpSettings; print(Mailer(SmtpSettings.from_env()).send("you@example.org", "severity v2 mail test", "test"))'; unset P
+  ```
+
+- **A new version reaches the service only with a new revision.** Cloud Run reads `latest`
+  when an instance starts, and dev keeps one warm. Redeploy, or run
+  `gcloud run services update fire-recovery-backend-dev --region us-central1`.
+- **The domain needs SPF, DKIM and DMARC records** for the mail to land in inboxes. Gmail's
+  "Show original" reports all three.
+- **Keep the mailbox for sending only.** Each Job's Secret carries the password into the
+  cluster, and anyone who can read Secrets in the namespace can read it.
+
+## 7. The image
 
 As josh does with `joshsim-batch`, CI pushes `ghcr.io/schmidtdse/fire-recovery-backend/severity-batch`:
 `{sha}` and `latest` on every deploy to dev, and `{sha}` for each PR from this repository, so a
 cluster can run a branch before it merges. The package took the repository's public visibility
 on its first push, so any cluster pulls it without credentials.
 
-## 7. Monitoring
+## 8. Monitoring
 
 Jobs that fail inside Python write a failed record and email the operator. Platform failures,
 such as an OOM kill, the deadline or a bad image, don't reach that handler: the status URL
