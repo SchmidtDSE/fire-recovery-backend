@@ -1,9 +1,10 @@
 # Constants
-BUCKET_NAME = "fire-recovery-store"
-STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
-STAC_EPSG_CODE = 4326
+TEMP_BUCKET_NAME = "fire-recovery-temp"
+FINAL_BUCKET_NAME = "fire-recovery-store"
+DEFAULT_TEMP_FILE_MAX_AGE_SECONDS: float = 3600.0  # 1 hour
+
+
+TEMP_STORAGE_PROVIDER_TYPE = "memory"
+FINAL_STORAGE_PROVIDER_TYPE = "minio"
+
 STAC_STORAGE_DIR = "tmp/stac_geoparquet"
-# SWIR_BAND = "swir22"
-# NIR_BAND = "nir"
-SWIR_BAND = "B12"
-NIR_BAND = "B8A"

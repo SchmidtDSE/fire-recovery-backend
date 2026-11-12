@@ -1,130 +1,65 @@
+import logging
+import os
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Union
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
-    UploadFile,
     Form,
     HTTPException,
-    Depends,
+    UploadFile,
 )
-from pydantic import BaseModel, Field
-import uuid
-import time
-import json
-import os
-import tempfile
-from typing import Union, Optional, List
-from datetime import datetime
-from geojson_pydantic import FeatureCollection, Feature, Polygon, MultiPolygon
-from shapely.geometry import shape
-from src.process.spectral_indices import process_remote_sensing_data
-from src.util.upload_blob import upload_to_gcs
-from src.stac.stac_geoparquet_manager import STACGeoParquetManager
-from src.config.constants import BUCKET_NAME, STAC_STORAGE_DIR
-from src.util.polygon_ops import polygon_to_valid_geojson
-from src.util.cog_ops import (
-    download_cog_to_temp,
-    crop_cog_with_geometry,
-    create_cog,
+from geojson_pydantic import Polygon, MultiPolygon, Feature
+
+from src.config.constants import FINAL_BUCKET_NAME
+from src.stac.stac_json_manager import STACJSONManager
+from src.stac.stac_catalog_manager import STACCatalogManager
+from src.util.boundary_utils import process_and_upload_geojson
+from src.commands.impl.upload_aoi_command import UploadAOICommand
+from src.commands.impl.health_check_command import HealthCheckCommand
+from src.commands.impl.fire_severity_command import FireSeverityAnalysisCommand
+from src.commands.impl.boundary_refinement_command import BoundaryRefinementCommand
+from src.commands.impl.vegetation_resolve_command import VegetationResolveCommand
+from src.commands.interfaces.command_context import CommandContext
+from src.core.storage.storage_factory import StorageFactory
+from src.computation.registry.index_registry import IndexRegistry
+from src.models.requests import (
+    ProcessingRequest,
+    RefineRequest,
+    VegMapResolveRequest,
+    GeoJSONUploadRequest,
 )
-from contextlib import contextmanager
-from typing import Dict, Any, List, Tuple, ContextManager, Generator
-from src.process.resolve_veg import process_veg_map
+from src.models.provenance import SourceDataProvenance
+from src.models.responses import (
+    TaskPendingResponse,
+    TaskFailedResponse,
+    ProcessingStartedResponse,
+    RefinedBoundaryResponse,
+    FireSeverityResponse,
+    VegMapMatrixResponse,
+    UploadedGeoJSONResponse,
+    UploadedShapefileZipResponse,
+    HealthCheckResponse,
+)
+from src.commands.interfaces.command_result import CommandResult
+from src.util.job_result_persistence import persist_job_result, get_job_result
 
 
-@contextmanager
-def temp_file(suffix: str = "", content: bytes = None) -> Generator[str, None, None]:
-    """Context manager for temporary files with automatic cleanup"""
-    temp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            if content:
-                tmp.write(content)
-            temp_path = tmp.name
-        yield temp_path
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except Exception as e:
-                print(f"Failed to remove temporary file {temp_path}: {str(e)}")
-
-
-async def process_and_upload_geojson(
-    geometry: dict, fire_event_name: str, job_id: str, filename: str
-) -> Tuple[str, Dict[str, Any], List[float]]:
-    """
-    Validate, save and upload a GeoJSON boundary
-
-    Args:
-        geometry: The geometry or GeoJSON to process
-        fire_event_name: Name of the fire event
-        job_id: Job ID for the processing task
-        filename: Base filename for the GeoJSON (without extension)
-
-    Returns:
-        Tuple containing:
-        - URL to the uploaded GeoJSON
-        - Validated GeoJSON object
-        - Bounding box coordinates [minx, miny, maxx, maxy]
-    """
-    # Convert the Polygon/geometry to a valid GeoJSON object
-    valid_geojson = polygon_to_valid_geojson(geometry)
-
-    # Create a temporary file and upload it
-    with temp_file(
-        suffix=".geojson", content=json.dumps(valid_geojson).encode("utf-8")
-    ) as geojson_path:
-        # Upload to GCS
-        blob_name = f"{fire_event_name}/{job_id}/{filename}.geojson"
-        geojson_url = upload_to_gcs(geojson_path, BUCKET_NAME, blob_name)
-
-        # Extract bbox from geometry for STAC
-        geom_shape = shape(valid_geojson["features"][0]["geometry"])
-        bbox = geom_shape.bounds  # (minx, miny, maxx, maxy)
-
-    return geojson_url, valid_geojson, list(bbox)
-
-
-async def process_cog_with_boundary(
-    original_cog_url: str,
-    valid_geojson: Dict[str, Any],
-    fire_event_name: str,
-    job_id: str,
-    output_filename: str,
-) -> str:
-    """
-    Process a COG with a boundary: download, crop, create new COG, and upload
-
-    Args:
-        original_cog_url: URL to the original COG
-        valid_geojson: The validated GeoJSON to crop with
-        fire_event_name: Name of the fire event
-        job_id: Job ID for the processing task
-        output_filename: Filename for the output COG (without extension)
-
-    Returns:
-        URL to the uploaded processed COG
-    """
-    # Download the original COG to a temporary file
-    with temp_file(suffix=".tif") as original_cog_path:
-        # Download the original COG
-        tmp_cog_path = await download_cog_to_temp(original_cog_url)
-
-        # Crop the COG with the refined boundary
-        cropped_data = crop_cog_with_geometry(tmp_cog_path, valid_geojson)
-
-        # Create a new COG from the cropped data
-        with temp_file(suffix=".tif") as refined_cog_path:
-            cog_result = create_cog(cropped_data, refined_cog_path)
-            if not cog_result["is_valid"]:
-                raise Exception("Failed to create a valid COG from cropped data")
-
-            # Upload the refined COG to GCS
-            cog_blob_name = f"{fire_event_name}/{job_id}/{output_filename}.tif"
-            cog_url = upload_to_gcs(refined_cog_path, BUCKET_NAME, cog_blob_name)
-
-    return cog_url
+def convert_geometry_to_pydantic(
+    geometry: dict[str, Any],
+) -> Polygon | MultiPolygon | Feature:
+    """Convert dict geometry to geojson-pydantic type"""
+    if geometry.get("type") == "Feature":
+        return Feature.model_validate(geometry)
+    elif geometry.get("type") == "MultiPolygon":
+        return MultiPolygon.model_validate(geometry)
+    else:
+        return Polygon.model_validate(geometry)
 
 
 # Dictionary to track when job requests were first received
@@ -136,86 +71,167 @@ router = APIRouter(
     tags=["Fire Recovery"],
     responses={404: {"description": "Not found"}},
 )
-# Initialize STAC manager
-stac_manager = STACGeoParquetManager(
-    base_url=f"https://storage.googleapis.com/{BUCKET_NAME}/stac",
-    storage_dir=STAC_STORAGE_DIR,
-)
 
 
-# Request models
-class ProcessingRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    geometry: dict = Field(..., description="GeoJSON of bounding box AOI")
-    prefire_date_range: list[str] = Field(
-        None,
-        description="Date range for prefire imagery (e.g. ['2023-01-01', '2023-12-31'])",
+# Dependency functions
+def get_storage_factory() -> StorageFactory:
+    """Get storage factory instance with lifecycle-based configuration"""
+    from src.config.constants import FINAL_BUCKET_NAME
+
+    # Get S3-compatible credentials from environment
+    # Only S3_* variables are supported
+    access_key = os.environ.get("S3_ACCESS_KEY_ID")
+    secret_key = os.environ.get("S3_SECRET_ACCESS_KEY")
+
+    if not access_key or not secret_key:
+        raise ValueError(
+            "S3 credentials are required for persistent storage. "
+            "Set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY environment variables."
+        )
+
+    # Allow test environment to override bucket and endpoint
+    # Only S3_* variables are supported
+    bucket_name = os.environ.get("S3_BUCKET") or FINAL_BUCKET_NAME
+    endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
+    protocol = "https" if secure else "http"
+    base_url = f"{protocol}://{endpoint}/{bucket_name}"
+
+    # Configure storage based on lifecycle semantics:
+    # - temp_storage: Memory for ephemeral processing files (fast, auto-cleanup)
+    # - final_storage: MinIO for persistent assets that outlive the request
+    return StorageFactory(
+        temp_storage_type="memory",
+        temp_storage_config={"base_url": "memory://temp/"},
+        final_storage_type="minio",
+        final_storage_config={
+            "bucket_name": bucket_name,
+            "endpoint": endpoint,
+            "access_key": access_key,
+            "secret_key": secret_key,
+            "region": "auto",
+            "secure": secure,
+            "base_url": base_url,
+        },
     )
-    postfire_date_range: list[str] = Field(
-        None,
-        description="Date range for postfire imagery (e.g. ['2024-01-01', '2024-12-31'])",
+
+
+async def get_stac_manager(
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> STACJSONManager:
+    """Get STAC JSON manager instance and ensure catalog exists"""
+    final_storage = storage_factory.get_final_storage()
+
+    # Use environment-aware base URL for STAC (supports test overrides)
+    # Only S3_* variables are supported
+    bucket_name = os.environ.get("S3_BUCKET") or FINAL_BUCKET_NAME
+    endpoint = os.environ.get("S3_ENDPOINT") or "storage.googleapis.com"
+    secure_str = os.environ.get("S3_SECURE") or "True"
+    secure = secure_str.lower() == "true"
+    protocol = "https" if secure else "http"
+    stac_base_url = f"{protocol}://{endpoint}/{bucket_name}/stac"
+
+    stac_manager = STACJSONManager.for_production(
+        base_url=stac_base_url,
+        storage=final_storage,
     )
 
-
-class RefineRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    refine_geojson: dict = Field(..., description="GeoJSON to be refined")
-    job_id: str = Field(
-        ..., description="Job ID of the original fire severity analysis"
+    # Ensure catalog exists by initializing it
+    catalog_manager = STACCatalogManager.for_production(
+        base_url=stac_base_url,
+        storage=final_storage,
     )
 
+    # Check if catalog exists, if not initialize it
+    __root_catalog = await catalog_manager.get_catalog()
+    if __root_catalog is None:
+        # Catalog doesn't exist, initialize it
+        await catalog_manager.initialize_catalog()
 
-class VegMapResolveRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    veg_gpkg_url: str = Field(..., description="URL to the vegetation map GeoPackage")
-    fire_cog_url: str = Field(..., description="URL to the fire severity COG")
-    job_id: str = Field(
-        ..., description="Job ID of the original fire severity analysis"
-    )
-
-
-class GeoJSONUploadRequest(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    geojson: dict = Field(..., description="GeoJSON data to upload")
+    return stac_manager
 
 
-# Response models
-class BaseResponse(BaseModel):
-    fire_event_name: str = Field(..., description="Name of the fire event")
-    status: str
-    job_id: str
-
-
-class TaskPendingResponse(BaseResponse):
-    """Response for when a task is still being processed"""
-
-    pass
-
-
-class ProcessingStartedResponse(BaseResponse):
-    pass
-
-
-class RefinedBoundaryResponse(BaseResponse):
-    refined_geojson_url: str
-    cog_url: str
-
-
-class FireSeverityResponse(BaseResponse):
-    cog_url: Optional[str] = None
-
-
-class VegMapMatrixResponse(BaseResponse):
-    fire_veg_matrix: Optional[str] = None
-
-
-class UploadedGeoJSONResponse(BaseResponse):
-    uploaded_geojson: str
+def get_index_registry() -> IndexRegistry:
+    """Get index registry instance"""
+    return IndexRegistry()
 
 
 @router.get("/", tags=["Root"])
-async def root():
+async def root() -> Dict[str, str]:
     return {"message": "Welcome to the Fire Recovery Backend API"}
+
+
+@router.get("/healthz", response_model=HealthCheckResponse, tags=["Health"])
+async def health_check(
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> HealthCheckResponse:
+    """
+    System health check endpoint.
+
+    Verifies connectivity to storage, STAC catalog, and other dependencies.
+
+    See [docs/ENDPOINTS.md#get-healthz](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-healthz) for details.
+    """
+    # Generate a unique job ID for the health check
+    job_id = str(uuid.uuid4())
+
+    try:
+        # Create command context for health check
+        # Note: We use minimal geometry for health checks
+        context = CommandContext(
+            job_id=job_id,
+            fire_event_name="health-check",
+            geometry=convert_geometry_to_pydantic(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [0, 0]},
+                    "properties": {},
+                }
+            ),
+            storage=storage_factory.get_temp_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={"check_type": "health"},
+        )
+
+        # Execute health check command
+        command = HealthCheckCommand()
+        result = await command.execute(context)
+
+        if result.is_failure():
+            raise HTTPException(
+                status_code=503,  # Service Unavailable
+                detail=f"Health check failed: {result.error_message}",
+            )
+
+        # Extract health data from command result
+        if not result.data:
+            raise HTTPException(
+                status_code=500,
+                detail="Health check succeeded but no health data returned",
+            )
+
+        # Map command result to response model
+        return HealthCheckResponse(
+            fire_event_name="health-check",
+            status="healthy"
+            if result.data["overall_status"] == "healthy"
+            else "unhealthy",
+            job_id=job_id,
+            overall_status=result.data["overall_status"],
+            timestamp=result.data["timestamp"],
+            checks=result.data["checks"],
+            unhealthy_components=result.data["unhealthy_components"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Health check error: {str(e)}")
 
 
 @router.post(
@@ -224,10 +240,19 @@ async def root():
     tags=["Fire Severity"],
 )
 async def analyze_fire_severity(
-    request: ProcessingRequest, background_tasks: BackgroundTasks
-):
+    request: ProcessingRequest,
+    background_tasks: BackgroundTasks,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> ProcessingStartedResponse:
     """
-    Analyze fire severity using remote sensing data.
+    Initiate fire severity analysis using Sentinel-2 (default) or Landsat satellite imagery.
+
+    Select the source via the optional `sensor` body field. Calculates NBR, dNBR,
+    RdNBR, and RBR indices. Returns immediately with a job ID for polling.
+
+    See [docs/ENDPOINTS.md#post-processanalyze_fire_severity](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processanalyze_fire_severity) for details.
     """
     job_id = str(uuid.uuid4())
     job_timestamps[job_id] = time.time()
@@ -237,99 +262,141 @@ async def analyze_fire_severity(
         process_fire_severity,
         job_id=job_id,
         fire_event_name=request.fire_event_name,
-        geometry=request.geometry,
+        geometry=request.coarse_geojson,
         prefire_date_range=request.prefire_date_range,
         postfire_date_range=request.postfire_date_range,
+        sensor=request.sensor,
+        stac_manager=stac_manager,
+        storage_factory=storage_factory,
+        index_registry=index_registry,
     )
 
-    return {
-        "fire_event_name": request.fire_event_name,
-        "status": "Processing started",
-        "job_id": job_id,
-    }
+    return ProcessingStartedResponse(
+        fire_event_name=request.fire_event_name,
+        status="Processing started",
+        job_id=job_id,
+    )
 
 
 async def process_fire_severity(
     job_id: str,
     fire_event_name: str,
-    geometry: Polygon,
+    geometry: Polygon | MultiPolygon | Feature,
     prefire_date_range: list[str],
     postfire_date_range: list[str],
-):
-    """
-    Process fire severity, upload results, and create STAC assets
-    """
+    stac_manager: STACJSONManager,
+    storage_factory: StorageFactory,
+    index_registry: IndexRegistry,
+    sensor: str = "sentinel-2",
+) -> None:
+    logger = logging.getLogger(__name__)
+    start_time = time.time()
+
     try:
-        # 1. Process the data
-        result = process_remote_sensing_data(
+        # Create command context for fire severity analysis
+        context = CommandContext(
             job_id=job_id,
-            geometry=geometry,
-            prefire_date_range=prefire_date_range,
-            postfire_date_range=postfire_date_range,
-        )
-
-        if result["status"] != "completed":
-            # Handle error case
-            return
-
-        # 2. Upload the COGs to GCS
-        cog_url = None  # Will store the main RBR cog URL
-        for key, value in result["output_files"].items():
-            cog_path = value
-            blob_name = f"{fire_event_name}/{job_id}/{key}.tif"
-            uploaded_url = upload_to_gcs(cog_path, BUCKET_NAME, blob_name)
-
-            # Store the main RBR cog URL for STAC items
-            if key == "rbr":
-                cog_url = uploaded_url
-
-        # 3. Create a STAC item for the fire severity
-        datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        await stac_manager.create_fire_severity_item(
             fire_event_name=fire_event_name,
-            job_id=job_id,
-            cog_url=cog_url,
             geometry=geometry,
-            datetime_str=datetime_str,
+            storage=storage_factory.get_final_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            computation_config={
+                "prefire_date_range": prefire_date_range,
+                "postfire_date_range": postfire_date_range,
+                "sensor": sensor,
+                "indices": ["dnbr", "rdnbr", "rbr"],
+            },
         )
 
-        # 4. Process and upload the boundary GeoJSON
-        boundary_url, valid_geojson, bbox = await process_and_upload_geojson(
+        # Execute the fire severity analysis command
+        command = FireSeverityAnalysisCommand()
+        result = await command.execute(context)
+
+        # Persist the job result regardless of success/failure
+        await persist_job_result(result, storage_factory)
+
+        if result.is_failure():
+            logger.error(
+                f"Fire severity analysis failed for job {job_id}: {result.error_message}"
+            )
+            return  # Don't proceed to STAC creation
+
+        # Process and upload the boundary GeoJSON
+        boundary_geojson_url, _, bbox = await process_and_upload_geojson(
             geometry=geometry,
             fire_event_name=fire_event_name,
             job_id=job_id,
             filename="coarse_boundary",
+            storage_factory=storage_factory,
         )
 
-        # 5. Create a STAC item for the coarse boundary
+        # Create a STAC item for the coarse boundary
+        datetime_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         await stac_manager.create_boundary_item(
             fire_event_name=fire_event_name,
             job_id=job_id,
-            geojson_url=boundary_url,
-            cog_url=cog_url,
+            boundary_geojson_url=boundary_geojson_url,
             bbox=bbox,
             datetime_str=datetime_str,
             boundary_type="coarse",
         )
 
     except Exception as e:
-        # Log error
-        print(f"Error processing fire severity: {str(e)}")
-        # Set job status to failed
+        logger.error(f"Error processing fire severity: {str(e)}")
+        # Create and persist a failure result
+        execution_time_ms = (time.time() - start_time) * 1000
+        failure_result = CommandResult.failure(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            command_name="fire_severity_analysis",
+            execution_time_ms=execution_time_ms,
+            error_message=str(e),
+            error_details={
+                "stage": "background_task",
+                "exception_type": type(e).__name__,
+            },
+        )
+        await persist_job_result(failure_result, storage_factory)
 
 
 @router.get(
     "/result/analyze_fire_severity/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, FireSeverityResponse],
+    response_model=Union[TaskPendingResponse, TaskFailedResponse, FireSeverityResponse],
     tags=["Fire Severity"],
 )
-async def get_fire_severity_result(fire_event_name: str, job_id: str):
+async def get_fire_severity_result(
+    fire_event_name: str,
+    job_id: str,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> Union[TaskPendingResponse, TaskFailedResponse, FireSeverityResponse]:
     """
-    Get the result of the fire severity analysis.
+    Retrieve fire severity analysis results.
+
+    Poll until status is 'complete' or 'failed'. Returns URLs to severity COGs on success,
+    or error details on failure.
+
+    See [docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultanalyze_fire_severityfire_event_namejob_id) for details.
     """
-    # Look up the STAC item
-    stac_item = await stac_manager.get_item_by_id(
-        f"{fire_event_name}-severity-{job_id}"
+    # Check for job result first (handles both success and failure)
+    job_result = await get_job_result(job_id, storage_factory)
+
+    if job_result is not None and job_result.is_failure():
+        return TaskFailedResponse(
+            fire_event_name=fire_event_name,
+            status="failed",
+            job_id=job_id,
+            error_message=job_result.error_message or "Unknown error",
+            error_details=job_result.error_details,
+            execution_time_ms=job_result.execution_time_ms,
+            command_name=job_result.command_name,
+        )
+
+    # Look up the STAC item (scoped to this fire event to avoid a full-bucket scan)
+    stac_item = await stac_manager.get_item_by_fire_event_and_id(
+        fire_event_name, f"{fire_event_name}-severity-{job_id}"
     )
 
     if not stac_item:
@@ -338,15 +405,20 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
             fire_event_name=fire_event_name, status="pending", job_id=job_id
         )
 
-    # Item found, extract the COG URL
-    cog_url = stac_item["assets"]["rbr"]["href"]
+    # Extract all metric URLs from the assets
+    response_cog_urls = {}
+    for metric, asset in stac_item["assets"].items():
+        response_cog_urls[metric] = asset["href"]
 
-    # Return the completed response
+    # Return the completed response with all available metric URLs
     return FireSeverityResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        cog_url=cog_url,
+        coarse_severity_cog_urls=response_cog_urls,
+        source_data=SourceDataProvenance.from_stac_properties(
+            stac_item.get("properties")
+        ),
     )
 
 
@@ -355,11 +427,24 @@ async def get_fire_severity_result(fire_event_name: str, job_id: str):
     response_model=ProcessingStartedResponse,
     tags=["Boundary Refinement"],
 )
+# @cache(
+#     key_builder=request_key_builder,
+#     namespace="root",
+#     expire=60 * 60,  # Cache for 1 hour
+# )
 async def refine_fire_boundary(
-    request: RefineRequest, background_tasks: BackgroundTasks
-):
+    request: RefineRequest,
+    background_tasks: BackgroundTasks,
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> Dict[str, Any]:
     """
-    Refine the fire boundary to the provided GeoJSON.
+    Refine fire boundary and crop severity COGs to new geometry.
+
+    Uses user-drawn refined boundary to crop existing coarse COGs.
+
+    See [docs/ENDPOINTS.md#post-processrefine](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processrefine) for details.
     """
 
     # Start the processing task in the background
@@ -367,7 +452,10 @@ async def refine_fire_boundary(
         process_boundary_refinement,
         job_id=request.job_id,
         fire_event_name=request.fire_event_name,
-        refine_geojson=request.refine_geojson,
+        refined_geojson=request.refined_geojson,
+        storage_factory=storage_factory,
+        stac_manager=stac_manager,
+        index_registry=index_registry,
     )
 
     return {
@@ -378,85 +466,105 @@ async def refine_fire_boundary(
 
 
 async def process_boundary_refinement(
-    job_id: str, fire_event_name: str, refine_geojson: dict
-):
+    job_id: str,
+    fire_event_name: str,
+    refined_geojson: Polygon | MultiPolygon | Feature,
+    storage_factory: StorageFactory,
+    stac_manager: STACJSONManager,
+    index_registry: IndexRegistry,
+) -> None:
     """
-    Process boundary refinement, upload results, and create STAC assets
+    Process boundary refinement using command pattern.
     """
+    logger = logging.getLogger(__name__)
+    start_time = time.time()
+
     try:
-        # 1. Process and upload the boundary GeoJSON
-        geojson_url, valid_geojson, bbox = await process_and_upload_geojson(
-            geometry=refine_geojson,
-            fire_event_name=fire_event_name,
+        # Create command context for boundary refinement
+        context = CommandContext(
             job_id=job_id,
-            filename="refined_boundary",
+            fire_event_name=fire_event_name,
+            geometry=refined_geojson,
+            storage=storage_factory.get_final_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={"operation": "boundary_refinement"},
         )
 
-        # 2. Get the original/coarse fire severity COG URL
-        stac_id = f"{fire_event_name}-severity-{job_id}"
-        original_cog_item = await stac_manager.get_item_by_id(stac_id)
-        if not original_cog_item:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Original COG not found for job ID {job_id}",
+        # Execute boundary refinement command
+        command = BoundaryRefinementCommand()
+        result = await command.execute(context)
+
+        # Persist the job result regardless of success/failure
+        await persist_job_result(result, storage_factory)
+
+        if result.is_failure():
+            logger.error(
+                f"Boundary refinement failed for job {job_id}: {result.error_message}"
             )
 
-        original_cog_url = original_cog_item["assets"]["rbr"]["href"]
-
-        # 3. Process the COG with the refined boundary
-        cog_url = await process_cog_with_boundary(
-            original_cog_url=original_cog_url,
-            valid_geojson=valid_geojson,
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            output_filename="refined_rbr",
-        )
-
-        # 4. Create the STAC item for this cropped COG
-        polygon_json = valid_geojson["features"][0]["geometry"]
-        await stac_manager.create_fire_severity_item(
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            cog_url=cog_url,
-            geometry=polygon_json,
-            datetime_str=original_cog_item["properties"]["datetime"],
-            boundary_type="refined",
-        )
-
-        # 5. Create the STAC item for the refined boundary
-        datetime_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        await stac_manager.create_boundary_item(
-            fire_event_name=fire_event_name,
-            job_id=job_id,
-            geojson_url=geojson_url,
-            cog_url=cog_url,
-            bbox=bbox,
-            datetime_str=datetime_str,
-            boundary_type="refined",
-        )
-
     except Exception as e:
-        # Log error
-        print(f"Error processing boundary refinement: {str(e)}")
-        raise e
+        logger.error(f"Error processing boundary refinement: {str(e)}")
+        # Create and persist a failure result
+        execution_time_ms = (time.time() - start_time) * 1000
+        failure_result = CommandResult.failure(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            command_name="boundary_refinement",
+            execution_time_ms=execution_time_ms,
+            error_message=str(e),
+            error_details={
+                "stage": "background_task",
+                "exception_type": type(e).__name__,
+            },
+        )
+        await persist_job_result(failure_result, storage_factory)
 
 
 @router.get(
     "/result/refine/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, RefinedBoundaryResponse],
+    response_model=Union[
+        TaskPendingResponse, TaskFailedResponse, RefinedBoundaryResponse
+    ],
     tags=["Boundary Refinement"],
 )
-async def get_refine_result(fire_event_name: str, job_id: str):
+async def get_refine_result(
+    fire_event_name: str,
+    job_id: str,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> Union[TaskPendingResponse, TaskFailedResponse, RefinedBoundaryResponse]:
     """
-    Get the result of the fire boundary refinement.
+    Retrieve boundary refinement results.
+
+    Poll until status is 'complete' or 'failed'. Returns URLs to refined boundary and
+    cropped COGs on success, or error details on failure.
+
+    See [docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultrefinefire_event_namejob_id) for details.
     """
-    # Look up the STAC item
-    stac_item = await stac_manager.get_items_by_id_and_coarseness(
+    # Check for job result first (handles both success and failure)
+    job_result = await get_job_result(job_id, storage_factory)
+
+    if job_result is not None and job_result.is_failure():
+        return TaskFailedResponse(
+            fire_event_name=fire_event_name,
+            status="failed",
+            job_id=job_id,
+            error_message=job_result.error_message or "Unknown error",
+            error_details=job_result.error_details,
+            execution_time_ms=job_result.execution_time_ms,
+            command_name=job_result.command_name,
+        )
+
+    # Look up the STAC item (scoped to this fire event to avoid a full-bucket scan)
+    boundary_stac_item = await stac_manager.get_items_by_id_and_coarseness(
         f"{fire_event_name}-boundary-{job_id}",
         "refined",
+        fire_event_name=fire_event_name,
     )
 
-    if not stac_item:
+    if not boundary_stac_item:
         # Item not found, still processing
         return TaskPendingResponse(
             fire_event_name=fire_event_name, status="pending", job_id=job_id
@@ -467,66 +575,221 @@ async def get_refine_result(fire_event_name: str, job_id: str):
     # on refining a boundary. Ideally we have 1 coarse 1 refined item, but this
     # seems less annoying and error prone than having to delete the old item
     # before creating a new one.
-    if isinstance(stac_item, list):
-        stac_item = sorted(
-            stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
+    if isinstance(boundary_stac_item, list):
+        boundary_stac_item = sorted(
+            boundary_stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
         )[0]
 
-    if not stac_item:
+    # Item found, extract the URLs
+    geojson_url = boundary_stac_item["assets"]["refined_boundary"]["href"]
+
+    severity_stac_item = await stac_manager.get_items_by_id_and_coarseness(
+        f"{fire_event_name}-severity-{job_id}",
+        "refined",
+        fire_event_name=fire_event_name,
+    )
+
+    if not severity_stac_item:
         # Item not found, still processing
         return TaskPendingResponse(
             fire_event_name=fire_event_name, status="pending", job_id=job_id
         )
 
-    # Item found, extract the URLs
-    geojson_url = stac_item["assets"]["refined_boundary"]["href"]
-    cog_url = stac_item["assets"]["refined_severity"]["href"]
+    # If multiple items are found, we take the most recent one
+    if isinstance(severity_stac_item, list):
+        severity_stac_item = sorted(
+            severity_stac_item, key=lambda x: x["properties"]["datetime"], reverse=True
+        )[0]
+
+    cog_url = severity_stac_item["assets"]
+    response_cog_urls = {}
+    for metric, cog in cog_url.items():
+        response_cog_urls[metric] = cog["href"]
 
     # Return the completed response
     return RefinedBoundaryResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        refined_geojson_url=geojson_url,
-        cog_url=cog_url,
+        refined_boundary_geojson_url=geojson_url,
+        refined_severity_cog_urls=response_cog_urls,
+        source_data=SourceDataProvenance.from_stac_properties(
+            severity_stac_item.get("properties")
+        ),
     )
 
 
 @router.post("/upload/geojson", response_model=UploadedGeoJSONResponse, tags=["Upload"])
-async def upload_geojson(request: GeoJSONUploadRequest):
+async def upload_geojson(
+    request: GeoJSONUploadRequest,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> UploadedGeoJSONResponse:
     """
-    Upload GeoJSON data for a fire event.
+    Upload a GeoJSON boundary for a fire event.
+
+    See [docs/ENDPOINTS.md#post-uploadgeojson](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadgeojson) for details.
     """
+    # Validate boundary_type from request model
+    if request.boundary_type not in ["coarse", "refined"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boundary_type '{request.boundary_type}'. Must be 'coarse' or 'refined'",
+        )
+
     # Generate a unique job ID
     job_id = str(uuid.uuid4())
 
     try:
-        # Validate the GeoJSON using geojson_pydantic
-        if request.geojson.get("type") == "FeatureCollection":
-            validated_geojson = FeatureCollection.model_validate(request.geojson)
-        elif request.geojson.get("type") == "Feature":
-            validated_geojson = Feature.model_validate(request.geojson)
-        else:
-            raise ValueError(f"Unsupported GeoJSON type: {request.geojson.get('type')}")
-
-        # Process and upload the GeoJSON file
-        geojson_url, _, _ = await process_and_upload_geojson(
-            geometry=request.geojson,
-            fire_event_name=request.fire_event_name,
+        # Create command context for GeoJSON upload
+        context = CommandContext(
             job_id=job_id,
-            filename="uploaded",
+            fire_event_name=request.fire_event_name,
+            geometry=request.geojson,
+            storage=storage_factory.get_final_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={"upload_type": "geojson", "boundary_type": request.boundary_type},
         )
 
-        # Return response
-        return {
-            "fire_event_name": request.fire_event_name,
-            "status": "complete",
-            "job_id": job_id,
-            "uploaded_geojson": geojson_url,
-        }
+        # Execute upload command
+        command = UploadAOICommand()
+        result = await command.execute(context)
+
+        if result.is_failure():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error uploading GeoJSON: {result.error_message}",
+            )
+
+        # Extract the boundary URL from command result
+        if not result.data:
+            raise HTTPException(
+                status_code=500, detail="Upload succeeded but no result data returned"
+            )
+
+        boundary_url = result.data.get("boundary_geojson_url")
+        if not boundary_url:
+            raise HTTPException(
+                status_code=500, detail="Upload succeeded but no boundary URL returned"
+            )
+
+        return UploadedGeoJSONResponse(
+            fire_event_name=request.fire_event_name,
+            status="complete",
+            job_id=job_id,
+            refined_boundary_geojson_url=boundary_url,
+            boundary_type=request.boundary_type,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error uploading GeoJSON: {str(e)}"
+        )
+
+
+@router.post(
+    "/upload/shapefile", response_model=UploadedShapefileZipResponse, tags=["Upload"]
+)
+async def upload_shapefile(
+    fire_event_name: str = Form(..., description="Name of the fire event"),
+    shapefile: UploadFile = File(
+        ..., description="Zipped shapefile (.zip containing .shp, .shx, .dbf, .prj)"
+    ),
+    boundary_type: str = Form(
+        default="refined", description="Boundary type: 'coarse' or 'refined'"
+    ),
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> UploadedShapefileZipResponse:
+    """
+    Upload a zipped shapefile boundary for a fire event.
+
+    Accepts multipart/form-data with shapefile zip and extracts boundary GeoJSON.
+
+    See [docs/ENDPOINTS.md#post-uploadshapefile](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-uploadshapefile) for details.
+    """
+    # Validate boundary_type
+    if boundary_type not in ["coarse", "refined"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boundary_type '{boundary_type}'. Must be 'coarse' or 'refined'",
+        )
+
+    job_id = str(uuid.uuid4())
+
+    try:
+        # Create command context for shapefile upload
+        # Note: For shapefile uploads, we provide a minimal geometry to satisfy context validation
+        # The actual upload data is in metadata
+        context = CommandContext(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            geometry=convert_geometry_to_pydantic(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [0, 0]},
+                    "properties": {},
+                }
+            ),  # Placeholder
+            storage=storage_factory.get_final_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            metadata={
+                "upload_type": "shapefile",
+                "upload_data": shapefile,
+                "boundary_type": boundary_type,
+            },
+        )
+
+        # Execute upload command
+        command = UploadAOICommand()
+        result = await command.execute(context)
+
+        if result.is_failure():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error uploading shapefile: {result.error_message}",
+            )
+
+        # Extract the shapefile URL from command result
+        if not result.data:
+            raise HTTPException(
+                status_code=500, detail="Upload succeeded but no result data returned"
+            )
+
+        shapefile_url = result.data.get("shapefile_url")
+        if not shapefile_url:
+            raise HTTPException(
+                status_code=500, detail="Upload succeeded but no shapefile URL returned"
+            )
+
+        boundary_geojson_url = result.data.get("boundary_geojson_url")
+        if not boundary_geojson_url:
+            raise HTTPException(
+                status_code=500,
+                detail="Upload succeeded but no boundary GeoJSON URL returned",
+            )
+
+        return UploadedShapefileZipResponse(
+            fire_event_name=fire_event_name,
+            status="complete",
+            job_id=job_id,
+            shapefile_url=shapefile_url,
+            boundary_geojson_url=boundary_geojson_url,
+            boundary_type=boundary_type,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error uploading shapefile: {str(e)}"
         )
 
 
@@ -536,94 +799,185 @@ async def upload_geojson(request: GeoJSONUploadRequest):
     tags=["Vegetation Map Analysis"],
 )
 async def resolve_against_veg_map(
-    request: VegMapResolveRequest, background_tasks: BackgroundTasks
-):
+    request: VegMapResolveRequest,
+    background_tasks: BackgroundTasks,
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    index_registry: IndexRegistry = Depends(get_index_registry),
+) -> ProcessingStartedResponse:
     """
-    Resolve fire severity against vegetation map to create a matrix of affected areas.
-    """
+    Analyze fire severity impacts on vegetation communities.
 
-    # Start processing in background
+    Performs zonal statistics to calculate area affected by severity class per vegetation type.
+
+    See [docs/ENDPOINTS.md#post-processresolve_against_veg_map](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#post-processresolve_against_veg_map) for details.
+    """
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Received resolve_against_veg_map request for job {request.job_id}")
+    logger.debug(f"Request details: {request}")
+
+    # Start processing in background using command pattern
     background_tasks.add_task(
-        process_veg_map_resolution,
+        execute_vegetation_resolution_command,
         job_id=request.job_id,
         fire_event_name=request.fire_event_name,
         veg_gpkg_url=request.veg_gpkg_url,
         fire_cog_url=request.fire_cog_url,
+        severity_breaks=request.severity_breaks,
+        geojson_url=request.geojson_url,
+        park_unit_id=request.park_unit_id,
+        storage_factory=storage_factory,
+        stac_manager=stac_manager,
+        index_registry=index_registry,
     )
 
-    return {
-        "fire_event_name": request.fire_event_name,
-        "status": "Processing started",
-        "job_id": request.job_id,
-    }
+    return ProcessingStartedResponse(
+        fire_event_name=request.fire_event_name,
+        status="Processing started",
+        job_id=request.job_id,
+    )
 
 
-async def process_veg_map_resolution(
+async def execute_vegetation_resolution_command(
     job_id: str,
     fire_event_name: str,
     veg_gpkg_url: str,
     fire_cog_url: str,
-):
+    severity_breaks: List[float],
+    geojson_url: str,
+    park_unit_id: Optional[str],
+    storage_factory: StorageFactory,
+    stac_manager: STACJSONManager,
+    index_registry: IndexRegistry,
+) -> None:
     """
-    Process vegetation map against fire severity COG to create area matrix.
+    Execute vegetation resolution using command pattern with complete storage abstraction.
+
+    This replaces the previous process_veg_map_resolution function and eliminates
+    all filesystem dependencies by using the VegetationResolveCommand.
     """
+    logger = logging.getLogger(__name__)
+    start_time = time.time()
+    logger.debug(f"Starting execute_vegetation_resolution_command for job {job_id}")
+    logger.debug(
+        f"Parameters: veg_gpkg_url={veg_gpkg_url}, fire_cog_url={fire_cog_url}"
+    )
+    logger.debug(
+        f"severity_breaks={severity_breaks}, geojson_url={geojson_url}, park_unit_id={park_unit_id}"
+    )
+
     try:
-        # Set up output directory
-        output_dir = f"tmp/{job_id}"
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Process the vegetation map against fire severity
-        result = await process_veg_map(
-            veg_gpkg_url=veg_gpkg_url,
-            fire_cog_url=fire_cog_url,
-            output_dir=output_dir,
+        # Create command context with vegetation resolution parameters
+        # Note: geometry is None here as the actual boundary comes from geojson_url
+        logger.debug("Creating CommandContext for vegetation resolution")
+        context = CommandContext(
             job_id=job_id,
-        )
-
-        if result["status"] != "completed":
-            print(f"Error processing vegetation map: {result.get('error_message')}")
-            return
-
-        # Upload the CSV to GCS
-        blob_name = f"{fire_event_name}/{job_id}/veg_fire_matrix.csv"
-        matrix_url = upload_to_gcs(result["output_csv"], BUCKET_NAME, blob_name)
-
-        # Get geometry from the fire severity COG
-        stac_item = await stac_manager.get_items_by_id_and_coarseness(
-            f"{fire_event_name}-severity-{job_id}", "refined"
-        )
-        geometry = stac_item["geometry"]
-        bbox = stac_item["bbox"]
-
-        # Get datetime from the fire severity COG
-        datetime_str = stac_item["properties"]["datetime"]
-
-        await stac_manager.create_veg_matrix_item(
             fire_event_name=fire_event_name,
-            job_id=job_id,
-            matrix_url=matrix_url,
-            geometry=geometry,
-            bbox=bbox,
-            datetime_str=datetime_str,
+            geometry=None,
+            storage=storage_factory.get_temp_storage(),
+            storage_factory=storage_factory,
+            stac_manager=stac_manager,
+            index_registry=index_registry,
+            severity_breaks=severity_breaks,
+            metadata={
+                "veg_gpkg_url": veg_gpkg_url,
+                "fire_cog_url": fire_cog_url,
+                "geojson_url": geojson_url,
+                "park_unit_id": park_unit_id,
+            },
         )
+
+        # Execute vegetation resolution command
+        logger.debug("Creating VegetationResolveCommand instance")
+        command = VegetationResolveCommand()
+        logger.debug("Executing vegetation resolution command")
+        result = await command.execute(context)
+        logger.debug(
+            f"Command execution completed with status: success={result.is_success()}, failure={result.is_failure()}"
+        )
+
+        # Persist the job result regardless of success/failure
+        await persist_job_result(result, storage_factory)
+
+        if result.is_success():
+            result_data = result.data or {}
+            logger.info(
+                f"Vegetation resolution completed successfully for job {job_id}. "
+                f"Analyzed {result_data.get('vegetation_types_analyzed', 0)} vegetation types "
+                f"covering {result_data.get('total_area_hectares', 0):.1f} hectares."
+            )
+        elif result.is_failure():
+            logger.error(
+                f"Vegetation resolution failed for job {job_id}: {result.error_message}"
+            )
+            if result.error_details:
+                logger.error(f"Error details: {result.error_details}")
+        else:
+            logger.warning(
+                f"Vegetation resolution completed with partial success for job {job_id}: "
+                f"{result.error_message}"
+            )
 
     except Exception as e:
-        # Log error
-        print(f"Error processing vegetation map against fire severity: {str(e)}")
+        logger.error(
+            f"Error executing vegetation resolution command for job {job_id}: {str(e)}",
+            exc_info=True,
+        )
+        # Create and persist a failure result
+        execution_time_ms = (time.time() - start_time) * 1000
+        failure_result = CommandResult.failure(
+            job_id=job_id,
+            fire_event_name=fire_event_name,
+            command_name="vegetation_resolution",
+            execution_time_ms=execution_time_ms,
+            error_message=str(e),
+            error_details={
+                "stage": "background_task",
+                "exception_type": type(e).__name__,
+            },
+        )
+        await persist_job_result(failure_result, storage_factory)
 
 
 @router.get(
     "/result/resolve_against_veg_map/{fire_event_name}/{job_id}",
-    response_model=Union[TaskPendingResponse, VegMapMatrixResponse],
+    response_model=Union[TaskPendingResponse, TaskFailedResponse, VegMapMatrixResponse],
     tags=["Vegetation Map Analysis"],
 )
-async def get_veg_map_result(fire_event_name: str, job_id: str):
+async def get_veg_map_result(
+    fire_event_name: str,
+    job_id: str,
+    severity_breaks: Optional[List[float]] = None,
+    stac_manager: STACJSONManager = Depends(get_stac_manager),
+    storage_factory: StorageFactory = Depends(get_storage_factory),
+) -> Union[TaskPendingResponse, TaskFailedResponse, VegMapMatrixResponse]:
     """
-    Get the result of the vegetation map resolution against fire severity.
+    Retrieve vegetation impact analysis results.
+
+    Poll until status is 'complete' or 'failed'. Returns URLs to CSV and JSON impact
+    matrices on success, or error details on failure.
+
+    See [docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id](https://github.com/SchmidtDSE/fire-recovery-backend/blob/main/docs/ENDPOINTS.md#get-resultresolve_against_veg_mapfire_event_namejob_id) for details.
     """
-    # Look up the STAC item
-    stac_item = await stac_manager.get_item_by_id(
-        f"{fire_event_name}-veg-matrix-{job_id}"
+    # Check for job result first (handles both success and failure)
+    job_result = await get_job_result(job_id, storage_factory)
+
+    if job_result is not None and job_result.is_failure():
+        return TaskFailedResponse(
+            fire_event_name=fire_event_name,
+            status="failed",
+            job_id=job_id,
+            error_message=job_result.error_message or "Unknown error",
+            error_details=job_result.error_details,
+            execution_time_ms=job_result.execution_time_ms,
+            command_name=job_result.command_name,
+        )
+
+    # Look up the STAC item (scoped to this fire event to avoid a full-bucket scan)
+    stac_item = await stac_manager.get_items_by_id_and_classification_breaks(
+        f"{fire_event_name}-veg-matrix-{job_id}",
+        classification_breaks=severity_breaks,
+        fire_event_name=fire_event_name,
     )
 
     if not stac_item:
@@ -633,12 +987,14 @@ async def get_veg_map_result(fire_event_name: str, job_id: str):
         )
 
     # Item found, extract the matrix URL
-    matrix_url = stac_item["assets"]["veg_fire_matrix"]["href"]
+    matrix_csv_url = stac_item["assets"]["fire_veg_matrix_csv"]["href"]
+    matrix_json_url = stac_item["assets"]["fire_veg_matrix_json"]["href"]
 
     # Return the completed response
     return VegMapMatrixResponse(
         fire_event_name=fire_event_name,
         status="complete",
         job_id=job_id,
-        fire_veg_matrix=matrix_url,
+        fire_veg_matrix_csv_url=matrix_csv_url,
+        fire_veg_matrix_json_url=matrix_json_url,
     )

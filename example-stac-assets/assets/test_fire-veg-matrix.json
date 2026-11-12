@@ -1,0 +1,30 @@
+{
+  "fire_event_name": "test_fire",
+  "classification_breaks": [0.1, 0.27, 0.44, 0.66],
+  "vegetation_matrix": {
+    "Cover class A": {
+      "unburned": 850.2,
+      "low_severity": 320.5,
+      "moderate_severity": 185.8,
+      "high_severity": 92.3,
+      "total": 1448.8
+    },
+    "Cover class B": {
+      "unburned": 624.1,
+      "low_severity": 245.7,
+      "moderate_severity": 156.2,
+      "high_severity": 78.4,
+      "total": 1104.4
+    }
+  },
+  "summary": {
+    "total_hectares": 4459.8,
+    "burned_hectares": 2019.6,
+    "unburned_hectares": 2440.2,
+    "burn_severity_distribution": {
+      "low": 1017.8,
+      "moderate": 569.2,
+      "high": 282.6
+    }
+  }
+}

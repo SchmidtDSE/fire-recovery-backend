@@ -1,0 +1,35 @@
+{
+  "type": "Catalog",
+  "id": "fire-recovery-catalog",
+  "title": "Fire Recovery STAC Catalog",
+  "description": "Fire Recovery STAC Catalog",
+  "stac_version": "1.0.0",
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/catalog.json",
+      "title": "Fire Recovery STAC Catalog"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/fire-severity/collection.json",
+      "title": "Fire Severity Analysis"
+    },
+    {
+      "rel": "child",
+      "type": "application/json", 
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/fire-boundaries/collection.json",
+      "title": "Fire Boundaries"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "href": "https://storage.googleapis.com/fire-recovery-temp/example_stac/collections/vegetation-matrices/collection.json", 
+      "title": "Vegetation Fire Matrices"
+    }
+  ],
+  "stac_extensions": [],
+  "license": "ISC"
+}

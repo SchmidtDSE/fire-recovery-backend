@@ -1,80 +1,95 @@
-#### Testing
+# Fire Recovery Backend
 
-### Process endpoint (AOI method)
+A FastAPI service for fire severity analysis, boundary refinement, and vegetation impact assessment using Sentinel-2 or Landsat satellite imagery. 
 
-This endpoint uses an approximate AOI to get an 'intermediate burn COG', which is assumed to contain the 'real burn boundary' but needs to be further refined to fit the 'real boundary'. 
+Part of the [DSE Disturbance Toolbox](https://dse-disturbance-toolbox.org/tools/disturbance-severity/methodology/).
 
-#### Inputs 
+## What It Does
 
-- 'geometry' - a `Polygon` with coorindates as defined below (validated by `geojson-pydantic`)
-- 'prefire_date_range' - a list of two ISO format dates
-- 'postfire_data_range'
+This API processes satellite imagery to help assess wildfire impacts:
 
-### Output
+1. **Fire Severity Analysis** - Calculates burn severity indices (NBR, dNBR, RdNBR, RBR) from Sentinel-2 or Landsat imagery
+2. **Boundary Refinement** - Crops analysis to user-drawn boundaries for precise impact areas
+3. **Vegetation Impact** - Generates statistics on fire effects across vegetation communities
 
-- JSON response with `job_id`, triggering processing
+### Why RBR?
 
-### Example usage
+The API calculates multiple severity metrics, but **RBR (Relativized Burn Ratio)** is recommended for most use cases, especially in low-biomass environments like deserts. A fire that completely consumes sparse desert vegetation registers as "moderate" on dNBR scales calibrated for forests, but correctly registers as "high severity" on RBR.
+
+## Quick Start
 
 ```bash
-curl -X POST "http://localhost:8000/process-test/" \
+# Fire severity analysis
+curl -X POST "http://localhost:8000/fire-recovery/process/analyze_fire_severity" \
   -H "Content-Type: application/json" \
-  -d '{"geometry": {"type": "Polygon", "coordinates": [[[-120.0, 38.0], [-120.0, 39.0], [-119.0, 39.0], [-119.0, 38.0], [-120.0, 38.0]]]}, "prefire_date_range": ["2023-01-01", "2023-06-30"], "postfire_date_range": ["2023-07-01", "2023-12-31"]}'
+  -d '{
+    "fire_event_name": "Geology_Fire",
+    "coarse_geojson": {"type": "Polygon", "coordinates": [[[-116.098276, 33.929925], [-116.098276, 33.880794], [-116.019318, 33.880794], [-116.019318, 33.929925], [-116.098276, 33.929925]]]},
+    "prefire_date_range": ["2023-06-01", "2023-06-09"],
+    "postfire_date_range": ["2023-06-17", "2023-06-22"]
+  }'
+
+# Poll for results
+curl "http://localhost:8000/fire-recovery/result/analyze_fire_severity/Geology_Fire/{job_id}"
 ```
 
-### Process endpoint (shapefile method)
+## Documentation
 
-This endpoint uses an 'intermediate' boundary, defined in a shapefile, to query the burn metrics within. The intermediate boundary is assumed to contain the 'real burn boundary' but needs to be further refined to fit the 'real boundary'. 
+| Document | Description |
+|----------|-------------|
+| [docs/ENDPOINTS.md](docs/ENDPOINTS.md) | Complete API reference with curl examples |
+| [docs/DESIGN.md](docs/DESIGN.md) | Architecture and design patterns |
+| [docs/DEVELOPING.md](docs/DEVELOPING.md) | Development setup, testing, and CI/CD |
 
+## API Overview
 
-#### Inputs 
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/fire-recovery/process/analyze_fire_severity` | POST | Start fire severity analysis |
+| `/fire-recovery/result/analyze_fire_severity/{name}/{job_id}` | GET | Get severity analysis results |
+| `/fire-recovery/process/refine` | POST | Refine boundary and crop COGs |
+| `/fire-recovery/result/refine/{name}/{job_id}` | GET | Get refinement results |
+| `/fire-recovery/process/resolve_against_veg_map` | POST | Analyze vegetation impacts |
+| `/fire-recovery/result/resolve_against_veg_map/{name}/{job_id}` | GET | Get vegetation analysis results |
+| `/fire-recovery/upload/geojson` | POST | Upload GeoJSON boundary |
+| `/fire-recovery/upload/shapefile` | POST | Upload zipped shapefile |
+| `/fire-recovery/healthz` | GET | Health check |
 
-- 'shapefile' - a `Bytestream` of the shapefile contents
-- 'prefire_date_range' - a list of two ISO format dates
-- 'postfire_data_range'
+Interactive API docs available at `/docs` (Swagger UI) or `/redoc` when running locally.
 
-### Output
-
-- JSON response with `job_id`, triggering processing
-
-### Result endpoint (polling strategy)
-
-This endpoint simply tells us the status of a process job.
-
-#### Inputs
-- `job_id` to request status for
-
-#### Outputs
-- `JSON` of `status`, `job_id`, and when `status` == "complete", the `cog_url` for the intermediate burn COG
-
-NOTE: Need to replace `JOB_ID` with the response from the original processing request (for now it doesn't actually matter since it's just a dummy test endpoint, but that is the eventual workflow)
-
-```bash
-curl -X GET "http://localhost:8000/result-test/JOB_ID"
-```
-
-With a valid `JOB_ID`:
-
-```bash
-curl -X GET "http://localhost:8000/result-test/8b6cf846-3a9b-43fa-a0c5-604e98b1d732"
-```
-
-### Refine endpoint
-
-Inputs:
-- a GeoJSON of the 'refined' area, drawn by the user
-
-Outputs:
-- a JSON of the `refined_cog_url`
-
-NOTE: the original burn severity tool uses a 'seed' point (or optionally many seed points) to use image segmentation to seperate out 'real' boundary. Additionally, they could specify a 'restriction boundary' (another geojson) to restrict the derived boundary (as a maximum extent). This was a little bit inconsistent in performance, but may be preferable to forcing the user to refine the boundary themselves (though refining the boundary themselves leaves us less open to potential errors forced by segmentation).
-
-### Minio
-
-- endpoint getting data from STAC and saving it in a location to GCP to display the COG_URL on the map requires a secret and key for fire-recovery-backend in a .env file.
+## Typical Workflow
 
 ```
-GCP_ACCESS_KEY_ID=[YourAccessKey]
-GCP_SECRET_ACCESS_KEY=[YourSecret]
-RUN_LOCAL=True
+1. POST /process/analyze_fire_severity  →  Get coarse severity COGs
+2. [User views COGs, draws refined boundary]
+3. POST /process/refine                 →  Get refined severity COGs
+4. POST /process/resolve_against_veg_map →  Get vegetation impact statistics
 ```
+
+## Output Products
+
+- **Cloud Optimized GeoTIFFs (COGs)**: Pre/post NBR, dNBR, RdNBR, RBR rasters for web visualization
+- **Boundary GeoJSON**: Coarse and refined fire perimeters
+- **Vegetation Matrix**: CSV/JSON with hectares affected by severity class per vegetation type
+- **STAC Metadata**: Catalog entries for all assets with spatial/temporal metadata
+
+## Technology Stack
+
+- **FastAPI** - Async Python web framework
+- **Sentinel-2 L2A & Landsat C2 L2** - Satellite imagery via Element 84 and Microsoft Planetary Computer
+- **Cloud Optimized GeoTIFF** - Web-optimized raster format
+- **STAC** - SpatioTemporal Asset Catalog for metadata
+- **Google Cloud Storage** - Asset storage (S3-compatible)
+
+## Development
+
+See [docs/DEVELOPING.md](docs/DEVELOPING.md) for:
+- Pixi environment setup
+- Running locally with MinIO
+- Testing (pytest, contract tests)
+- CI/CD pipeline
+- Environment variables and secrets
+
+## License
+
+[Add license information]

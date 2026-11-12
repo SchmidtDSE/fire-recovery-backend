@@ -22,7 +22,8 @@
                 "ms-python.debugpy",
                 "ms-toolsai.jupyter",
                 "ms-python.python",
-                "charliermarsh.ruff"
+                "charliermarsh.ruff",
+                "ms-python.mypy-type-checker"
             ]
         }
     }

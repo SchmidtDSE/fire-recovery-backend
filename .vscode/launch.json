@@ -12,14 +12,28 @@
                 "0.0.0.0",
                 "--port",
                 "8000",
-                "--reload"
+                "--reload",
+                "--log-level",
+                "debug"
             ],
+            "python": "${workspaceFolder}/.pixi/envs/default/bin/python",
             "justMyCode": false,
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/.pixi/envs/default/bin/python", // Use pixi environment
-                "PYTHONARGS": "-Xfrozen_modules=off" // For dask debugging 
+                "PYTHONARGS": "-Xfrozen_modules=off", // For dask debugging
+                "PYTHONUNBUFFERED": "1",
+                "LOG_LEVEL": "DEBUG"
             },
             "envFile": "${workspaceFolder}/.devcontainer/.env"
+        },
+        {
+            "name": "Rustac Obstore Reproduction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rustac_obstore_reproduction.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "${workspaceFolder}/.pixi/envs/default/bin/python",
+            "envFile": "${workspaceFolder}/.devcontainer/test.env"
         }
     ]
 }

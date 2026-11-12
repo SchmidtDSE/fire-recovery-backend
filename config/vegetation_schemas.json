@@ -1,0 +1,31 @@
+{
+  "park_units": [
+    {
+      "id": "JOTR",
+      "name": "Joshua Tree National Park",
+      "layer_name": "JOTR_VegPolys",
+      "vegetation_type_field": "MapUnit_Name",
+      "description_field": "MapUnit_Name",
+      "geometry_column": "geometry",
+      "preserve_fields": ["Poly_ID", "SHAPE_Area", "SHAPE_Length"]
+    },
+    {
+      "id": "MOJN",
+      "name": "Mojave National Preserve", 
+      "layer_name": null,
+      "vegetation_type_field": "MAP_DESC",
+      "description_field": "MAP_DESC",
+      "geometry_column": "geometry",
+      "preserve_fields": ["FID", "AREA", "PERIMETER"]
+    },
+    {
+      "id": "DEFAULT",
+      "name": "Default Vegetation Schema",
+      "layer_name": null,
+      "vegetation_type_field": "veg_type",
+      "description_field": null,
+      "geometry_column": "geometry",
+      "preserve_fields": null
+    }
+  ]
+}
