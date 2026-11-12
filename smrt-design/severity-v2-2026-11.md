@@ -533,8 +533,9 @@ never uploads it.
   - Any SMTP mailbox or relay works, so changing provider is a configuration change.
   - GCP blocks outbound port 25 only, so ports 465 and 587 work from GKE. Check NRP's egress
     rules when it's set up.
-- **Only jobs send mail.** On success, the link. On failure, a short notice to the requester
-  and the traceback to the operator. A cache hit needs no email, because the API's response
+- **Only jobs send mail.** On success, the links, with the RBR thumbnail inline. On failure,
+  a short notice to the requester and the traceback to the operator. Subjects start with
+  `[Fire Severity Analysis: {name}]`. A cache hit needs no email, because the API's response
   already carries the links. The API holds the mail credentials only to pass them on, and
   never sends.
 - **Best-effort.** A failed send is logged and never fails the job. The result is on the status

@@ -7,11 +7,15 @@ status URL either way. Only Jobs send mail: the API holds the credentials only
 to pass them on to each Job's Secret.
 """
 
+import html
 import logging
 import os
+import re
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
+from email.utils import make_msgid
+from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 logger = logging.getLogger(__name__)
@@ -19,6 +23,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_SMTP_HOST = "mail.privateemail.com"
 SMTP_SSL_PORT = 465
 SMTP_TIMEOUT_SECONDS = 30
+URL = re.compile(r"https?://[^\s<>\"]+")
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,40 @@ class SmtpSettings:
         )
 
 
+def html_body(text: str, image_cid: str) -> str:
+    """The plain text as HTML, its links clickable, with the image after the
+    first paragraph."""
+
+    def block(part: str) -> str:
+        linked = URL.sub(
+            lambda m: f'<a href="{m.group(0)}">{m.group(0)}</a>', html.escape(part)
+        )
+        return f'<div style="white-space: pre-wrap">{linked}</div>'
+
+    first, _, rest = text.partition("\n\n")
+    image = (
+        f'<p><img src="cid:{image_cid}" alt="Burn severity thumbnail" '
+        'style="max-width: 100%"></p>'
+    )
+    return block(first) + image + (block(rest) if rest else "")
+
+
+def attach_inline_image(message: EmailMessage, image: Path) -> None:
+    """Add an HTML alternative showing ``image``. The plain text stays as is.
+    An unreadable image is logged and left out."""
+    try:
+        data = image.read_bytes()
+    except OSError as e:
+        logger.warning(f"Sending without the image {image}: {e}")
+        return
+    cid = make_msgid(domain="fire-severity")
+    message.add_alternative(html_body(message.get_content(), cid[1:-1]), subtype="html")
+    html_part = message.get_body(preferencelist=("html",))
+    if html_part is None:  # add_alternative just made it
+        raise RuntimeError("no HTML part to hold the image")
+    html_part.add_related(data, maintype="image", subtype="jpeg", cid=cid)
+
+
 # Called as factory(host, port, timeout=...), like smtplib.SMTP and SMTP_SSL.
 SmtpFactory = Callable[..., Any]
 
@@ -75,8 +114,11 @@ class Mailer:
     def operator(self) -> Optional[str]:
         return self.settings.operator if self.settings else None
 
-    def send(self, to: Optional[str], subject: str, body: str) -> bool:
-        """Send one message. Never raises."""
+    def send(
+        self, to: Optional[str], subject: str, body: str, image: Optional[Path] = None
+    ) -> bool:
+        """Send one message, with ``image`` (a JPEG) shown inline if given. Never
+        raises."""
         if not to:
             return False
         if self.settings is None:
@@ -87,6 +129,11 @@ class Mailer:
         message["To"] = to
         message["Subject"] = subject
         message.set_content(body)
+        if image is not None:
+            try:
+                attach_inline_image(message, image)
+            except Exception as e:  # the picture is a nicety; the links matter
+                logger.warning(f"Sending {subject!r} without its image: {e}")
         try:
             s = self.settings
             if s.port == SMTP_SSL_PORT:

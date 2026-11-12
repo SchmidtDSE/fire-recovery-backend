@@ -28,6 +28,7 @@ from src.v2.constants import ENV_GIT_SHA, ENV_IMAGE
 from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.job.notify import Mailer, SmtpSettings
 from src.v2.raster.pipeline import compute
+from src.v2.catalog.build import item_directory
 from src.v2.catalog.portolan_plugin import ITEM_ID, THUMBNAIL_FILE
 from src.v2.catalog.publish import catalog_prefix, publish
 from src.v2.record import ResultRecord, record_key
@@ -130,6 +131,10 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
     )
 
 
+def subject(ctx: RunContext, outcome: str) -> str:
+    return f"[Fire Severity Analysis: {ctx.canonical.fire_event_name}] {outcome}"
+
+
 def status_line(ctx: RunContext) -> str:
     return f"\nStatus: {ctx.status_url}\n" if ctx.status_url else ""
 
@@ -138,11 +143,12 @@ def notify_success(ctx: RunContext, record: ResultRecord, mailer: Mailer) -> Non
     name = ctx.canonical.fire_event_name
     mailer.send(
         ctx.notify_email,
-        f"Fire severity ready: {name}",
+        subject(ctx, "Ready"),
         f"The fire severity analysis for {name} is ready.\n\n"
         f"Catalog: {record.catalog_url}\n"
         + "".join(f"{asset}: {url}\n" for asset, url in record.assets.items())
         + status_line(ctx),
+        image=item_directory(ctx.workdir, ctx.fire_id) / THUMBNAIL_FILE,
     )
 
 
@@ -152,14 +158,14 @@ def notify_failure(
     name = ctx.canonical.fire_event_name
     mailer.send(
         ctx.notify_email,
-        f"Fire severity failed: {name}",
+        subject(ctx, "Failed"),
         f"The fire severity analysis for {name} failed: {summarize(error)}\n"
         f"{status_line(ctx)}\n"
         f"Submitting the same request again runs it again.\n",
     )
     mailer.send(
         mailer.operator,
-        f"[severity-v2] job {ctx.job_id} failed",
+        subject(ctx, f"Failed: job {ctx.job_id}"),
         f"Job {ctx.job_id} ({name}) failed.\n\n"
         f"Image: {ctx.image}\nCommit: {ctx.git_sha}\n\n"
         f"Request:\n{ctx.canonical.to_json()}\n\n{trace}",
