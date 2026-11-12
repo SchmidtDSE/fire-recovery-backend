@@ -230,8 +230,11 @@ jobs:
           destination: fire-recovery-store/openapi-schemas
           parent: false
           process_gcloudignore: false
+          # Overwritten on every push. Without this, GCS serves public objects
+          # with max-age=3600, so readers can get the old schema for an hour.
           headers: |-
             content-type: application/json
+            cache-control: no-cache
 
       - name: Display schema URLs
         run: |
@@ -368,8 +371,11 @@ jobs:
             # runs as its own account, which reaches josh's cluster with no key
             # (a RoleBinding in the namespace). v2 uses its own bucket and HMAC
             # key, which the API passes on to each Job. The account and secrets
-            # come from fire-recovery-iac (environments/fire-severity-k8s/), and
-            # the API key secret needs a version (deployment/k8s/README.md §5).
+            # come from fire-recovery-iac (environments/fire-severity-k8s/). Each
+            # secret mapped here needs a version before this deploy runs, or Cloud
+            # Run refuses the revision: the API key hashes (deployment/k8s/README.md
+            # §5) and the mailbox password and operator address (§6). The API never
+            # sends mail itself; it passes the mail settings on to each Job's Secret.
             # This deploy owns the revision, including its runtime account.
             # Analyses run as Jobs, so the API itself needs little: one small
             # instance, with CPU billed only while it serves a request. It stays
@@ -387,8 +393,8 @@ jobs:
               --max-instances 1 \
               --allow-unauthenticated \
               --tag "sha-${GITHUB_SHA:0:7}" \
-              --update-env-vars "SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend/severity-batch@$DIGEST,GIT_SHA=$GITHUB_SHA,SEVERITY_TARGET=gke-josh,SEVERITY_API_URL=$DEV_URL,S3_BUCKET=dse-nps-fire-severity-storage" \
-              --update-secrets "SEVERITY_API_KEY_HASHES=severity-v2-api-key-hashes:latest,S3_ACCESS_KEY_ID=fire-severity-k8s-minio-access-key:latest,S3_SECRET_ACCESS_KEY=fire-severity-k8s-minio-secret-key:latest"
+              --update-env-vars "SEVERITY_IMAGE=ghcr.io/schmidtdse/fire-recovery-backend/severity-batch@$DIGEST,GIT_SHA=$GITHUB_SHA,SEVERITY_TARGET=gke-josh,SEVERITY_API_URL=$DEV_URL,S3_BUCKET=dse-nps-fire-severity-storage,SMTP_HOST=mail.privateemail.com,SMTP_PORT=465,SMTP_USER=noreply@dse-disturbance-toolbox.org" \
+              --update-secrets "SEVERITY_API_KEY_HASHES=severity-v2-api-key-hashes:latest,S3_ACCESS_KEY_ID=fire-severity-k8s-minio-access-key:latest,S3_SECRET_ACCESS_KEY=fire-severity-k8s-minio-secret-key:latest,SMTP_PASSWORD=severity-v2-smtp-password:latest,OPERATOR_EMAIL=severity-v2-operator-email:latest"
 
             # Ensure 100% traffic goes to the new revision
             gcloud run services update-traffic fire-recovery-backend-dev \

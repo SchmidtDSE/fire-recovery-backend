@@ -42,7 +42,7 @@ from kubernetes import client as k8s_client
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config import new_client_from_config
 
-from src.v2.constants import ENV_IMAGE
+from src.v2.constants import ENV_GIT_SHA, ENV_IMAGE
 from src.v2.service.launcher import (
     ENV_NOTIFY_EMAIL,
     DispatchUnavailable,
@@ -176,8 +176,11 @@ def labels(job_id: str) -> Dict[str, str]:
     return {"app": APP_LABEL, JOB_ID_LABEL: job_id}
 
 
-def job_manifest(spec: JobSpec, profile: TargetProfile, image: str) -> Dict[str, Any]:
-    """The batch/v1 Job for one analysis."""
+def job_manifest(
+    spec: JobSpec, profile: TargetProfile, image: str, git_sha: Optional[str] = None
+) -> Dict[str, Any]:
+    """The batch/v1 Job for one analysis. ``git_sha`` is the API's build, which the
+    image (the same digest) shares; the result record carries it."""
     # The requester's address goes in the Job's Secret, not in its spec.
     env = {k: v for k, v in spec.environment().items() if k != ENV_NOTIFY_EMAIL}
     env.update(
@@ -187,6 +190,8 @@ def job_manifest(spec: JobSpec, profile: TargetProfile, image: str) -> Dict[str,
             "SEVERITY_THREADS": str(profile.threads),
         }
     )
+    if git_sha:
+        env[ENV_GIT_SHA] = git_sha
     container: Dict[str, Any] = {
         "name": CONTAINER_NAME,
         "image": image,
@@ -387,17 +392,16 @@ class KubernetesLauncher:
                 f"{ENV_IMAGE} is not set and target {self.profile.name!r} names no image"
             )
         batch, core = self._apis()
+        env = os.environ if self._env is None else self._env
+        manifest = job_manifest(spec, self.profile, self.image, env.get(ENV_GIT_SHA))
         try:
-            job = batch.create_namespaced_job(
-                self.profile.namespace, job_manifest(spec, self.profile, self.image)
-            )
+            job = batch.create_namespaced_job(self.profile.namespace, manifest)
         except ApiException as e:
             if e.status == HTTP_CONFLICT:
                 return False
             raise DispatchUnavailable(f"Creating the Job failed: {e.reason}") from e
         # Created after the Job, so it can name the Job as its owner; the pod
         # waits for it.
-        env = os.environ if self._env is None else self._env
         try:
             self._put_secret(
                 core, secret_manifest(spec, self.profile, env, job.metadata.uid)

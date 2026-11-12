@@ -9,7 +9,7 @@ The design behind the API is [severity v2](../smrt-design/severity-v2-2026-11.md
 - **Local development:** `http://localhost:8000`
 - **Dev:** `https://fire-recovery-backend-dev-113009620257.us-central1.run.app`
 
-## GET /healthz
+## GET /health
 
 Liveness. It touches no storage and no cluster, so it answers whenever the process is up.
 

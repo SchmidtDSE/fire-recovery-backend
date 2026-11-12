@@ -7,7 +7,7 @@ import pytest
 
 from src.v2.job.notify import Mailer, SmtpSettings
 
-ENV = {"SMTP_USER": "sender@gmail.com", "SMTP_PASSWORD": "app-password"}
+ENV = {"SMTP_USER": "noreply@example.org", "SMTP_PASSWORD": "mailbox-password"}
 
 
 class FakeSmtp:
@@ -49,8 +49,8 @@ def reset() -> None:
 def test_settings_from_env() -> None:
     settings = SmtpSettings.from_env({**ENV, "OPERATOR_EMAIL": "ops@example.org"})
     assert settings is not None
-    assert (settings.host, settings.port) == ("smtp.gmail.com", 465)
-    assert settings.sender == "sender@gmail.com"
+    assert (settings.host, settings.port) == ("mail.privateemail.com", 465)
+    assert settings.sender == "noreply@example.org"
     assert settings.operator == "ops@example.org"
     assert SmtpSettings.from_env({"SMTP_USER": "x"}) is None
 
@@ -59,13 +59,17 @@ def test_send_over_ssl() -> None:
     mailer = Mailer(SmtpSettings.from_env(ENV), smtp_ssl=FakeSmtp, smtp=FakeSmtp)
     assert mailer.send("to@example.org", "Subject", "Body")
     (server,) = FakeSmtp.instances
-    assert (server.host, server.port, server.timeout) == ("smtp.gmail.com", 465, 30)
+    assert (server.host, server.port, server.timeout) == (
+        "mail.privateemail.com",
+        465,
+        30,
+    )
     assert not server.started_tls
-    assert server.logged_in == ("sender@gmail.com", "app-password")
+    assert server.logged_in == ("noreply@example.org", "mailbox-password")
     (message,) = server.sent
     assert (message["To"], message["From"], message["Subject"]) == (
         "to@example.org",
-        "sender@gmail.com",
+        "noreply@example.org",
         "Subject",
     )
 
