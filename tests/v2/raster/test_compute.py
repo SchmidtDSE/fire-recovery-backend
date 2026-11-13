@@ -92,17 +92,21 @@ def fake_items(window: str, days: int) -> List[Any]:
 
 def whole_array_medians(window: str) -> tuple[np.ndarray, np.ndarray]:
     data = WINDOWS[window]
+    refl = {
+        band: data[band].astype(np.float32) * np.float32(SCALE) + np.float32(OFFSET)
+        for band in ("nir08", "swir22")
+    }
+    # Clear: flags clear and both reflectances above 0 (design §2).
     ok = (
-        (data["nir08"] > 0)
-        & (data["swir22"] > 0)
+        (refl["nir08"] > 0)
+        & (refl["swir22"] > 0)
         & ~np.isin(data["scl"], [0, 1, 3, 8, 9, 10, 11])
     )
     out = []
     for band in ("nir08", "swir22"):
-        refl = data[band].astype(np.float32) * np.float32(SCALE) + np.float32(OFFSET)
-        refl[~ok] = np.nan
+        refl[band][~ok] = np.nan
         with np.errstate(all="ignore"), pytest.warns(RuntimeWarning):
-            out.append(np.nanmedian(refl, axis=0).astype(np.float32))
+            out.append(np.nanmedian(refl[band], axis=0).astype(np.float32))
     return out[0], out[1]
 
 
@@ -173,14 +177,14 @@ def test_each_group_is_converted_with_its_own_offset() -> None:
     # 0.25 and 0.30 in the old products, 0.40 and 0.20 in the new (+1000 DN).
     old = observations([[3500, 2500, 3000]], offset=0.0)
     new = observations([[5000, 3000]], offset=-0.1)
-    (median,) = clear_median([new, old], "nir")[:, 0]
+    (median,) = clear_median([new, old])[0][:, 0]
     assert median == pytest.approx(np.median([0.35, 0.25, 0.30, 0.40, 0.20]))
 
 
 def test_one_group_matches_the_single_scaling_arithmetic() -> None:
     dn = [[1200, 0, 3400, 2900], [4100, 3300, 0, 0]]
     (only,) = [observations(dn, offset=OFFSET)]
-    got = clear_median([only], "nir")[:, 0]
+    got = clear_median([only])[0][:, 0]
     want = []
     for row in dn:
         values = np.array([v for v in row if v], dtype=np.float32)
@@ -188,11 +192,33 @@ def test_one_group_matches_the_single_scaling_arithmetic() -> None:
     np.testing.assert_array_equal(got, np.array(want, dtype=np.float32))
 
 
+def test_reflectance_at_or_below_zero_is_not_clear() -> None:
+    # Under the -0.1 offset, DN 1000 is reflectance 0 and DN 400 is -0.06: dark
+    # pixels that would push NBR outside [-1, 1]. Only 0.25 and 0.30 count.
+    new = observations([[1000, 400, 3500, 4000]], offset=-0.1)
+    (median,) = clear_median([new])[0][:, 0]
+    assert median == pytest.approx(np.median([0.25, 0.30]))
+    # Without an offset, DN 400 is 0.04: clear.
+    old = observations([[400, 3500]], offset=0.0)
+    (median,) = clear_median([old])[0][:, 0]
+    assert median == pytest.approx(np.median([0.04, 0.35]))
+
+
+def test_one_dark_band_excludes_the_whole_observation() -> None:
+    # NIR is fine but SWIR is below 0: neither band of that scene counts.
+    nir = np.array([[[3000]], [[2000]]], dtype=np.uint16)  # 0.20, 0.10
+    swir = np.array([[[1500]], [[500]]], dtype=np.uint16)  # 0.05, -0.05
+    obs = Observations(nir, swir, nir > 0, SCALE, -0.1, None)
+    nir_median, swir_median = clear_median([obs])
+    assert nir_median[0, 0] == pytest.approx(0.20)
+    assert swir_median[0, 0] == pytest.approx(0.05)
+
+
 def test_groups_sharing_a_date_count_that_overpass_once() -> None:
     # Adjacent tiles of one overpass under different scalings overlap at this
     # pixel: the first clear value wins, as odc-stac merges a solar day.
     new = observations([[4000, 3000]], offset=-0.1, days=["2020-08-03", "2020-08-08"])
     old = observations([[3000, 9000]], offset=0.0, days=["2020-08-03", "2020-08-13"])
-    (median,) = clear_median([new, old], "nir")[:, 0]
+    (median,) = clear_median([new, old])[0][:, 0]
     # 08-03 once (0.30 from the first group), 08-08 0.20, 08-13 0.90.
     assert median == pytest.approx(np.median([0.30, 0.20, 0.90]))

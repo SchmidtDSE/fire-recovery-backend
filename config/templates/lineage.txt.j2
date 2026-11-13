@@ -14,8 +14,9 @@ processings, only the newest processing baseline is kept.
 
 Each scene's NIR ({{ bands.nir }}) and SWIR ({{ bands.swir }}) digital numbers
 are converted to reflectance with that scene's own published scale and offset
-(reflectance = DN x scale + offset). Observations with a zero digital number, or
-flagged in the {{ bands.mask }} band ({{ mask_description }}), are excluded, and
+(reflectance = DN x scale + offset). Observations whose NIR or SWIR reflectance
+is not above 0 (which includes the products' nodata), or that are flagged in the
+{{ bands.mask }} band ({{ mask_description }}), are excluded, and
 the per-pixel {{ composite }} of the remaining observations forms each window's
 composite.
 
