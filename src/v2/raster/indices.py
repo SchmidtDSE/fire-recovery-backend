@@ -73,6 +73,10 @@ class Index:
     # The formula, published as the asset's processing:expression. Written in
     # numpy over the Composites fields, and tested against ``fn``.
     expression: str
+    # The fixed stretch the thumbnail draws, low to high. A display range
+    # only, the same for every analysis so thumbnails compare; not a class
+    # break, and nothing published is cut at it.
+    display_range: tuple[float, float]
 
     def compute(self, composites: Composites) -> np.ndarray:
         """The index as float32; NaN wherever an input is missing."""
@@ -100,6 +104,7 @@ DNBR = Index(
     needs=("nir", "swir"),
     fn=_dnbr,
     expression="prefire_nbr - postfire_nbr",
+    display_range=(-0.1, 0.66),
 )
 RDNBR = Index(
     name="rdnbr",
@@ -114,6 +119,7 @@ RDNBR = Index(
         "(prefire_nbr - postfire_nbr) / where(sqrt(abs(prefire_nbr)) != 0, "
         "sqrt(abs(prefire_nbr)), 0.001)"
     ),
+    display_range=(0.0, 0.8),
 )
 RBR = Index(
     name="rbr",
@@ -122,6 +128,7 @@ RBR = Index(
     needs=("nir", "swir"),
     fn=_rbr,
     expression="(prefire_nbr - postfire_nbr) / (prefire_nbr + 1.001)",
+    display_range=(0.0, 0.5),
 )
 
 INDICES: tuple[Index, ...] = (DNBR, RDNBR, RBR)

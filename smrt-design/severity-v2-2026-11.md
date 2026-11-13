@@ -6,7 +6,7 @@ repos: [backend]
 status: draft
 source: agent
 authored: 2026-11-09
-revised: 2026-11-12
+revised: 2026-11-13
 owner: "fire-recovery-backend agent"
 depends_on: []
 needs_context: [dev-deployment]
@@ -351,11 +351,16 @@ v2/fires/{fire_id}/                  self-contained Portolan catalog
   catalog.json  README.md  AGENTS.md
   {fire_id}/                         the analysis's collection
     collection.json  README.md  AGENTS.md  items.parquet
-    severity/                        the analysis item
-      severity.json
-      dnbr.tif  rdnbr.tif  rbr.tif   (+ thumbnails)
+    thumbnail.jpg                    a copy of RBR's, adopted by portolan
+    dnbr/   dnbr.json   dnbr.tif   dnbr.thumb.jpg     one item per index
+    rdnbr/  rdnbr.json  rdnbr.tif  rdnbr.thumb.jpg
+    rbr/    rbr.json    rbr.tif    rbr.thumb.jpg
 v2/jobs/{job_id}.json                write-once result record
 ```
+
+- **One item per index.** Portolan represents each distinct data file in a collection as its
+  own item. Each index gets its own title, thumbnail and band table, and every item carries
+  the full method record, so each stands alone. The item id is the index name.
 
 - **`fire_id`** is `{slug(fire_event_name)}-{job_id[:8]}`: deterministic, and unique per cache
   key.
@@ -425,13 +430,16 @@ never uploads it.
 - **Providers and license.** DSE is the only provider (producer, processor and host), and the
   license is CC-BY-4.0. These, the contact details and the README's provenance text all come
   from `.portolan/metadata.yaml`.
-- **Thumbnail.**
-  - portolan 0.9 renders a grayscale thumbnail per COG with its own stretch, and points the item
-    at the first one, dnbr.
-  - The plugin points it instead at RBR, rendered with a fixed 0–0.5 ramp as the explorer uses.
-  - Checked: portolan keeps a thumbnail drawn before `add`, and stamps its size and checksum.
-    It also tracks the file as a second thumbnail asset, which the plugin removes. rashid
-    passes the result with 0 errors and 0 warnings.
+- **Thumbnails.**
+  - portolan 0.9 renders a grayscale thumbnail per COG with a percentile stretch.
+  - The build draws each index's `{index}.thumb.jpg` first, on a fixed ramp (the index's
+    `display_range`: dNBR −0.1 to 0.66, RdNBR 0 to 0.8, RBR 0 to 0.5), so thumbnails compare
+    across analyses. portolan keeps a thumbnail drawn before `add` and stamps its size and
+    checksum. The ramps are a display choice, not class breaks.
+  - The collection thumbnail is RBR's: a copy named `thumbnail.jpg` in the collection folder,
+    which portolan adopts over any item's thumbnail. portolan registers it after the
+    collection hook runs, so the hook can't redirect it.
+  - rashid passes the result with 0 errors and 0 warnings.
 
 ### 6. Job identity, cache and API
 

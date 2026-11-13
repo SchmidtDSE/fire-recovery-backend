@@ -68,7 +68,7 @@ def test_push_a_catalog_with_a_large_cog(
         url = publish(built.root, fid, store)
         assert url.endswith(f"{prefix}/catalog.json")
         assert store.get_json(f"{prefix}/catalog.json")["id"] == fid
-        cog_key = f"{prefix}/{fid}/severity/rbr.tif"
+        cog_key = f"{prefix}/{fid}/rbr/rbr.tif"
         head = obstore.head(store._store, cog_key)
         assert head["size"] == rbr_size
         # A range read, as a COG reader makes.
@@ -80,5 +80,5 @@ def test_push_a_catalog_with_a_large_cog(
         assert store.get_json(f"{prefix}/catalog.json")["id"] == fid
     finally:
         store.delete_prefix(f"{prefix}/")
-    with rasterio.open(built.root / fid / "severity" / "rbr.tif") as ds:
+    with rasterio.open(built.root / fid / "rbr" / "rbr.tif") as ds:
         assert np.isfinite(ds.read(1, window=((10, 20), (10, 20)))).all()
