@@ -9,6 +9,7 @@ import pytest
 
 from src.v2.catalog.portolan_plugin import (
     INDEX_BY_NAME,
+    RENDER_EXTENSION,
     portolan_enrich_collection,
     portolan_enrich_item,
 )
@@ -81,11 +82,25 @@ def test_item_enrichment_is_idempotent(sidecar_env: None) -> None:
 
 
 def test_collection_enrichment(sidecar_env: None) -> None:
-    collection = {"extent": {"temporal": {"interval": [[None, None]]}}}
+    collection: Dict[str, Any] = {"extent": {"temporal": {"interval": [[None, None]]}}}
     portolan_enrich_collection(collection, context=None)
     assert collection["extent"]["temporal"]["interval"] == [
         ["2023-06-01T00:00:00Z", "2023-06-22T23:59:59Z"]
     ]
+    assert collection["stac_extensions"] == [RENDER_EXTENSION]
+    assert collection["renders"]["rbr"] == {
+        "title": "Relativized Burn Ratio (RBR)",
+        "assets": ["rbr"],
+        "rescale": [[0.0, 0.5]],
+        "colormap_name": "ylorrd",
+    }
+    # One render per index, each drawing only its own asset.
+    assert {name: r["assets"] for name, r in collection["renders"].items()} == {
+        name: [name] for name in INDEX_BY_NAME
+    }
+    again = copy.deepcopy(collection)
+    portolan_enrich_collection(again, context=None)
+    assert again == collection
 
 
 def test_hooks_do_nothing_without_a_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:

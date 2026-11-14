@@ -435,6 +435,16 @@ never uploads it.
 - **Providers and license.** DSE is the only provider (producer, processor and host), and the
   license is CC-BY-4.0. These, the contact details and the README's provenance text all come
   from `.portolan/metadata.yaml`.
+- **Map styling.** The collection carries render v2 `renders`, one entry per index, each
+  naming its asset, the index's `display_range` as `rescale`, and `colormap_name: ylorrd`.
+  - Render v2 defines `renders` on collections and in item `properties`, and no asset fields.
+    portolan-cli 0.9 writes undeclared asset-level `render:colormap_name`/`render:rescale`
+    from one catalog-wide setting. The build sets that setting's colormap to the same
+    `ylorrd` and leaves its rescale unset, since no one range fits all three indices.
+  - glen reads collection `renders` (and top-level `item.renders`, not `properties.renders`),
+    so collection level is the one place all three agree.
+  - rashid validates render v2, but the v2 collection schema passes if any one render is
+    valid; the build test checks each render against the schema's field definitions.
 - **Thumbnails.**
   - portolan 0.9 renders a grayscale thumbnail per COG with a percentile stretch.
   - The build draws each index's `{index}.thumb.jpg` first, on a fixed ramp (the index's

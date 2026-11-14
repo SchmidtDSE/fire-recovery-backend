@@ -23,6 +23,15 @@ COLLECTION_THUMBNAIL_INDEX = "rbr"
 COLLECTION_THUMBNAIL_FILE = "thumbnail.jpg"
 BAND_UNIT = "dimensionless"
 
+# How a map client draws each index: the render extension's collection-level
+# ``renders``, one entry per index, keyed to the index's asset. Render v2 has
+# no asset-level fields; portolan-cli writes undeclared asset-level
+# ``render:*`` fields from one catalog-wide setting, which the build points
+# at the same colormap so the two never disagree.
+RENDER_EXTENSION = "https://stac-extensions.github.io/render/v2.0.0/schema.json"
+# TiTiler's name for matplotlib's YlOrRd, the thumbnails' ramp.
+RENDER_COLORMAP = "ylorrd"
+
 INDEX_BY_NAME = {index.name: index for index in INDICES}
 
 Hook = TypeVar("Hook", bound=Callable[..., Any])
@@ -42,6 +51,23 @@ def thumbnail_file(index: str) -> str:
 def thumbnail_title(index: Index) -> str:
     low, high = index.display_range
     return f"{index.title}, fixed {low:g} to {high:g} ramp"
+
+
+def renders() -> Dict[str, Dict[str, Any]]:
+    """One render per index: its asset, a fixed rescale, the shared colormap.
+
+    The rescale is the index's display_range, the thumbnail's stretch: a
+    display choice, not class breaks.
+    """
+    return {
+        index.name: {
+            "title": index.title,
+            "assets": [index.name],
+            "rescale": [list(index.display_range)],
+            "colormap_name": RENDER_COLORMAP,
+        }
+        for index in INDICES
+    }
 
 
 def load_sidecar() -> Optional[Dict[str, Any]]:
@@ -96,7 +122,7 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
 
 @hookimpl
 def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None:
-    """Set the temporal extent to the prefire and postfire windows.
+    """Set the temporal extent to the windows; add each index's render.
 
     portolan registers the collection thumbnail after this hook runs, by
     adopting COLLECTION_THUMBNAIL_FILE, so the hook never sees it.
@@ -108,3 +134,7 @@ def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None
     collection["extent"]["temporal"]["interval"] = [
         [properties["start_datetime"], properties["end_datetime"]]
     ]
+    collection["renders"] = renders()
+    extensions = collection.setdefault("stac_extensions", [])
+    if RENDER_EXTENSION not in extensions:
+        extensions.append(RENDER_EXTENSION)
