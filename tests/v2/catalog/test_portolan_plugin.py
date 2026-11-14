@@ -8,6 +8,7 @@ from typing import Any, Dict
 import pytest
 
 from src.v2.catalog.portolan_plugin import (
+    INDEX_BY_NAME,
     portolan_enrich_collection,
     portolan_enrich_item,
 )
@@ -26,15 +27,14 @@ SIDECAR = {
 }
 
 
-def item() -> Dict[str, Any]:
+def item(index: str = "rbr") -> Dict[str, Any]:
+    """An item as portolan writes it for one index's folder."""
     return {
+        "id": index,
         "properties": {"datetime": "2023-06-22T00:00:00Z"},
         "assets": {
-            "data": {"href": "./dnbr.tif", "roles": ["data"]},
-            "rbr": {"href": "./rbr.tif", "roles": ["data"]},
-            "rdnbr": {"href": "./rdnbr.tif", "roles": ["data"]},
-            "thumbnail": {"href": "./dnbr.thumb.jpg", "roles": ["thumbnail"]},
-            "rbr.thumb": {"href": "./rbr.thumb.jpg", "roles": ["thumbnail"]},
+            "data": {"href": f"./{index}.tif", "roles": ["data"]},
+            "thumbnail": {"href": f"./{index}.thumb.jpg", "roles": ["thumbnail"]},
         },
     }
 
@@ -46,17 +46,30 @@ def sidecar_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(SIDECAR_ENV, str(path))
 
 
-def test_item_enrichment(sidecar_env: None) -> None:
-    enriched = item()
+@pytest.mark.parametrize("name", ["dnbr", "rdnbr", "rbr"])
+def test_item_enrichment(sidecar_env: None, name: str) -> None:
+    index = INDEX_BY_NAME[name]
+    enriched = item(name)
     portolan_enrich_item(enriched, context=None)
     assets = enriched["assets"]
-    assert sorted(assets) == ["dnbr", "rbr", "rdnbr", "thumbnail"]
-    assert assets["thumbnail"]["href"] == "./rbr.thumb.jpg"
-    assert assets["dnbr"]["title"] == "Differenced NBR (dNBR)"
-    assert assets["rbr"]["bands"][0]["name"] == "rbr"
-    assert assets["rbr"]["bands"][0]["unit"] == "dimensionless"
-    assert enriched["properties"]["fire:job_id"] == SIDECAR["properties"]["fire:job_id"]
-    assert enriched["properties"]["datetime"] == "2023-06-22T00:00:00Z"
+    assert sorted(assets) == sorted([name, "thumbnail"])
+    assert assets["thumbnail"]["href"] == f"./{name}.thumb.jpg"
+    assert assets["thumbnail"]["title"].startswith(index.title)
+    assert assets[name]["title"] == index.title
+    assert assets[name]["bands"][0]["name"] == name
+    assert assets[name]["bands"][0]["unit"] == "dimensionless"
+    properties = enriched["properties"]
+    assert properties["title"] == index.title
+    assert properties["fire:job_id"] == SIDECAR["properties"]["fire:job_id"]
+    assert properties["datetime"] == "2023-06-22T00:00:00Z"
+
+
+def test_item_not_named_after_an_index_is_left_alone(sidecar_env: None) -> None:
+    other = item("rbr")
+    other["id"] = "severity"
+    portolan_enrich_item(other, context=None)
+    assert "data" in other["assets"]
+    assert "title" not in other["properties"]
 
 
 def test_item_enrichment_is_idempotent(sidecar_env: None) -> None:
@@ -68,15 +81,11 @@ def test_item_enrichment_is_idempotent(sidecar_env: None) -> None:
 
 
 def test_collection_enrichment(sidecar_env: None) -> None:
-    collection = {
-        "extent": {"temporal": {"interval": [[None, None]]}},
-        "assets": {"thumbnail": {"href": "./severity/dnbr.thumb.jpg"}},
-    }
+    collection = {"extent": {"temporal": {"interval": [[None, None]]}}}
     portolan_enrich_collection(collection, context=None)
     assert collection["extent"]["temporal"]["interval"] == [
         ["2023-06-01T00:00:00Z", "2023-06-22T23:59:59Z"]
     ]
-    assert collection["assets"]["thumbnail"]["href"] == "./severity/rbr.thumb.jpg"
 
 
 def test_hooks_do_nothing_without_a_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:

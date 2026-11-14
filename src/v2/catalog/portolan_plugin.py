@@ -13,12 +13,14 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 
 from portolan_cli.hookspecs import hookimpl as portolan_hookimpl
 
-from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES
+from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES, Index
 from src.v2.catalog.sidecar import SIDECAR_ENV
 
-ITEM_ID = "severity"
-THUMBNAIL_FILE = "rbr.thumb.jpg"
-THUMBNAIL_TITLE = "RBR, fixed 0 to 0.5 ramp"
+# The index whose thumbnail stands for the whole collection, and the copy of
+# it in the collection folder. portolan adopts a collection's own
+# ``thumbnail.*`` over any item's thumbnail.
+COLLECTION_THUMBNAIL_INDEX = "rbr"
+COLLECTION_THUMBNAIL_FILE = "thumbnail.jpg"
 BAND_UNIT = "dimensionless"
 
 INDEX_BY_NAME = {index.name: index for index in INDICES}
@@ -32,6 +34,16 @@ def hookimpl(function: Hook) -> Hook:
     return marked
 
 
+def thumbnail_file(index: str) -> str:
+    """The thumbnail drawn beside an index's COG, named as portolan names one."""
+    return f"{index}.thumb.jpg"
+
+
+def thumbnail_title(index: Index) -> str:
+    low, high = index.display_range
+    return f"{index.title}, fixed {low:g} to {high:g} ramp"
+
+
 def load_sidecar() -> Optional[Dict[str, Any]]:
     path = os.environ.get(SIDECAR_ENV)
     if not path:
@@ -42,26 +54,31 @@ def load_sidecar() -> Optional[Dict[str, Any]]:
 
 @hookimpl
 def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
-    """Add the fire properties, name each index asset, point at the RBR thumbnail."""
+    """Title the item after its index; add the fire properties and the method.
+
+    Each item holds one index's COG and thumbnail, in a folder named after
+    the index, so the item id is the index name.
+    """
     sidecar = load_sidecar()
     if sidecar is None:
         return
-    item["properties"].update(sidecar["properties"])
+    index = INDEX_BY_NAME.get(item.get("id", ""))
+    if index is None:
+        return
+    properties = item["properties"]
+    properties.update(sidecar["properties"])
+    properties["title"] = index.title
+    properties["description"] = index.description
     extensions = item.setdefault("stac_extensions", [])
     for uri in sidecar.get("stac_extensions", []):
         if uri not in extensions:
             extensions.append(uri)
     assets = item.setdefault("assets", {})
-    # portolan keys an item's primary file "data"; give every index its own key.
-    primary = assets.get("data")
-    if primary is not None:
-        stem = Path(primary["href"]).stem
-        if stem in INDEX_BY_NAME:
-            assets[stem] = assets.pop("data")
-    for name, index in INDEX_BY_NAME.items():
-        asset = assets.get(name)
-        if asset is None:
-            continue
+    # portolan keys an item's primary file "data"; key it by the index instead.
+    if "data" in assets:
+        assets[index.name] = assets.pop("data")
+    asset = assets.get(index.name)
+    if asset is not None:
         asset["title"] = index.title
         asset["description"] = index.description
         asset["processing:expression"] = {
@@ -69,25 +86,21 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
             "expression": index.expression,
         }
         asset["bands"] = [
-            dict(band, name=name, unit=BAND_UNIT) for band in sidecar["bands"][name]
+            dict(band, name=index.name, unit=BAND_UNIT)
+            for band in sidecar["bands"][index.name]
         ]
     thumbnail = assets.get("thumbnail")
     if thumbnail is not None:
-        thumbnail["href"] = f"./{THUMBNAIL_FILE}"
-        thumbnail["title"] = THUMBNAIL_TITLE
-    # portolan also tracks the pre-drawn thumbnail file as an asset of its own
-    # ("rbr.thumb"); the item needs it once, as "thumbnail".
-    for key in [
-        key
-        for key, asset in assets.items()
-        if key != "thumbnail" and "thumbnail" in asset.get("roles", [])
-    ]:
-        del assets[key]
+        thumbnail["title"] = thumbnail_title(index)
 
 
 @hookimpl
 def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None:
-    """Set the temporal extent to the windows and point at the RBR thumbnail."""
+    """Set the temporal extent to the prefire and postfire windows.
+
+    portolan registers the collection thumbnail after this hook runs, by
+    adopting COLLECTION_THUMBNAIL_FILE, so the hook never sees it.
+    """
     sidecar = load_sidecar()
     if sidecar is None:
         return
@@ -95,7 +108,3 @@ def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None
     collection["extent"]["temporal"]["interval"] = [
         [properties["start_datetime"], properties["end_datetime"]]
     ]
-    thumbnail = collection.get("assets", {}).get("thumbnail")
-    if thumbnail is not None:
-        thumbnail["href"] = f"./{ITEM_ID}/{THUMBNAIL_FILE}"
-        thumbnail["title"] = THUMBNAIL_TITLE

@@ -29,7 +29,7 @@ from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.job.notify import Mailer, SmtpSettings
 from src.v2.raster.pipeline import compute
 from src.v2.catalog.build import item_directory
-from src.v2.catalog.portolan_plugin import ITEM_ID, THUMBNAIL_FILE
+from src.v2.catalog.portolan_plugin import COLLECTION_THUMBNAIL_INDEX, thumbnail_file
 from src.v2.catalog.publish import catalog_prefix, publish
 from src.v2.record import ResultRecord, record_key
 from src.v2.catalog.sidecar import build_sidecar
@@ -109,11 +109,15 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
         source_url=f"{source.api.rstrip('/')}/collections/{source.collection}",
     )
     catalog_url = publish(catalog.root, ctx.fire_id, store)
-    item_prefix = f"{catalog_prefix(ctx.fire_id)}/{ctx.fire_id}/{ITEM_ID}"
+    collection_prefix = f"{catalog_prefix(ctx.fire_id)}/{ctx.fire_id}"
     assets = {
-        name: store.public_url(f"{item_prefix}/{name}.tif") for name in result.cogs
+        name: store.public_url(f"{collection_prefix}/{name}/{name}.tif")
+        for name in result.cogs
     }
-    assets["thumbnail"] = store.public_url(f"{item_prefix}/{THUMBNAIL_FILE}")
+    thumb = COLLECTION_THUMBNAIL_INDEX
+    assets["thumbnail"] = store.public_url(
+        f"{collection_prefix}/{thumb}/{thumbnail_file(thumb)}"
+    )
     own, child = peak_rss_mib()
     return ResultRecord(
         job_id=ctx.job_id,
@@ -167,7 +171,8 @@ def notify_success(ctx: RunContext, record: ResultRecord, mailer: Mailer) -> Non
             ctx.notify_email,
             subject(ctx, "Ready"),
             body,
-            image=item_directory(ctx.workdir, ctx.fire_id) / THUMBNAIL_FILE,
+            image=item_directory(ctx.workdir, ctx.fire_id, COLLECTION_THUMBNAIL_INDEX)
+            / thumbnail_file(COLLECTION_THUMBNAIL_INDEX),
         )
 
 

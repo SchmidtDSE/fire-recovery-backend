@@ -8,6 +8,7 @@ import pytest
 
 from src.models.provenance import Provenance
 from src.v2.catalog.build import CatalogError, build_catalog, validate
+from src.v2.catalog.portolan_plugin import INDEX_BY_NAME
 from src.v2.identity.grid import Grid
 from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.catalog.sidecar import (
@@ -40,19 +41,31 @@ def test_build_catalog_passes_rashid(
     )
     assert result.warnings == 0
 
-    item_path = result.root / fid / "severity" / "severity.json"
-    item = json.loads(item_path.read_text())
-    assert sorted(item["assets"]) == ["dnbr", "rbr", "rdnbr", "thumbnail"]
-    assert item["assets"]["thumbnail"]["href"] == "./rbr.thumb.jpg"
-    assert item["assets"]["thumbnail"]["file:checksum"]
-    assert item["properties"]["fire:job_id"] == job_id
-    assert item["properties"]["fire:h3"]["cells"]
-    # The method record survives portolan: both extensions declared, every
-    # method property present, each index carrying its formula.
-    assert {PROCESSING_EXTENSION, SCIENTIFIC_EXTENSION} <= set(item["stac_extensions"])
-    assert missing_method_properties(item["properties"]) == []
-    for name in ("dnbr", "rdnbr", "rbr"):
+    collection_dir = result.root / fid
+    for name, index in INDEX_BY_NAME.items():
+        item = json.loads((collection_dir / name / f"{name}.json").read_text())
+        assert sorted(item["assets"]) == [name, "thumbnail"]
+        assert item["properties"]["title"] == index.title
+        thumbnail = item["assets"]["thumbnail"]
+        assert thumbnail["href"] == f"./{name}.thumb.jpg"
+        assert thumbnail["title"].startswith(index.title)
+        assert thumbnail["file:checksum"]
+        assert item["properties"]["fire:job_id"] == job_id
+        assert item["properties"]["fire:h3"]["cells"]
+        # The method record survives portolan on every item: both extensions
+        # declared, every method property present, the index's formula.
+        assert {PROCESSING_EXTENSION, SCIENTIFIC_EXTENSION} <= set(
+            item["stac_extensions"]
+        )
+        assert missing_method_properties(item["properties"]) == []
         assert item["assets"][name]["processing:expression"]["format"] == "numpy"
+        assert item["assets"][name]["bands"][0]["name"] == name
+    # Nothing else sits beside the items: no stray thumbnails.
+    assert sorted(p.name for p in (collection_dir / "rbr").iterdir()) == [
+        "rbr.json",
+        "rbr.thumb.jpg",
+        "rbr.tif",
+    ]
     # rashid validates Scientific; Processing isn't in the Portolan registry,
     # which rashid notes once and doesn't fail.
     notes = {(f["rule_id"], f.get("actual")) for f in result.findings}
@@ -61,8 +74,20 @@ def test_build_catalog_passes_rashid(
     # The README states the same method as the STAC.
     readme = (result.root / "README.md").read_text()
     assert "newest processing baseline" in readme
-    collection = json.loads((result.root / fid / "collection.json").read_text())
-    assert collection["assets"]["thumbnail"]["href"] == "./severity/rbr.thumb.jpg"
+    collection = json.loads((collection_dir / "collection.json").read_text())
+    assert collection["title"] == "Geology_Fire burn severity"
+    assert collection["description"] == "dNBR, RdNBR and RBR for Geology_Fire."
+    thumbnail = collection["assets"]["thumbnail"]
+    assert thumbnail["href"] == "./thumbnail.jpg"
+    assert thumbnail["file:checksum"]
+    item_links = {
+        link["href"]: link.get("title")
+        for link in collection["links"]
+        if link["rel"] == "item"
+    }
+    assert item_links == {
+        f"./{name}/{name}.json": index.title for name, index in INDEX_BY_NAME.items()
+    }
     assert (result.root / fid / "items.parquet").exists()
     assert (result.root / "README.md").exists()
     # The sidecar stays outside the catalog, so push never uploads it.

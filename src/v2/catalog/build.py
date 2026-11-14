@@ -3,8 +3,14 @@
 Layout (design §4)::
 
     {fire_id}/                   catalog.json, README.md, AGENTS.md
-      {fire_id}/                 collection.json, README.md, AGENTS.md, items.parquet
-        severity/                severity.json, dnbr.tif, rdnbr.tif, rbr.tif, thumbnails
+      {fire_id}/                 collection.json, README.md, AGENTS.md, items.parquet,
+                                 thumbnail.jpg (a copy of RBR's)
+        dnbr/                    dnbr.json, dnbr.tif, dnbr.thumb.jpg
+        rdnbr/                   rdnbr.json, rdnbr.tif, rdnbr.thumb.jpg
+        rbr/                     rbr.json, rbr.tif, rbr.thumb.jpg
+
+One item per index: Portolan makes each distinct data file its own item, and
+each index gets its own title, thumbnail and band table.
 
 portolan-cli builds it (``init``, ``add``, ``check --fix``, ``readme``) with the
 enrich plugin copying the sidecar into the STAC, and rashid validates it. Any
@@ -23,7 +29,12 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import yaml
 
-from src.v2.catalog.portolan_plugin import ITEM_ID, THUMBNAIL_FILE
+from src.v2.catalog.portolan_plugin import (
+    COLLECTION_THUMBNAIL_FILE,
+    COLLECTION_THUMBNAIL_INDEX,
+    INDEX_BY_NAME,
+    thumbnail_file,
+)
 from src.v2.catalog.sidecar import SIDECAR_ENV, write_sidecar
 from src.v2.catalog.thumbnail import render_thumbnail
 
@@ -33,7 +44,6 @@ LICENSE = "CC-BY-4.0"
 METADATA_TEMPLATE = (
     Path(__file__).resolve().parents[3] / "config" / "portolan_metadata.yaml"
 )
-THUMBNAIL_SOURCE = "rbr"
 # How much of a failing tool's output to keep in the error.
 OUTPUT_TAIL_CHARS = 4000
 
@@ -89,6 +99,18 @@ def write_metadata(
     )
 
 
+def write_collection_metadata(collection: Path, title: str, description: str) -> None:
+    """The collection's own .portolan/metadata.yaml: its title and description.
+
+    portolan takes a collection's title and description only from the
+    collection's own file, never from the catalog's (portolan #755).
+    """
+    (collection / ".portolan").mkdir(parents=True, exist_ok=True)
+    (collection / ".portolan" / "metadata.yaml").write_text(
+        yaml.safe_dump({"title": title, "description": description}, sort_keys=False)
+    )
+
+
 def validate(root: Path) -> CatalogResult:
     """Run rashid over the whole catalog, bytes included.
 
@@ -116,9 +138,9 @@ def validate(root: Path) -> CatalogResult:
     )
 
 
-def item_directory(workdir: Path, fire_id: str) -> Path:
-    """Where the item, its COGs and its thumbnail, sits in the built catalog."""
-    return workdir / "catalog" / fire_id / fire_id / ITEM_ID
+def item_directory(workdir: Path, fire_id: str, index: str) -> Path:
+    """Where an index's item, its COG and its thumbnail, sits in the built catalog."""
+    return workdir / "catalog" / fire_id / fire_id / index
 
 
 def build_catalog(
@@ -137,11 +159,20 @@ def build_catalog(
     push never uploads it.
     """
     root = workdir / "catalog" / fire_id
-    item_dir = item_directory(workdir, fire_id)
-    item_dir.mkdir(parents=True)
     for name, cog in cogs.items():
+        item_dir = item_directory(workdir, fire_id, name)
+        item_dir.mkdir(parents=True)
         shutil.move(str(cog), item_dir / f"{name}.tif")
-    render_thumbnail(item_dir / f"{THUMBNAIL_SOURCE}.tif", item_dir / THUMBNAIL_FILE)
+        render_thumbnail(
+            item_dir / f"{name}.tif",
+            item_dir / thumbnail_file(name),
+            INDEX_BY_NAME[name].display_range,
+        )
+    shutil.copyfile(
+        item_directory(workdir, fire_id, COLLECTION_THUMBNAIL_INDEX)
+        / thumbnail_file(COLLECTION_THUMBNAIL_INDEX),
+        root / fire_id / COLLECTION_THUMBNAIL_FILE,
+    )
     sidecar_path = write_sidecar(sidecar, workdir / "sidecar.json")
 
     env = {**os.environ, SIDECAR_ENV: str(sidecar_path)}
@@ -155,6 +186,7 @@ def build_catalog(
         env=env,
     )  # fmt: skip
     write_metadata(root, source_url, sidecar["properties"].get("processing:lineage"))
+    write_collection_metadata(root / fire_id, title, description)
     run_tool([portolan, "add", f"{fire_id}/", "--datetime", item_datetime], root, env)
     run_tool([portolan, "check", "--fix"], root, env)
     run_tool([portolan, "readme"], root, env)

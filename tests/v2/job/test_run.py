@@ -103,9 +103,7 @@ def test_success_writes_one_record_and_one_email(
     assert record["state"] == "succeeded"
     assert record["catalog_url"].endswith(f"{ctx.fire_id}/catalog.json")
     assert set(record["assets"]) == {"dnbr", "rdnbr", "rbr", "thumbnail"}
-    assert record["assets"]["rbr"].endswith(
-        f"{ctx.fire_id}/{ctx.fire_id}/severity/rbr.tif"
-    )
+    assert record["assets"]["rbr"].endswith(f"{ctx.fire_id}/{ctx.fire_id}/rbr/rbr.tif")
     assert record["scene_counts"] == {"prefire": 2, "postfire": 1}
     assert record["provider"] == "Element 84"
     assert record["git_sha"] == "abc1234"
@@ -116,7 +114,9 @@ def test_success_writes_one_record_and_one_email(
         ("requester@example.org", "[Fire Severity Analysis: Geology_Fire] Ready")
     ]
     assert ctx.status_url in mailer.sent[0][2]
-    assert mailer.images == [item_directory(ctx.workdir, ctx.fire_id) / "rbr.thumb.jpg"]
+    assert mailer.images == [
+        item_directory(ctx.workdir, ctx.fire_id, "rbr") / "rbr.thumb.jpg"
+    ]
     assert not ctx.workdir.exists()
 
 

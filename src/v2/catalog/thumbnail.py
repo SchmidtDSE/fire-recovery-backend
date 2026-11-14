@@ -1,24 +1,24 @@
-"""The analysis thumbnail: RBR on a fixed 0-0.5 ramp (design §5, decision 11).
+"""Each index's thumbnail, on a fixed ramp (design §5, decision 11).
 
 portolan draws a grayscale thumbnail per COG with a percentile stretch, which
-makes an unburned scene look as dramatic as a burned one. A fixed ramp keeps
-thumbnails comparable across analyses. portolan keeps a thumbnail that already
-exists, so this one is drawn before ``portolan add`` runs.
+makes an unburned scene look as dramatic as a burned one. A fixed ramp (the
+index's ``display_range``) keeps thumbnails comparable across analyses.
+portolan keeps a thumbnail that already exists, so these are drawn before
+``portolan add`` runs.
 """
 
 import warnings
 from pathlib import Path
+from typing import Tuple
 
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.errors import NotGeoreferencedWarning
 
-RAMP_MIN = 0.0
-RAMP_MAX = 0.5
 MAX_SIZE = 512
 JPEG_QUALITY = 85
-# ColorBrewer YlOrRd (5 classes): pale yellow at RBR 0 to dark red at 0.5.
+# ColorBrewer YlOrRd (5 classes): pale yellow at the low end, dark red at the high.
 RAMP_COLORS = np.array(
     [[255, 255, 178], [254, 204, 92], [253, 141, 60], [240, 59, 32], [189, 0, 38]],
     dtype=np.float32,
@@ -26,9 +26,9 @@ RAMP_COLORS = np.array(
 NODATA_COLOR = np.array([255, 255, 255], dtype=np.float32)
 
 
-def colorize(values: np.ndarray) -> np.ndarray:
-    """(3, h, w) uint8 RGB for an array of RBR values; NaN becomes white."""
-    position = np.clip((values - RAMP_MIN) / (RAMP_MAX - RAMP_MIN), 0.0, 1.0)
+def colorize(values: np.ndarray, low: float, high: float) -> np.ndarray:
+    """(3, h, w) uint8 RGB for values stretched from low to high; NaN is white."""
+    position = np.clip((values - low) / (high - low), 0.0, 1.0)
     stops = np.linspace(0.0, 1.0, len(RAMP_COLORS))
     filled = np.nan_to_num(position, nan=0.0)
     rgb = np.stack(
@@ -38,7 +38,9 @@ def colorize(values: np.ndarray) -> np.ndarray:
     return np.round(rgb).astype(np.uint8)
 
 
-def render_thumbnail(cog: Path, destination: Path) -> Path:
+def render_thumbnail(
+    cog: Path, destination: Path, display_range: Tuple[float, float]
+) -> Path:
     """Draw a COG at most MAX_SIZE pixels on its longer side as a JPEG."""
     with rasterio.open(cog) as src:
         scale = min(1.0, MAX_SIZE / max(src.width, src.height))
@@ -61,5 +63,5 @@ def render_thumbnail(cog: Path, destination: Path) -> Path:
     with warnings.catch_warnings(), rasterio.Env(GDAL_PAM_ENABLED="NO"):
         warnings.simplefilter("ignore", NotGeoreferencedWarning)
         with rasterio.open(destination, "w", **profile) as dst:
-            dst.write(colorize(values))
+            dst.write(colorize(values, *display_range))
     return destination
