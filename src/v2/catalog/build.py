@@ -33,6 +33,7 @@ from src.v2.catalog.portolan_plugin import (
     COLLECTION_THUMBNAIL_FILE,
     COLLECTION_THUMBNAIL_INDEX,
     INDEX_BY_NAME,
+    RENDER_COLORMAP,
     thumbnail_file,
 )
 from src.v2.catalog.sidecar import SIDECAR_ENV, write_sidecar
@@ -185,6 +186,14 @@ def build_catalog(
         cwd=root,
         env=env,
     )  # fmt: skip
+    # portolan's own asset-level render:colormap_name, one setting for the
+    # catalog: the colormap the collection's renders use. No catalog-wide
+    # rescale fits all three indices, so it stays unset.
+    run_tool(
+        [portolan, "config", "set", "styles.raster.colormap", RENDER_COLORMAP],
+        root,
+        env,
+    )
     write_metadata(root, source_url, sidecar["properties"].get("processing:lineage"))
     write_collection_metadata(root / fire_id, title, description)
     run_tool([portolan, "add", f"{fire_id}/", "--datetime", item_datetime], root, env)

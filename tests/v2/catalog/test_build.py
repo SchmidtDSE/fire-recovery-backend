@@ -4,11 +4,17 @@ import json
 from pathlib import Path
 from typing import Dict
 
+import jsonschema
 import pytest
+import rashid
 
 from src.models.provenance import Provenance
 from src.v2.catalog.build import CatalogError, build_catalog, validate
-from src.v2.catalog.portolan_plugin import INDEX_BY_NAME
+from src.v2.catalog.portolan_plugin import (
+    INDEX_BY_NAME,
+    RENDER_COLORMAP,
+    RENDER_EXTENSION,
+)
 from src.v2.identity.grid import Grid
 from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.catalog.sidecar import (
@@ -16,6 +22,12 @@ from src.v2.catalog.sidecar import (
     SCIENTIFIC_EXTENSION,
     build_sidecar,
     missing_method_properties,
+)
+
+# rashid's pinned copy of the render extension schema.
+RENDER_SCHEMA = (
+    Path(rashid.__file__).parent
+    / "_schemas/extensions/stac-extensions.github.io/render/v2.0.0/schema.json"
 )
 
 
@@ -60,6 +72,8 @@ def test_build_catalog_passes_rashid(
         assert missing_method_properties(item["properties"]) == []
         assert item["assets"][name]["processing:expression"]["format"] == "numpy"
         assert item["assets"][name]["bands"][0]["name"] == name
+        # portolan's own asset-level field agrees with the collection's render.
+        assert item["assets"][name]["render:colormap_name"] == RENDER_COLORMAP
     # Nothing else sits beside the items: no stray thumbnails.
     assert sorted(p.name for p in (collection_dir / "rbr").iterdir()) == [
         "rbr.json",
@@ -80,6 +94,17 @@ def test_build_catalog_passes_rashid(
     thumbnail = collection["assets"]["thumbnail"]
     assert thumbnail["href"] == "./thumbnail.jpg"
     assert thumbnail["file:checksum"]
+    # Each index's render, validated by rashid against render v2's schema.
+    assert RENDER_EXTENSION in collection["stac_extensions"]
+    assert {name: r["assets"] for name, r in collection["renders"].items()} == {
+        name: [name] for name in INDEX_BY_NAME
+    }
+    assert not [f for f in result.findings if f.get("actual") == RENDER_EXTENSION]
+    # Render v2's collection schema passes if any one render is valid, so
+    # check each against its field definitions too.
+    fields = json.loads(RENDER_SCHEMA.read_text())["definitions"]["fields"]
+    for render in collection["renders"].values():
+        jsonschema.validate(render, fields)
     item_links = {
         link["href"]: link.get("title")
         for link in collection["links"]
