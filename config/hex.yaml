@@ -1,0 +1,39 @@
+# Wording for the H3 hex tables in each catalog's collection.json: the hex
+# assets' titles and descriptions, and the collection's table:columns
+# dictionary (one description per column name, as data-workflows' verifier
+# and Portolan PORTO-FMT-046/048 expect). Metadata only: edit freely.
+#
+# {title} is the index's title (e.g. "Relativized Burn Ratio (RBR)"),
+# {index} its asset key (e.g. "rbr").
+
+asset_title: "{title}, mean per H3 resolution 10 cell"
+
+asset_description: >-
+  One row per H3 resolution 10 cell that holds at least one valid {index}
+  pixel: the mean of the valid pixels whose centres fall in the cell, and how
+  many there are (n_valid). Each pixel counts in exactly one cell, so the
+  table's pixel total matches the COG's. Cells along the raster's edge or next
+  to nodata hold fewer pixels; weight by n_valid when combining cells.
+  Computed from ./{index}/{index}.tif. No class breaks are applied: values are
+  the index, unscaled. Join to other catalog layers on h8.
+
+# The index's own column (named after the index). {title} and {index} apply.
+value_column: >-
+  {title}: the mean of the cell's valid pixels. Unscaled and dimensionless;
+  higher means a larger drop in NBR.
+
+columns:
+  n_valid: >-
+    Number of valid pixels whose centres fall in the cell.
+  h10: >-
+    H3 cell identifier at resolution 10 (native resolution).
+  h9: >-
+    H3 cell identifier at resolution 9.
+  h8: >-
+    H3 cell identifier at resolution 8. This is the shared join key across
+    the GLEN catalog.
+  h0: >-
+    H3 cell identifier at resolution 0, the coarsest common join.
+  fire_id: >-
+    The analysis this row comes from (the catalog's id), so tables from
+    several fires can be stacked.
