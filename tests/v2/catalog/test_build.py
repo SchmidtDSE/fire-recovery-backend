@@ -105,6 +105,20 @@ def test_build_catalog_passes_rashid(
     fields = json.loads(RENDER_SCHEMA.read_text())["definitions"]["fields"]
     for render in collection["renders"].values():
         jsonschema.validate(render, fields)
+    # Each index's hex table: a collection asset GLEN's SQL can list, with its
+    # H3 resolutions, and every column in the collection's dictionary.
+    dictionary = {c["name"] for c in collection["table:columns"]}
+    for name in INDEX_BY_NAME:
+        hex_asset = collection["assets"][f"{name}-hex"]
+        assert hex_asset["href"] == f"./{name}-hex.parquet"
+        assert hex_asset["roles"] == ["data"]
+        assert hex_asset["h3:native_resolution"] == 10
+        assert hex_asset["h3:parent_resolutions"] == [9, 8, 0]
+        assert hex_asset["title"].startswith(INDEX_BY_NAME[name].title)
+        columns = {c["name"] for c in hex_asset.get("table:columns", [])}
+        assert columns <= dictionary
+        assert name in dictionary
+    assert all(c.get("description") for c in collection["table:columns"])
     item_links = {
         link["href"]: link.get("title")
         for link in collection["links"]

@@ -14,6 +14,13 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 from portolan_cli.hookspecs import hookimpl as portolan_hookimpl
 
 from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES, Index
+from src.v2.catalog.hex import (
+    HEX_PARENTS,
+    HEX_RESOLUTION,
+    column_dictionary,
+    hex_asset_key,
+    wording,
+)
 from src.v2.catalog.sidecar import SIDECAR_ENV
 
 # The index whose thumbnail stands for the whole collection, and the copy of
@@ -70,6 +77,32 @@ def renders() -> Dict[str, Dict[str, Any]]:
     }
 
 
+def add_hex_metadata(collection: Dict[str, Any]) -> None:
+    """Title, describe and declare the H3 resolutions of each hex table.
+
+    portolan registers the tables as collection assets (``tabular.enabled``)
+    before this hook runs, with their Parquet types; this adds what portolan
+    can't know, and the one column dictionary every table's columns are in.
+    """
+    assets = collection.get("assets", {})
+    words = wording()
+    present = {}
+    for index in INDICES:
+        asset = assets.get(hex_asset_key(index.name))
+        if asset is None:
+            continue
+        present[index.name] = index.title
+        values = {"title": index.title, "index": index.name}
+        asset["title"] = words["asset_title"].format(**values)
+        asset["description"] = " ".join(
+            words["asset_description"].format(**values).split()
+        )
+        asset["h3:native_resolution"] = HEX_RESOLUTION
+        asset["h3:parent_resolutions"] = list(HEX_PARENTS)
+    if present:
+        collection["table:columns"] = column_dictionary(present)
+
+
 def load_sidecar() -> Optional[Dict[str, Any]]:
     path = os.environ.get(SIDECAR_ENV)
     if not path:
@@ -122,7 +155,7 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
 
 @hookimpl
 def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None:
-    """Set the temporal extent to the windows; add each index's render.
+    """Set the temporal extent; add each index's render and hex metadata.
 
     portolan registers the collection thumbnail after this hook runs, by
     adopting COLLECTION_THUMBNAIL_FILE, so the hook never sees it.
@@ -135,6 +168,7 @@ def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None
         [properties["start_datetime"], properties["end_datetime"]]
     ]
     collection["renders"] = renders()
+    add_hex_metadata(collection)
     extensions = collection.setdefault("stac_extensions", [])
     if RENDER_EXTENSION not in extensions:
         extensions.append(RENDER_EXTENSION)

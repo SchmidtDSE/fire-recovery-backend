@@ -4,13 +4,15 @@ Layout (design §4)::
 
     {fire_id}/                   catalog.json, README.md, AGENTS.md
       {fire_id}/                 collection.json, README.md, AGENTS.md, items.parquet,
-                                 thumbnail.jpg (a copy of RBR's)
+                                 thumbnail.jpg (a copy of RBR's),
+                                 dnbr-hex.parquet, rdnbr-hex.parquet, rbr-hex.parquet
         dnbr/                    dnbr.json, dnbr.tif, dnbr.thumb.jpg
         rdnbr/                   rdnbr.json, rdnbr.tif, rdnbr.thumb.jpg
         rbr/                     rbr.json, rbr.tif, rbr.thumb.jpg
 
 One item per index: Portolan makes each distinct data file its own item, and
-each index gets its own title, thumbnail and band table.
+each index gets its own title, thumbnail and band table. Each index's H3 hex
+table (hex.py) is a collection asset, where GLEN's SQL finds Parquet.
 
 portolan-cli builds it (``init``, ``add``, ``check --fix``, ``readme``) with the
 enrich plugin copying the sidecar into the STAC, and rashid validates it. Any
@@ -36,6 +38,7 @@ from src.v2.catalog.portolan_plugin import (
     RENDER_COLORMAP,
     thumbnail_file,
 )
+from src.v2.catalog.hex import write_hex_tables
 from src.v2.catalog.sidecar import SIDECAR_ENV, write_sidecar
 from src.v2.catalog.thumbnail import render_thumbnail
 
@@ -169,6 +172,13 @@ def build_catalog(
             item_dir / thumbnail_file(name),
             INDEX_BY_NAME[name].display_range,
         )
+    # Each index's hex table, beside the items: portolan tracks it as a
+    # collection asset (tabular.enabled, below).
+    write_hex_tables(
+        {name: item_directory(workdir, fire_id, name) / f"{name}.tif" for name in cogs},
+        root / fire_id,
+        fire_id,
+    )
     shutil.copyfile(
         item_directory(workdir, fire_id, COLLECTION_THUMBNAIL_INDEX)
         / thumbnail_file(COLLECTION_THUMBNAIL_INDEX),
@@ -194,6 +204,9 @@ def build_catalog(
         root,
         env,
     )
+    # The hex tables have no geometry: portolan tracks such Parquet files as
+    # collection assets only with tabular support on.
+    run_tool([portolan, "config", "set", "tabular.enabled", "true"], root, env)
     write_metadata(root, source_url, sidecar["properties"].get("processing:lineage"))
     write_collection_metadata(root / fire_id, title, description)
     run_tool([portolan, "add", f"{fire_id}/", "--datetime", item_datetime], root, env)

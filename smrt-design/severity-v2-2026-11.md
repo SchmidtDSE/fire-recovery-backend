@@ -357,12 +357,19 @@ v2/fires/{fire_id}/                  self-contained Portolan catalog
   {fire_id}/                         the analysis's collection
     collection.json  README.md  AGENTS.md  items.parquet
     thumbnail.jpg                    a copy of RBR's, adopted by portolan
+    dnbr-hex.parquet  rdnbr-hex.parquet  rbr-hex.parquet   H3 hex tables, collection assets
     dnbr/   dnbr.json   dnbr.tif   dnbr.thumb.jpg     one item per index
     rdnbr/  rdnbr.json  rdnbr.tif  rdnbr.thumb.jpg
     rbr/    rbr.json    rbr.tif    rbr.thumb.jpg
 v2/jobs/{job_id}.json                write-once result record
 ```
 
+- **Hex tables.** Each index's mean per H3 resolution-10 cell (pixel-centre rule), with
+  `n_valid`, `h10`/`h9`/`h8` (uint64), `h0` (int64) and `fire_id`, one Parquet file per
+  index. portolan tracks them as collection assets with `tabular.enabled`; the collection hook
+  adds `h3:native_resolution: 10`, `h3:parent_resolutions: [9, 8, 0]`, titles and the
+  `table:columns` dictionary (wording in `config/hex.yaml`). Single files, not data-workflows'
+  `h0=*` Hive glob: Portolan partitions only large files, and an `https` glob can't be listed.
 - **One item per index.** Portolan represents each distinct data file in a collection as its
   own item. Each index gets its own title, thumbnail and band table, and every item carries
   the full method record, so each stands alone. The item id is the index name.
