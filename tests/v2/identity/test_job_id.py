@@ -180,4 +180,16 @@ def test_h3_resolutions_are_part_of_the_id(canonical: CanonicalRequest) -> None:
     assert r13.h3_resolutions == (13,)
     ids = {canonical.job_id(), r13.job_id(), with_levels([12, 13]).job_id()}
     assert len(ids) == 3
+    # A set: order and repeats don't change the id.
+    assert with_levels([13, 12, 12]).job_id() == with_levels([12, 13]).job_id()
+    assert with_levels([13, 12]).h3_resolutions == (12, 13)
     assert CanonicalRequest.model_validate_json(r13.to_json()).job_id() == r13.job_id()
+
+
+def test_a_canonical_form_holds_resolutions_sorted_and_unique(
+    canonical: CanonicalRequest,
+) -> None:
+    for levels in ([13, 12], [12, 12]):
+        form = {**json.loads(canonical.to_json()), "h3_resolutions": levels}
+        with pytest.raises(ValidationError):
+            CanonicalRequest.model_validate(form)

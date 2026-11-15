@@ -190,6 +190,7 @@ def build_catalog(
                 for name in cogs
             },
             hex_tables,
+            sidecar["properties"].get("processing:lineage", ""),
         )  # fmt: skip
         if hex_tables is not None
         else None

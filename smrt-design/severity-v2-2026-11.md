@@ -406,7 +406,8 @@ v2/requests/{job_id}.json            the canonical request, the Job's input (§1
     the geometry is the requester's and wasn't checked. Wording: `config/perimeter.yaml`.
 - **H3 tables are published only when asked, as their own collection** (2026-11-15; replaces
   the per-index r10 means of PR #46).
-  - `options.h3_resolutions` (8 to 13) is part of the key (§6), absent when unset. GLEN's SQL
+  - `options.h3_resolutions` (8 to 13) is part of the key (§6), absent when unset. It's a set:
+    the key holds it sorted and unique, so `[13, 12]` and `[12, 13]` are one analysis. GLEN's SQL
     and its browser-built hex tiles read them; exact numbers stay `zonal_stats` on the COGs,
     which is why the tables live in their own collection rather than beside the items.
   - Each cell takes the pixel under its centre: a sample, not a mean. At r12 and r13 cells
@@ -422,6 +423,12 @@ v2/requests/{job_id}.json            the canonical request, the Job's input (§1
   - portolan tracks geometry-less Parquet as collection assets only with `tabular.enabled`.
     The collection hook adds `h3:native_resolution`, `h3:parent_resolutions`, titles and the
     `table:columns` dictionary (wording in `config/hex.yaml`). rashid passes with no findings.
+  - portolan writes the first table's `table:row_count` and columns on the collection and the
+    later tables' on their assets. The hook puts every table's own on its asset and keeps only
+    the dictionary on the collection, which the table extension and rashid (PTL-DAT-015)
+    allow. To raise with portolan-cli; the move goes once portolan does it.
+  - The collection's processing notes are the analysis's, then the sampling. portolan's
+    README Quick Start still opens the tables with geopandas, which needs geometry (also to raise).
 - **A view across fires.**
   - Portolan's way to query items without fetching every JSON is `items.parquet`, the
     collection's "item mirror". It is a SHOULD for every collection with items. portolan-cli
@@ -511,7 +518,7 @@ never uploads it.
       "postfire_window": [start, end],
       "tiles": {"tms": "WebMercatorQuad", "z": z, "x": [x0, x1], "y": [y0, y1]},  # §2, step 2
       "perimeter": [[[[lon, lat], ...], ...], ...],  # only for geometry_kind "perimeter"
-      "h3_resolutions": [12, 13],           # only when options.h3_resolutions is set
+      "h3_resolutions": [12, 13],           # only when set; sorted and unique
   }
   ```
 

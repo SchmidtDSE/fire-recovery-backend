@@ -21,6 +21,7 @@ from src.v2.catalog.hex import (
     asset_resolution,
     column_dictionary,
     is_hex_collection,
+    table_columns,
 )
 from src.v2.catalog.perimeter import column_descriptions, is_perimeter_collection
 from src.v2.catalog.sidecar import SIDECAR_ENV
@@ -83,18 +84,31 @@ def add_hex_metadata(collection: Dict[str, Any]) -> None:
     """Title, describe and declare the H3 resolutions of each table.
 
     portolan registers the tables as collection assets (``tabular.enabled``)
-    with their Parquet types before this hook runs; this adds what portolan
-    can't know, and the one column dictionary every table's columns are in.
+    before this hook runs; this adds what portolan can't know, and the one
+    column dictionary every table's columns are in.
+
+    portolan writes the first table's columns and row count on the collection
+    and each later table's on its asset, so the collection's row count would
+    be one table's beside a dictionary of all of them. The hook gives every
+    table its own on its asset and leaves the collection the dictionary
+    alone. The table extension allows either place (rashid PTL-DAT-015).
     """
-    resolutions = []
-    for key, asset in collection.get("assets", {}).items():
-        resolution = asset_resolution(key)
-        if resolution is None:
-            continue
+    assets = collection.get("assets", {})
+    tables = {
+        key: resolution
+        for key in assets
+        if (resolution := asset_resolution(key)) is not None
+    }
+    if not tables:
+        return
+    collection_rows = collection.pop("table:row_count", None)
+    for key, resolution in tables.items():
+        asset = assets[key]
         asset.update(asset_fields(resolution))
-        resolutions.append(resolution)
-    if resolutions:
-        collection["table:columns"] = column_dictionary(sorted(resolutions))
+        asset["table:columns"] = table_columns(resolution)
+        if "table:row_count" not in asset and collection_rows is not None:
+            asset["table:row_count"] = collection_rows
+    collection["table:columns"] = column_dictionary(sorted(tables.values()))
 
 
 def load_sidecar() -> Optional[Dict[str, Any]]:

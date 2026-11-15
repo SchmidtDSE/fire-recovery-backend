@@ -59,7 +59,7 @@ Submit an analysis: a fire perimeter, two date windows and, optionally, an email
     it as a second collection, `{fire_id}-perimeter` (GeoParquet and PMTiles), and `assets`
     links both as `perimeter` and `perimeter-tiles`.
 - `options` is optional. `options.h3_resolutions` asks for H3 tables of the indices, one per
-  resolution (8 to 13, ascending, no repeats). Each row is a cell whose centre falls in the
+  resolution (8 to 13; a set, so order and repeats don't matter). Each row is a cell whose centre falls in the
   output grid, with the dNBR, RdNBR and RBR pixel under that centre (null at nodata), its
   parents (`h10` for r11 and finer, `h8`, `h0`) and its hex string `h3`. The catalog holds them
   as a third collection, `{fire_id}-hex`, and `assets` links each as `hex-r{n}`. The

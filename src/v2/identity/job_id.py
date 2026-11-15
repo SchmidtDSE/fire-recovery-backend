@@ -19,7 +19,7 @@ import re
 import uuid
 from typing import Any, Dict, Final, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from src.util.geo_ops import Bounds, buffered_bounds
 from src.v2.constants import PIPELINE_VERSION
@@ -52,9 +52,16 @@ class CanonicalRequest(BaseModel):
     # The normalized perimeter, only when the request publishes one. Left out
     # of the JSON when absent, so an area of interest's id is unchanged.
     perimeter: Optional[QuantizedParts] = None
-    # The H3 tables to publish (options.h3_resolutions), ascending. Left out
+    # The H3 tables to publish (options.h3_resolutions), sorted and unique. Left out
     # of the JSON when absent, like the perimeter.
     h3_resolutions: Optional[tuple[int, ...]] = None
+
+    @model_validator(mode="after")
+    def _resolutions_are_canonical(self) -> "CanonicalRequest":
+        levels = self.h3_resolutions
+        if levels is not None and list(levels) != sorted(set(levels)):
+            raise ValueError("h3_resolutions must be sorted and unique")
+        return self
 
     def to_json(self) -> str:
         """Sorted keys and no whitespace: the exact string the id hashes."""
@@ -119,9 +126,7 @@ def canonical_request(
             request.quantized() if request.geometry_kind == "perimeter" else None
         ),
         h3_resolutions=(
-            tuple(request.options.h3_resolutions)
-            if request.options is not None and request.options.h3_resolutions
-            else None
+            request.options.resolutions() if request.options is not None else None
         ),
     )
 

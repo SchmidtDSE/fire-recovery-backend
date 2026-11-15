@@ -124,6 +124,17 @@ def cell_description(resolution: int) -> str:
     return f"{text} {one_line(note)}" if note else text
 
 
+def table_columns(resolution: int) -> List[Dict[str, str]]:
+    """One table's columns, in order, with their table:columns types."""
+    columns = [
+        {"name": cell_column(r), "type": ROOT_TYPE if r == 0 else CELL_TYPE}
+        for r in (resolution, *parent_resolutions(resolution))
+    ]
+    columns.append({"name": STRING_COLUMN, "type": STRING_TYPE})
+    columns += [{"name": index.name, "type": VALUE_TYPE} for index in INDICES]
+    return columns
+
+
 def column_dictionary(resolutions: Sequence[int]) -> List[Dict[str, str]]:
     """The collection's table:columns: every column of every table once, described."""
     words = wording()
@@ -348,9 +359,17 @@ def write_hex_table(
 
 
 def write_hex_collection(
-    catalog_root: Path, fire_id: str, cogs: Mapping[str, Path], tables: HexTables
+    catalog_root: Path,
+    fire_id: str,
+    cogs: Mapping[str, Path],
+    tables: HexTables,
+    lineage: str = "",
 ) -> Path:
-    """Write each resolution's table and the collection's metadata; return its folder."""
+    """Write each resolution's table and the collection's metadata; return its folder.
+
+    ``lineage`` is the analysis's processing notes, which the collection's
+    own notes extend with the sampling.
+    """
     words = wording()
     folder = catalog_root / collection_id(fire_id)
     folder.mkdir(parents=True)
@@ -362,6 +381,12 @@ def write_hex_collection(
         "title": one_line(words["title"], fire_event_name=name),
         "description": one_line(
             words["description"], fire_event_name=name, levels=levels
+        ),
+        "processing_notes": one_line(
+            words["processing_notes"],
+            lineage=lineage,
+            levels=levels,
+            crs=shared_raster(cogs).crs.to_string(),
         ),
     }
     (folder / ".portolan").mkdir()

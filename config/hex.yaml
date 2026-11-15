@@ -5,7 +5,8 @@
 # PORTO-FMT-046/048 expect). Metadata only: edit freely.
 #
 # {fire_event_name} is the request's name, verbatim; {levels} the requested
-# resolutions ("r12, r13"); {resolution} one resolution; {area} its average
+# resolutions ("r12, r13"); {lineage} the analysis's processing notes; {crs}
+# the grid's CRS; {resolution} one resolution; {area} its average
 # cell area; {parents} the parent columns a table carries; {title} an index's
 # title.
 
@@ -17,6 +18,15 @@ description: >-
   the pixel under the cell's centre. For SQL and joins with other H3 layers.
   Each value is a sample, not a statistic; exact area-weighted numbers come
   from the index COGs in the analysis's own collection.
+
+# Replaces the catalog's processing notes in this collection's README: the
+# analysis's own, then how the tables were sampled from its COGs.
+processing_notes: >-
+  {lineage} H3 tables: at each requested resolution ({levels}), every cell
+  whose centre falls in the analysis grid's outline (h3ronpy's polygon fill)
+  takes the pixel under its centre, found by projecting the centre to {crs};
+  the rasters are not resampled. Cells where every index is nodata are left
+  out.
 
 asset_title: "Indices per H3 resolution {resolution} cell"
 

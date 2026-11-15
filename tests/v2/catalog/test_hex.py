@@ -210,9 +210,18 @@ def test_the_tables_are_a_collection_and_rashid_passes(built: CatalogResult) -> 
         assert asset["h3:native_resolution"] == resolution
         assert asset["h3:parent_resolutions"] == parents
         assert f"resolution {resolution}" in asset["title"]
+        # Each table carries its own row count and columns; the collection
+        # only the dictionary of all of them.
         path = built.root / collection_id(fid) / hex_file(resolution)
-        assert {f.name for f in pq.read_schema(path)} <= set(dictionary)
-    assert (built.root / collection_id(fid) / "README.md").exists()
+        assert asset["table:row_count"] == pq.read_metadata(path).num_rows
+        schema = [(f.name, str(f.type)) for f in pq.read_schema(path)]
+        assert [(c["name"], c["type"]) for c in asset["table:columns"]] == schema
+        assert {name for name, _ in schema} <= set(dictionary)
+    assert "table:row_count" not in collection
+    # Its README states the analysis's method, then the sampling.
+    readme = (built.root / collection_id(fid) / "README.md").read_text()
+    assert "newest processing baseline" in readme
+    assert "pixel under its centre, found by projecting the centre to EPSG:" in readme
 
     # The analysis's own collection is as it was.
     analysis = json.loads((built.root / fid / "collection.json").read_text())
