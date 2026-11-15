@@ -1,5 +1,9 @@
 """The result record a Job writes as it ends: ``v2/jobs/{job_id}.json`` (design §1).
 
+The Job's input sits beside it: the canonical request at
+``v2/requests/{job_id}.json``, written by the API before it starts the Job.
+The request can hold a whole perimeter, too large for an environment variable.
+
 One record per job id, written once per run: "succeeded" with links, or
 "failed" with a short error. A rerun after a failure overwrites it. The API
 reads it for status and for cache hits. It never holds the requester's email.
@@ -13,10 +17,16 @@ from pydantic import BaseModel, Field
 from src.v2.identity.grid import Grid
 
 JOBS_PREFIX = "v2/jobs"
+REQUESTS_PREFIX = "v2/requests"
 
 
 def record_key(job_id: str) -> str:
     return f"{JOBS_PREFIX}/{job_id}.json"
+
+
+def request_key(job_id: str) -> str:
+    """Where the canonical request is: its exact JSON, the job id's preimage."""
+    return f"{REQUESTS_PREFIX}/{job_id}.json"
 
 
 def utc_now() -> str:

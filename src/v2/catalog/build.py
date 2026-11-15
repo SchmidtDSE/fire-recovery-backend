@@ -8,6 +8,7 @@ Layout (design §4)::
         dnbr/                    dnbr.json, dnbr.tif, dnbr.thumb.jpg
         rdnbr/                   rdnbr.json, rdnbr.tif, rdnbr.thumb.jpg
         rbr/                     rbr.json, rbr.tif, rbr.thumb.jpg
+      {fire_id}-perimeter/       only with a perimeter to publish (perimeter.py)
 
 One item per index: Portolan makes each distinct data file its own item, and
 each index gets its own title, thumbnail and band table.
@@ -29,6 +30,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import yaml
 
+from src.v2.catalog.perimeter import Perimeter, write_perimeter_collection
 from src.v2.catalog.portolan_plugin import (
     COLLECTION_THUMBNAIL_FILE,
     COLLECTION_THUMBNAIL_INDEX,
@@ -153,11 +155,12 @@ def build_catalog(
     description: str,
     item_datetime: str,
     source_url: Optional[str],
+    perimeter: Optional[Perimeter] = None,
 ) -> CatalogResult:
     """Lay out the COGs, build the catalog with portolan, validate it with rashid.
 
     The COGs are moved into the catalog. The sidecar is written outside it, so
-    push never uploads it.
+    push never uploads it. A perimeter becomes its own collection.
     """
     root = workdir / "catalog" / fire_id
     for name, cog in cogs.items():
@@ -175,8 +178,17 @@ def build_catalog(
         root / fire_id / COLLECTION_THUMBNAIL_FILE,
     )
     sidecar_path = write_sidecar(sidecar, workdir / "sidecar.json")
+    perimeter_folder = (
+        write_perimeter_collection(root, fire_id, perimeter)
+        if perimeter is not None
+        else None
+    )
 
     env = {**os.environ, SIDECAR_ENV: str(sidecar_path)}
+    # portolan runs tippecanoe from PATH: this environment's, first.
+    env["PATH"] = os.pathsep.join(
+        [str(Path(sys.executable).parent), env.get("PATH", "")]
+    )
     portolan = executable("portolan")
     run_tool(
         [
@@ -197,6 +209,8 @@ def build_catalog(
     write_metadata(root, source_url, sidecar["properties"].get("processing:lineage"))
     write_collection_metadata(root / fire_id, title, description)
     run_tool([portolan, "add", f"{fire_id}/", "--datetime", item_datetime], root, env)
+    if perimeter_folder is not None:
+        run_tool([portolan, "add", f"{perimeter_folder.name}/", "--pmtiles"], root, env)
     run_tool([portolan, "check", "--fix"], root, env)
     run_tool([portolan, "readme"], root, env)
     result = validate(root)

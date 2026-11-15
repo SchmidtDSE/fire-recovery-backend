@@ -35,7 +35,6 @@ def wait(launcher: SubprocessLauncher, job_id: str, timeout: float = 20.0) -> Jo
 def spec(job_id: str = "job-1", email: str = "") -> JobSpec:
     return JobSpec(
         job_id=job_id,
-        canonical_json='{"operation":"fire_severity_v2"}',
         status_url=f"http://api/v2/severity/{job_id}",
         notify_email=email or None,
     )
@@ -54,7 +53,7 @@ def test_start_passes_the_request_and_reports_success(tmp_path: Path) -> None:
     assert runner.start(spec(email="someone@example.org"))
     assert wait(runner, "job-1") == JobStatus("succeeded")
     env = json.loads((tmp_path / "env.json").read_text())
-    assert env["SEVERITY_REQUEST"] == '{"operation":"fire_severity_v2"}'
+    assert "SEVERITY_REQUEST" not in env
     assert env["JOB_ID"] == "job-1"
     assert env["STATUS_URL"] == "http://api/v2/severity/job-1"
     assert env["NOTIFY_EMAIL"] == "someone@example.org"

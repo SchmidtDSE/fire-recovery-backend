@@ -6,7 +6,7 @@ repos: [backend]
 status: draft
 source: agent
 authored: 2026-11-09
-revised: 2026-11-13
+revised: 2026-11-15
 owner: "fire-recovery-backend agent"
 depends_on: []
 needs_context: [dev-deployment]
@@ -175,8 +175,7 @@ spec:
           image: ghcr.io/schmidtdse/fire-recovery-backend/severity-batch@sha256:<the API's own digest>
           args: [python, -m, src.v2.job.run]
           env:
-            - {name: SEVERITY_REQUEST, value: "<canonical request JSON>"}
-            - {name: JOB_ID, value: "<job id>"}          # the job re-derives it and checks
+            - {name: JOB_ID, value: "<job id>"}          # names its request; re-derived and checked
             - {name: STATUS_URL, value: "<status URL>"}  # for the email
             - {name: SEVERITY_WORKDIR, value: /scratch}
           envFrom:
@@ -188,6 +187,13 @@ spec:
           volumeMounts: [{name: scratch, mountPath: /scratch}]
       volumes: [{name: scratch, emptyDir: {sizeLimit: 10Gi}}]
 ```
+
+The Job's input is the canonical request, which the API writes to `v2/requests/{job_id}.json`
+before creating the Job (revised 2026-11-15; it was an environment variable). A request with a
+perimeter (§6) can exceed Linux's 128 KiB limit on one environment string, and a ConfigMap's
+1 MiB, so it travels as an object in the bucket the Job already uses, named by its own hash.
+The Job reads it, re-derives the id and refuses to run on a mismatch. The file stays as the
+exact input of the published analysis.
 
 `src/v2/service/k8s.py` (`job_manifest`) builds this from the target profile in `config/targets/`.
 Profiles use josh's format (SchmidtDSE/josh, `BATCH_REMOTE.md`): JSON naming the cluster, a
@@ -360,7 +366,11 @@ v2/fires/{fire_id}/                  self-contained Portolan catalog
     dnbr/   dnbr.json   dnbr.tif   dnbr.thumb.jpg     one item per index
     rdnbr/  rdnbr.json  rdnbr.tif  rdnbr.thumb.jpg
     rbr/    rbr.json    rbr.tif    rbr.thumb.jpg
+  {fire_id}-perimeter/               only when the request publishes a perimeter
+    collection.json  README.md  AGENTS.md  perimeter.parquet  perimeter.pmtiles
+    perimeter.thumb.jpg  styles/default.json
 v2/jobs/{job_id}.json                write-once result record
+v2/requests/{job_id}.json            the canonical request, the Job's input (§1)
 ```
 
 - **One item per index.** Portolan represents each distinct data file in a collection as its
@@ -373,14 +383,25 @@ v2/jobs/{job_id}.json                write-once result record
   - No job ever updates a shared file, so there's no locking and no lost update.
   - Reruns are idempotent.
   - GLEN can import each analysis on its own.
-- **The submitted perimeter isn't published.**
-  - The product is a function of the cache key (§6). The key holds the snapped extent, not the
-    perimeter, so two submissions that share a key share a catalog.
-  - The item's geometry is the raster's footprint, and `fire:h3` lists the cells (§5). The
-    requester already has their perimeter, and it isn't stored.
-  - This also clears rashid's only warning, PTL-DAT-005. The perimeter was a collection-level
-    asset, and its footprint differed from the collection's extent (the buffered raster) by
-    more than rashid's 0.01° tolerance.
+- **A perimeter is published only when asked, as its own collection** (revised 2026-11-15;
+  this reverses "the submitted perimeter isn't published").
+  - The request's `geometry_kind` is `"perimeter"` or `"aoi"` (default). The frontend sets
+    `"perimeter"` when the user uploads a perimeter file; it is never inferred from shape. An
+    AOI is never stored. v1 drew the same line (`boundary_type`).
+  - The product is a function of the cache key (§6), so a published perimeter is part of the
+    key. Its analysis is then its own, and its catalog can hold it.
+  - A single-file Portolan collection beside the analysis's: GeoParquet (`data`), and the
+    PMTiles, `pmtiles` link, thumbnail and default style `portolan add --pmtiles` makes with
+    tippecanoe. The record's `assets` link the GeoParquet and the tiles.
+  - The analysis collection's items keep the raster's footprint as their geometry, and
+    `fire:h3` lists the cells (§5). PTL-DAT-005, rashid's warning when a collection-level
+    asset's footprint differs from the collection's extent, doesn't arise: the perimeter's
+    collection has the perimeter's extent. rashid passes the catalog with no findings.
+  - The collection's own `.portolan/metadata.yaml` replaces the catalog's providers, keywords,
+    source and processing notes; portolan merges metadata from the catalog down. We are the
+    producer, processor and host: a different producer makes the collection a mirror, which
+    must link an upstream source (PTL-PRO-001), and an upload has none. The description says
+    the geometry is the requester's and wasn't checked. Wording: `config/perimeter.yaml`.
 - **A view across fires.**
   - Portolan's way to query items without fetching every JSON is `items.parquet`, the
     collection's "item mirror". It is a SHOULD for every collection with items. portolan-cli
@@ -469,14 +490,21 @@ never uploads it.
       "prefire_window": [start, end],       # verbatim strings
       "postfire_window": [start, end],
       "tiles": {"tms": "WebMercatorQuad", "z": z, "x": [x0, x1], "y": [y0, y1]},  # §2, step 2
+      "perimeter": [[[[lon, lat], ...], ...], ...],  # only for geometry_kind "perimeter"
   }
   ```
 
-- **What shares a key.** The geometry enters only through the snapped box, so perimeters whose
-  buffered boxes snap to the same tile range share a key. Anything else that differs (name,
-  windows, sensor, version) makes a new analysis. The Job receives the canonical form and
-  nothing else, so everything it publishes is a function of the key. That is why the buffer
-  distance, which depends on the perimeter, isn't recorded.
+- **What shares a key.** An AOI enters only through the snapped box, so AOIs whose buffered
+  boxes snap to the same tile range share a key. A perimeter to publish enters whole: its
+  polygons and rings as sent, Z dropped and coordinates in integer micro-degrees (the same
+  normalization the bounds use). The same file gets the same analysis; any other geometry,
+  even one that snaps to the same tiles, computes its own (revised 2026-11-15). Perimeter
+  holders mostly share byte-identical files from an agency, so near-duplicates are rare, and a
+  many-to-many link between perimeters and shared analyses isn't worth its cost. The key is
+  absent for an AOI, so AOI ids didn't change. Anything else that differs (name, windows,
+  sensor, version) makes a new analysis. The Job receives the canonical form and nothing
+  else, so everything it publishes is a function of the key. That is why the buffer distance,
+  which depends on the perimeter, isn't recorded.
 - **Names** match `^[A-Za-z0-9_-]+$` and are at most 128 characters (D20), which keeps
   `v2/fires/{fire_id}/{fire_id}/…` far below GCS's 1024-byte object-name limit.
 - **The trade-off.** A coarser snap keeps more keys stable but adds more area. The product has
@@ -517,7 +545,7 @@ never uploads it.
   one that changes it (new id). No v2 ids exist yet, so there is nothing to migrate.
 - **Cache.** Only success is a hit (D6). A failed record means the next submission reruns.
 - **`POST /v2/severity`** takes `{fire_event_name, geometry, prefire_window, postfire_window,
-  sensor?, email?}`:
+  sensor?, geometry_kind?, email?}`:
   - On a hit, it returns `200 {job_id, state: "succeeded", grid, catalog_url, assets}`. The
     response carries the links, so the API never sends mail.
   - Otherwise it returns `202 {job_id, grid, status_url}`. The status URL always works, so
@@ -530,6 +558,7 @@ never uploads it.
   - The buffered box is at most 100 Mpx at the sensor's resolution, about 200 km × 200 km for
     Sentinel-2. Snapping adds up to about half again.
   - Each window is at most 90 days.
+  - A perimeter to publish has at most 250,000 vertices (about 5.5 MB of request JSON).
   - At most 4 Jobs run at once, counted from the Job API by label. Beyond that the API returns
     `429` with `Retry-After`. Retrying is safe because the id is deterministic.
 - **Access.**
@@ -663,7 +692,7 @@ never uploads it.
   - a Landsat run
   - a long gap between windows
 - The Eureka fixture runs on both targets, with matching pixel values.
-- An identical resubmission returns the same job id and starts no Job. So does a perimeter
+- An identical resubmission returns the same job id and starts no Job. So does an AOI
   shifted slightly without changing its snapped extent.
 - A Python error writes one failed record, retries nothing, and emails both the requester and
   the operator.
@@ -689,10 +718,10 @@ Recorded 2026-11-09.
 | 9 | Providers and license | DSE only, under CC-BY-4.0 (§5). |
 | 10 | portolan-cli | Pinned, with its generated AGENTS.md (§9). |
 | 11 | Thumbnail | RBR with a fixed 0–0.5 ramp (§5). |
-| 12 | PTL-DAT-005 | Gone, because the perimeter isn't published (§4). |
+| 12 | PTL-DAT-005 | Gone: a published perimeter is its own collection, with its own extent (§4). |
 | 13 | v1's `stac/` tree | Read-only from the switch, retired once unused (Rollout). |
 | 14 | Requeue | No requeue code. The Job spec retries platform disruptions under a deadline, and our own failures are reported, not retried (§1). |
-| 15 | Cache | Keyed on the snapped buffered bounds (§6). |
+| 15 | Cache | Keyed on the snapped buffered bounds, plus the perimeter when one is published (§6). |
 | 16 | Where jobs run | Kubernetes Jobs on josh's GKE cluster, with NRP Nautilus as a second target. IAM comes later (§1). |
 | 17 | Snapping | OGC WebMercatorQuad tiles about an eighth of the box, via morecantile. H3 cells are recorded for GLEN but don't set the key (§2, §6). |
 | 18 | Email sender | A Namecheap Private Email mailbox on the project domain, over SMTP. Only jobs send mail (§8). |
@@ -732,8 +761,9 @@ To set up per target when the service account gets its permissions:
 
 - **v2 reuses** its normalizer, its name rule (D8, D20), D6, and its committed-vectors
   approach.
-- **v2 departs** from its canonical form. The WebMercatorQuad tile range replaces the
-  geometry, so perimeter jitter that leaves the tile range unchanged doesn't change the id.
+- **v2 departs** from its canonical form. The WebMercatorQuad tile range replaces an AOI's
+  geometry, so jitter that leaves the tile range unchanged doesn't change the id. A published
+  perimeter keeps only D10's Z drop and quantization; rings stay as sent.
 - **These parts don't apply under v2:**
   - the refine and veg parts of `be-name-validation` and `be-job-id-format`
   - `be-result-path`'s v1 result files

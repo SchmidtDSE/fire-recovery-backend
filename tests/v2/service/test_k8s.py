@@ -42,7 +42,6 @@ API_ENV = {
 def spec(email: Optional[str] = None) -> JobSpec:
     return JobSpec(
         job_id=JOB_ID,
-        canonical_json='{"operation":"fire_severity_v2"}',
         status_url=f"https://api/v2/severity/{JOB_ID}",
         notify_email=email,
     )
@@ -194,7 +193,7 @@ def test_job_manifest() -> None:
     assert container["image"] == IMAGE
     assert container["args"] == ["python", "-m", "src.v2.job.run"]
     env = {item["name"]: item["value"] for item in container["env"]}
-    assert env["SEVERITY_REQUEST"] == '{"operation":"fire_severity_v2"}'
+    assert "SEVERITY_REQUEST" not in env
     assert env["JOB_ID"] == JOB_ID
     assert env["SEVERITY_IMAGE"] == IMAGE
     assert env["SEVERITY_WORKDIR"] == "/scratch"

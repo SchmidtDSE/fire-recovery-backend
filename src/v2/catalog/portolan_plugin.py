@@ -3,7 +3,8 @@
 portolan calls these hooks every time ``add`` or a fix writes an item or a
 collection. Each write is a plain assignment, so running them again changes
 nothing. With no sidecar named in the environment the hooks do nothing, so the
-plugin is inert for any other catalog.
+plugin is inert for any other catalog. A submitted perimeter's collection gets
+only its column descriptions (perimeter.py).
 """
 
 import json
@@ -14,6 +15,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 from portolan_cli.hookspecs import hookimpl as portolan_hookimpl
 
 from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES, Index
+from src.v2.catalog.perimeter import column_descriptions, is_perimeter_collection
 from src.v2.catalog.sidecar import SIDECAR_ENV
 
 # The index whose thumbnail stands for the whole collection, and the copy of
@@ -124,11 +126,18 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
 def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None:
     """Set the temporal extent to the windows; add each index's render.
 
+    The perimeter's collection gets its column descriptions and nothing else.
     portolan registers the collection thumbnail after this hook runs, by
     adopting COLLECTION_THUMBNAIL_FILE, so the hook never sees it.
     """
     sidecar = load_sidecar()
     if sidecar is None:
+        return
+    if is_perimeter_collection(collection.get("id", "")):
+        descriptions = column_descriptions()
+        for column in collection.get("table:columns", []):
+            if column.get("name") in descriptions:
+                column["description"] = descriptions[column["name"]]
         return
     properties = sidecar["properties"]
     collection["extent"]["temporal"]["interval"] = [

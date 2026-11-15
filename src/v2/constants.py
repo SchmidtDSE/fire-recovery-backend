@@ -16,6 +16,9 @@ ENV_IMAGE = "SEVERITY_IMAGE"
 FIRE_EVENT_NAME_MAX_LENGTH = 128
 MAX_WINDOW_DAYS = 90
 MAX_BUFFERED_MEGAPIXELS = 100.0
+# Vertices in a perimeter to publish (geometry_kind "perimeter"). It's part of
+# the canonical request, stored as JSON at about 22 bytes a vertex.
+MAX_PERIMETER_POSITIONS = 250_000
 
 # The snapped tiles are about this fraction of the buffered box's longer side.
 # A coarser snap keeps more keys stable but adds more area (design §6). Part of

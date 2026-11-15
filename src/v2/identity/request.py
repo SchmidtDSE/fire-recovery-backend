@@ -1,24 +1,28 @@
 """The POST /v2/severity request: validation and geometry normalization.
 
 The server validates and never transforms what reaches the job id (D8, D20).
-The geometry is the exception, by design: it enters the key only through its
-bounds (design §6), so it is normalized just far enough to make those bounds
-deterministic. Of the deterministic-job-id D10 steps, that means unwrapping a
-Feature, dropping Z, and quantizing to integer micro-degrees. Promoting a
-Polygon to a MultiPolygon and orienting rings can't move bounds, so they're
-skipped.
+The geometry is the exception, by design. An area of interest enters the key
+only through its bounds (design §6); a perimeter to publish enters it whole.
+Both go through the same normalization, the deterministic-job-id D10 steps
+that matter for either: unwrapping a Feature, dropping Z, and quantizing to
+integer micro-degrees. Rings are kept as sent, in their order and orientation:
+two files describing one boundary differently are two perimeters.
 """
 
 import math
 from datetime import timedelta
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 
 from geojson_pydantic import Feature, MultiPolygon, Polygon
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.util.date_windows import window_bounds
 from src.util.geo_ops import Bounds
-from src.v2.constants import FIRE_EVENT_NAME_MAX_LENGTH, MAX_WINDOW_DAYS
+from src.v2.constants import (
+    FIRE_EVENT_NAME_MAX_LENGTH,
+    MAX_PERIMETER_POSITIONS,
+    MAX_WINDOW_DAYS,
+)
 from src.v2.identity.grid import check_extent
 from src.v2.sensors import SENSOR_DEFAULT, Sensor
 
@@ -54,6 +58,11 @@ DateWindow = Annotated[
 ]
 
 Position = tuple[float, ...]
+Ring = list[Position]
+GeometryKind = Literal["perimeter", "aoi"]
+# A normalized polygonal geometry: polygons of rings of (lon, lat) in integer
+# micro-degrees, a Polygon as one polygon.
+QuantizedParts = list[list[list[tuple[int, int]]]]
 
 
 def quantize(value: float) -> int:
@@ -65,10 +74,10 @@ def quantize(value: float) -> int:
     return math.floor(value * MICRODEGREES_PER_DEGREE + 0.5)
 
 
-def polygon_rings(
+def polygon_parts(
     geometry: Union[Polygon, MultiPolygon, Feature],
-) -> list[list[Position]]:
-    """Every ring of a polygonal geometry, unwrapping a Feature.
+) -> list[list[Ring]]:
+    """Each polygon's rings, exterior first, unwrapping a Feature.
 
     Raises:
         ValueError: if a Feature has no geometry or a non-polygonal one.
@@ -83,9 +92,27 @@ def polygon_rings(
                 f"not {inner.type}"
             )
         geometry = inner
-    if isinstance(geometry, Polygon):
-        return [[tuple(p) for p in ring] for ring in geometry.coordinates]
-    return [[tuple(p) for p in ring] for poly in geometry.coordinates for ring in poly]
+    polygons = (
+        [geometry.coordinates]
+        if isinstance(geometry, Polygon)
+        else geometry.coordinates
+    )
+    return [[[tuple(p) for p in ring] for ring in poly] for poly in polygons]
+
+
+def polygon_rings(
+    geometry: Union[Polygon, MultiPolygon, Feature],
+) -> list[Ring]:
+    """Every ring of a polygonal geometry, unwrapping a Feature."""
+    return [ring for poly in polygon_parts(geometry) for ring in poly]
+
+
+def quantized_parts(geometry: Union[Polygon, MultiPolygon, Feature]) -> QuantizedParts:
+    """The geometry normalized: Z dropped, lon and lat quantized, rings as sent."""
+    return [
+        [[(quantize(p[0]), quantize(p[1])) for p in ring] for ring in poly]
+        for poly in polygon_parts(geometry)
+    ]
 
 
 def window_days(window: list[str]) -> float:
@@ -124,8 +151,18 @@ class SeverityRequest(BaseModel):
     geometry: Union[Polygon, MultiPolygon, Feature] = Field(
         ...,
         description=(
-            "Fire perimeter: a Polygon, a MultiPolygon, or a Feature holding one. "
-            "Only its bounds are used, and it is not stored."
+            "Fire perimeter or area of interest: a Polygon, a MultiPolygon, or a "
+            "Feature holding one. Only its bounds place the analysis. It is stored "
+            "and published only when geometry_kind is 'perimeter'."
+        ),
+    )
+    geometry_kind: GeometryKind = Field(
+        default="aoi",
+        description=(
+            "'perimeter' if the geometry is a fire perimeter the requester wants "
+            "published: it becomes part of the job id and is published in the "
+            "analysis's catalog. 'aoi' (default) for an area drawn only to place "
+            "the analysis: only its bounds are used, and it is never stored."
         ),
     )
     prefire_window: DateWindow
@@ -147,6 +184,13 @@ class SeverityRequest(BaseModel):
     @model_validator(mode="after")
     def _check(self) -> "SeverityRequest":
         check_extent(self.bounds())
+        if self.geometry_kind == "perimeter":
+            positions = sum(len(ring) for ring in polygon_rings(self.geometry))
+            if positions > MAX_PERIMETER_POSITIONS:
+                raise ValueError(
+                    f"The perimeter has {positions} vertices; the limit for "
+                    f"publishing one is {MAX_PERIMETER_POSITIONS}"
+                )
         for label, window in (
             ("prefire_window", self.prefire_window),
             ("postfire_window", self.postfire_window),
@@ -162,15 +206,15 @@ class SeverityRequest(BaseModel):
             raise ValueError("prefire_window must end before postfire_window starts")
         return self
 
-    def bounds(self) -> Bounds:
-        """Bounds of the geometry after D10 normalization, in degrees.
+    def quantized(self) -> QuantizedParts:
+        """The normalized geometry: what the bounds and a perimeter come from."""
+        return quantized_parts(self.geometry)
 
-        Quantizing is monotonic, so quantizing the bounds equals the bounds of
-        the quantized coordinates.
-        """
-        positions = [p for ring in polygon_rings(self.geometry) for p in ring]
-        lons = [quantize(p[0]) for p in positions]
-        lats = [quantize(p[1]) for p in positions]
+    def bounds(self) -> Bounds:
+        """Bounds of the normalized geometry, in degrees."""
+        positions = [p for poly in self.quantized() for ring in poly for p in ring]
+        lons = [p[0] for p in positions]
+        lats = [p[1] for p in positions]
         return (
             min(lons) / MICRODEGREES_PER_DEGREE,
             min(lats) / MICRODEGREES_PER_DEGREE,

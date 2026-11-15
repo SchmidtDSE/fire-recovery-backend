@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from src.v2.constants import PIPELINE_VERSION
 from src.v2.identity.job_id import CanonicalRequest, canonical_request, fire_id
-from src.v2.identity.request import SeverityRequest
+from src.v2.identity.request import SeverityRequest, quantize
 
 BODY = {
     "fire_event_name": "Geology_Fire",
@@ -79,3 +79,79 @@ def test_job_id_is_a_uuid5(canonical: CanonicalRequest) -> None:
 )
 def test_fire_id(name: str, expected: str) -> None:
     assert fire_id(name, "0123abcd-0000-5000-8000-000000000000") == expected
+
+
+def perimeter_body(ring: list[list[float]]) -> dict:
+    return {
+        **BODY,
+        "geometry_kind": "perimeter",
+        "geometry": {"type": "Polygon", "coordinates": [ring]},
+    }
+
+
+RING = BODY["geometry"]["coordinates"][0]  # type: ignore[index]
+
+
+def job_id_of(body: dict) -> str:
+    return canonical_request(SeverityRequest.model_validate(body)).job_id()
+
+
+def test_an_aoi_form_has_no_perimeter_key(canonical: CanonicalRequest) -> None:
+    # So every area-of-interest id is what it was before perimeters existed.
+    assert canonical.perimeter is None
+    assert "perimeter" not in json.loads(canonical.to_json())
+
+
+def test_the_same_perimeter_gets_the_same_id() -> None:
+    assert job_id_of(perimeter_body(RING)) == job_id_of(perimeter_body(RING))
+
+
+def test_a_perimeter_and_an_aoi_of_one_shape_are_different_jobs(
+    canonical: CanonicalRequest,
+) -> None:
+    assert job_id_of(perimeter_body(RING)) != canonical.job_id()
+
+
+def test_perimeters_snapping_to_the_same_tiles_are_different_jobs() -> None:
+    moved = [list(p) for p in RING]
+    moved[1][1] += 0.0001
+    moved[2][1] += 0.0001
+    first = canonical_request(SeverityRequest.model_validate(perimeter_body(RING)))
+    second = canonical_request(SeverityRequest.model_validate(perimeter_body(moved)))
+    assert first.tiles == second.tiles
+    assert first.job_id() != second.job_id()
+
+
+def test_a_perimeter_is_normalized_like_the_bounds_and_otherwise_kept() -> None:
+    with_z = [[x, y, 120.0] for x, y in RING]
+    reversed_ring = list(reversed(RING))
+    canonical = canonical_request(
+        SeverityRequest.model_validate(perimeter_body(with_z))
+    )
+    assert canonical.perimeter == [[[(quantize(x), quantize(y)) for x, y in RING]]]
+    # Z dropped and float noise below a micro-degree absorbed: the same id.
+    noisy = [[x + 1e-9, y - 1e-9] for x, y in RING]
+    assert canonical.job_id() == job_id_of(perimeter_body(noisy))
+    # The ring is kept as sent, so another orientation is another perimeter.
+    assert canonical.job_id() != job_id_of(perimeter_body(reversed_ring))
+
+
+def test_a_perimeter_form_round_trips_to_the_same_id() -> None:
+    canonical = canonical_request(SeverityRequest.model_validate(perimeter_body(RING)))
+    again = CanonicalRequest.model_validate_json(canonical.to_json())
+    assert again.job_id() == canonical.job_id()
+    assert again.perimeter_geometry() == {
+        "type": "MultiPolygon",
+        "coordinates": [[RING]],
+    }
+
+
+def test_the_summary_counts_the_perimeter_instead_of_listing_it() -> None:
+    canonical = canonical_request(SeverityRequest.model_validate(perimeter_body(RING)))
+    summary = json.loads(canonical.summary())
+    assert summary["perimeter"] == "5 vertices"
+    assert summary["fire_event_name"] == "Geology_Fire"
+
+
+def test_an_aoi_summary_is_its_form(canonical: CanonicalRequest) -> None:
+    assert canonical.summary() == canonical.to_json()

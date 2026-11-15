@@ -114,10 +114,14 @@ class Store:
 
     def put_json(self, key: str, value: Dict[str, Any]) -> None:
         """Write ``value`` as JSON at ``key`` in one PUT, never to be cached."""
+        self.put_text(key, json.dumps(value, indent=1))
+
+    def put_text(self, key: str, text: str) -> None:
+        """Write JSON text at ``key`` exactly as given, in one PUT, never cached."""
         obstore.put(
             self._store,
             key,
-            json.dumps(value, indent=1).encode(),
+            text.encode(),
             use_multipart=False,
             attributes={"Content-Type": JSON_CONTENT_TYPE, "Cache-Control": NO_STORE},
         )
