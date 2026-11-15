@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 import geopandas as gpd
 import pytest
+from shapely.geometry import shape
 
 from src.models.provenance import Provenance
 from src.v2.catalog.build import CatalogResult, build_catalog
@@ -45,7 +46,7 @@ def built(
         description="dNBR, RdNBR and RBR for Geology_Fire.",
         item_datetime=canonical.postfire_window[1],
         source_url="https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a",
-        perimeter=Perimeter(fire_event_name="Geology_Fire", geometry=GEOMETRY),
+        perimeter=Perimeter(fire_event_name="Geology_Fire", geometry=shape(GEOMETRY)),
     )
 
 

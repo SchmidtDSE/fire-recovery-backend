@@ -12,6 +12,7 @@ import numpy as np
 import obstore
 import pytest
 import rasterio
+from shapely.geometry import MultiPolygon, Polygon
 
 from src.models.provenance import Provenance
 from src.v2.catalog.build import build_catalog
@@ -66,17 +67,18 @@ def test_push_a_catalog_with_a_large_cog_and_a_perimeter(
         source_url=None,
         perimeter=Perimeter(
             fire_event_name="Storage_Test",
-            geometry={
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [-116.09, 33.88],
-                        [-116.02, 33.88],
-                        [-116.02, 33.93],
-                        [-116.09, 33.88],
-                    ]
-                ],
-            },
+            geometry=MultiPolygon(
+                [
+                    Polygon(
+                        [
+                            (-116.09, 33.88),
+                            (-116.02, 33.88),
+                            (-116.02, 33.93),
+                            (-116.09, 33.88),
+                        ]
+                    )
+                ]
+            ),
         ),  # fmt: skip
     )
     prefix = catalog_prefix(fid)

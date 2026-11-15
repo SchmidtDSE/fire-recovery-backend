@@ -16,9 +16,11 @@ vectors follow deterministic-job-id-2026-09.
 import json
 import re
 import uuid
-from typing import Any, Dict, Final, Literal, Optional
+from typing import Final, Literal, Optional
 
+import shapely
 from pydantic import BaseModel, ConfigDict
+from shapely.geometry import MultiPolygon, Polygon
 
 from src.util.geo_ops import Bounds, buffered_bounds
 from src.v2.constants import PIPELINE_VERSION
@@ -70,16 +72,18 @@ class CanonicalRequest(BaseModel):
             value["perimeter"] = f"{perimeter_positions(self.perimeter)} vertices"
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
-    def perimeter_geometry(self) -> Optional[Dict[str, Any]]:
-        """The perimeter as a GeoJSON MultiPolygon in degrees, if there is one."""
+    def perimeter_geometry(self) -> Optional[MultiPolygon]:
+        """The perimeter as a MultiPolygon in degrees, if there is one.
+
+        Its rings are the quantized rings as sent, in their order and
+        orientation; only the unit changes.
+        """
         if self.perimeter is None:
             return None
-        coordinates = [
-            [[[x / MICRODEGREES_PER_DEGREE, y / MICRODEGREES_PER_DEGREE]
-              for x, y in ring] for ring in poly]
-            for poly in self.perimeter
-        ]  # fmt: skip
-        return {"type": "MultiPolygon", "coordinates": coordinates}
+        polygons = [Polygon(rings[0], rings[1:]) for rings in self.perimeter]
+        return shapely.transform(
+            MultiPolygon(polygons), lambda xy: xy / MICRODEGREES_PER_DEGREE
+        )
 
 
 def perimeter_positions(perimeter: QuantizedParts) -> int:

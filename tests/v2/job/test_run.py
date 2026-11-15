@@ -140,7 +140,7 @@ def test_a_perimeter_is_built_and_linked_in_the_record(
     perimeter = stages["perimeter"]
     assert isinstance(perimeter, Perimeter)
     assert perimeter.fire_event_name == "Geology_Fire"
-    assert perimeter.geometry["coordinates"][0][0][0] == [-116.098276, 33.880794]
+    assert perimeter.geometry.geoms[0].exterior.coords[0] == (-116.098276, 33.880794)
     assets = store.objects[record_key(ctx.job_id)]["assets"]
     folder = f"{ctx.fire_id}/{ctx.fire_id}-perimeter"
     assert assets["perimeter"].endswith(f"{folder}/perimeter.parquet")
