@@ -6,6 +6,7 @@ from typing import Any, Dict
 import pytest
 from pydantic import ValidationError
 
+from src.v2.identity import request as request_module
 from src.v2.identity.request import SeverityRequest, quantize
 
 BODY: Dict[str, Any] = {
@@ -149,3 +150,14 @@ def test_multipolygon_bounds_span_every_part() -> None:
     }
     request = SeverityRequest.model_validate(body(geometry=geometry))
     assert request.bounds() == (-116.1, 33.8, -115.7, 34.2)
+
+
+def test_a_perimeter_over_the_vertex_limit_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(request_module, "MAX_PERIMETER_POSITIONS", 4)
+    body = {**BODY, "geometry_kind": "perimeter"}
+    with pytest.raises(ValidationError, match="limit for publishing one is 4"):
+        SeverityRequest.model_validate(body)
+    # An area of interest is only ever reduced to its bounds: no limit.
+    SeverityRequest.model_validate(BODY)

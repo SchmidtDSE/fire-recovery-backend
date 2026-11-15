@@ -13,7 +13,7 @@ from src.v2.service import api
 from src.v2.service.access import RateLimiter, hash_key
 from src.v2.identity.job_id import canonical_request
 from src.v2.service.launcher import DispatchUnavailable, JobSpec, JobStatus
-from src.v2.record import record_key
+from src.v2.record import record_key, request_key
 from src.v2.identity.request import SeverityRequest
 
 VECTORS = Path(__file__).parents[2] / "fixtures" / "v2_job_id_vectors.json"
@@ -24,9 +24,16 @@ JOB_ID = canonical_request(SeverityRequest.model_validate(BODY)).job_id()
 class FakeStore:
     def __init__(self) -> None:
         self.objects: Dict[str, Dict[str, Any]] = {}
+        self.texts: Dict[str, str] = {}
+        self.works = True
 
     def get_json(self, key: str) -> Optional[Dict[str, Any]]:
         return self.objects.get(key)
+
+    def put_text(self, key: str, text: str) -> None:
+        if not self.works:
+            raise OSError("storage is down")
+        self.texts[key] = text
 
 
 class FakeLauncher:
@@ -103,8 +110,35 @@ def test_new_request_starts_a_job(client: TestClient, launcher: FakeLauncher) ->
     assert body["grid"]["tiles"]["tms"] == "WebMercatorQuad"
     (spec,) = launcher.started
     assert spec.job_id == JOB_ID
-    assert json.loads(spec.canonical_json)["fire_event_name"] == "Geology_Fire"
     assert spec.notify_email == "someone@example.org"
+
+
+def test_the_request_is_stored_for_the_job_as_its_exact_preimage(
+    client: TestClient, store: FakeStore
+) -> None:
+    client.post("/v2/severity", json=BODY)
+    canonical = canonical_request(SeverityRequest.model_validate(BODY))
+    assert store.texts == {request_key(JOB_ID): canonical.to_json()}
+
+
+def test_a_perimeter_is_part_of_the_job_id_and_the_stored_request(
+    client: TestClient, store: FakeStore, launcher: FakeLauncher
+) -> None:
+    body = client.post(
+        "/v2/severity", json={**BODY, "geometry_kind": "perimeter"}
+    ).json()
+    assert body["job_id"] != JOB_ID
+    stored = json.loads(store.texts[request_key(body["job_id"])])
+    assert stored["perimeter"][0][0][0] == [-116098276, 33929925]
+    assert [spec.job_id for spec in launcher.started] == [body["job_id"]]
+
+
+def test_no_job_starts_if_the_request_cant_be_stored(
+    client: TestClient, store: FakeStore, launcher: FakeLauncher
+) -> None:
+    store.works = False
+    assert client.post("/v2/severity", json=BODY).status_code == 503
+    assert launcher.started == []
 
 
 def test_status_url_can_use_the_public_base(

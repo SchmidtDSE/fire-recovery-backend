@@ -3,7 +3,8 @@
 portolan calls these hooks every time ``add`` or a fix writes an item or a
 collection. Each write is a plain assignment, so running them again changes
 nothing. With no sidecar named in the environment the hooks do nothing, so the
-plugin is inert for any other catalog.
+plugin is inert for any other catalog. A submitted perimeter's collection gets
+only its column descriptions (perimeter.py).
 """
 
 import json
@@ -14,6 +15,7 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 from portolan_cli.hookspecs import hookimpl as portolan_hookimpl
 
 from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES, Index
+from src.v2.catalog.perimeter import column_descriptions, is_perimeter_collection
 from src.v2.catalog.sidecar import SIDECAR_ENV
 
 # The index whose thumbnail stands for the whole collection, and the copy of
@@ -78,6 +80,68 @@ def load_sidecar() -> Optional[Dict[str, Any]]:
     return sidecar
 
 
+def add_fire_properties(item: Dict[str, Any], sidecar: Dict[str, Any]) -> None:
+    """The analysis's properties (windows, scenes, grid, method) and extensions."""
+    item["properties"].update(sidecar["properties"])
+    extensions = item.setdefault("stac_extensions", [])
+    for uri in sidecar.get("stac_extensions", []):
+        if uri not in extensions:
+            extensions.append(uri)
+
+
+def title_item(item: Dict[str, Any], index: Index) -> None:
+    item["properties"]["title"] = index.title
+    item["properties"]["description"] = index.description
+
+
+def key_cog_by_index(assets: Dict[str, Any], index: Index) -> None:
+    """portolan keys an item's primary file "data"; key it by the index instead."""
+    if "data" in assets:
+        assets[index.name] = assets.pop("data")
+
+
+def describe_cog(asset: Dict[str, Any], index: Index, sidecar: Dict[str, Any]) -> None:
+    """The COG asset's title, description, formula and band table."""
+    asset["title"] = index.title
+    asset["description"] = index.description
+    asset["processing:expression"] = {
+        "format": EXPRESSION_FORMAT,
+        "expression": index.expression,
+    }
+    asset["bands"] = [
+        dict(band, name=index.name, unit=BAND_UNIT)
+        for band in sidecar["bands"][index.name]
+    ]
+
+
+def title_thumbnail(asset: Dict[str, Any], index: Index) -> None:
+    asset["title"] = thumbnail_title(index)
+
+
+def describe_perimeter_columns(collection: Dict[str, Any]) -> None:
+    """The perimeter GeoParquet's column descriptions (config/perimeter.yaml)."""
+    descriptions = column_descriptions()
+    for column in collection.get("table:columns", []):
+        if column.get("name") in descriptions:
+            column["description"] = descriptions[column["name"]]
+
+
+def set_temporal_extent(collection: Dict[str, Any], sidecar: Dict[str, Any]) -> None:
+    """The collection's temporal extent: the prefire start to the postfire end."""
+    properties = sidecar["properties"]
+    collection["extent"]["temporal"]["interval"] = [
+        [properties["start_datetime"], properties["end_datetime"]]
+    ]
+
+
+def add_renders(collection: Dict[str, Any]) -> None:
+    """Each index's render (render extension v2)."""
+    collection["renders"] = renders()
+    extensions = collection.setdefault("stac_extensions", [])
+    if RENDER_EXTENSION not in extensions:
+        extensions.append(RENDER_EXTENSION)
+
+
 @hookimpl
 def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
     """Title the item after its index; add the fire properties and the method.
@@ -91,50 +155,29 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
     index = INDEX_BY_NAME.get(item.get("id", ""))
     if index is None:
         return
-    properties = item["properties"]
-    properties.update(sidecar["properties"])
-    properties["title"] = index.title
-    properties["description"] = index.description
-    extensions = item.setdefault("stac_extensions", [])
-    for uri in sidecar.get("stac_extensions", []):
-        if uri not in extensions:
-            extensions.append(uri)
+    add_fire_properties(item, sidecar)
+    title_item(item, index)
     assets = item.setdefault("assets", {})
-    # portolan keys an item's primary file "data"; key it by the index instead.
-    if "data" in assets:
-        assets[index.name] = assets.pop("data")
-    asset = assets.get(index.name)
-    if asset is not None:
-        asset["title"] = index.title
-        asset["description"] = index.description
-        asset["processing:expression"] = {
-            "format": EXPRESSION_FORMAT,
-            "expression": index.expression,
-        }
-        asset["bands"] = [
-            dict(band, name=index.name, unit=BAND_UNIT)
-            for band in sidecar["bands"][index.name]
-        ]
-    thumbnail = assets.get("thumbnail")
-    if thumbnail is not None:
-        thumbnail["title"] = thumbnail_title(index)
+    key_cog_by_index(assets, index)
+    if index.name in assets:
+        describe_cog(assets[index.name], index, sidecar)
+    if "thumbnail" in assets:
+        title_thumbnail(assets["thumbnail"], index)
 
 
 @hookimpl
 def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None:
     """Set the temporal extent to the windows; add each index's render.
 
+    The perimeter's collection gets its column descriptions and nothing else.
     portolan registers the collection thumbnail after this hook runs, by
     adopting COLLECTION_THUMBNAIL_FILE, so the hook never sees it.
     """
     sidecar = load_sidecar()
     if sidecar is None:
         return
-    properties = sidecar["properties"]
-    collection["extent"]["temporal"]["interval"] = [
-        [properties["start_datetime"], properties["end_datetime"]]
-    ]
-    collection["renders"] = renders()
-    extensions = collection.setdefault("stac_extensions", [])
-    if RENDER_EXTENSION not in extensions:
-        extensions.append(RENDER_EXTENSION)
+    if is_perimeter_collection(collection.get("id", "")):
+        describe_perimeter_columns(collection)
+        return
+    set_temporal_extent(collection, sidecar)
+    add_renders(collection)

@@ -12,13 +12,16 @@ import numpy as np
 import obstore
 import pytest
 import rasterio
+from shapely.geometry import MultiPolygon, Polygon
 
 from src.models.provenance import Provenance
 from src.v2.catalog.build import build_catalog
+from src.v2.catalog.perimeter import PMTILES_FILE, Perimeter, collection_id
 from src.v2.identity.grid import Grid
 from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.catalog.publish import catalog_prefix, publish
 from src.v2.catalog.sidecar import build_sidecar
+from src.v2.record import request_key
 from src.v2.store import DEFAULT_BUCKET, V1_BUCKET, Store, StoreSettings
 from tests.v2.conftest import write_index_cogs
 
@@ -37,7 +40,7 @@ def store() -> Store:
     return Store(settings)
 
 
-def test_push_a_catalog_with_a_large_cog(
+def test_push_a_catalog_with_a_large_cog_and_a_perimeter(
     tmp_path: Path,
     store: Store,
     canonical: CanonicalRequest,
@@ -62,6 +65,21 @@ def test_push_a_catalog_with_a_large_cog(
         description="Push check.",
         item_datetime=canonical.postfire_window[1],
         source_url=None,
+        perimeter=Perimeter(
+            fire_event_name="Storage_Test",
+            geometry=MultiPolygon(
+                [
+                    Polygon(
+                        [
+                            (-116.09, 33.88),
+                            (-116.02, 33.88),
+                            (-116.02, 33.93),
+                            (-116.09, 33.88),
+                        ]
+                    )
+                ]
+            ),
+        ),  # fmt: skip
     )
     prefix = catalog_prefix(fid)
     try:
@@ -74,6 +92,8 @@ def test_push_a_catalog_with_a_large_cog(
         # A range read, as a COG reader makes.
         first = bytes(obstore.get_range(store._store, cog_key, start=0, end=16))
         assert first[:2] in (b"II", b"MM")
+        tiles = f"{prefix}/{collection_id(fid)}/{PMTILES_FILE}"
+        assert obstore.head(store._store, tiles)["size"] > 0
 
         # Publishing again empties the prefix and succeeds.
         publish(built.root, fid, store)
@@ -82,3 +102,20 @@ def test_push_a_catalog_with_a_large_cog(
         store.delete_prefix(f"{prefix}/")
     with rasterio.open(built.root / fid / "rbr" / "rbr.tif") as ds:
         assert np.isfinite(ds.read(1, window=((10, 20), (10, 20)))).all()
+
+
+def test_a_stored_request_reads_back_to_its_job_id(
+    store: Store, canonical: CanonicalRequest
+) -> None:
+    ring = [(-116098276, 33880794), (-116019318, 33880794),
+            (-116019318, 33929925), (-116098276, 33880794)]  # fmt: skip
+    with_perimeter = canonical.model_copy(update={"perimeter": [[ring]]})
+    job_id = with_perimeter.job_id()
+    key = f"storage-test/{request_key(job_id)}"
+    try:
+        store.put_text(key, with_perimeter.to_json())
+        stored = store.get_json(key)
+        assert stored is not None
+        assert CanonicalRequest.model_validate(stored).job_id() == job_id
+    finally:
+        store.delete_prefix(key)

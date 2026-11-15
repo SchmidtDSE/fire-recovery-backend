@@ -39,6 +39,7 @@ Submit an analysis: a fire perimeter, two date windows and, optionally, an email
   "prefire_window": ["2023-06-01", "2023-06-09"],
   "postfire_window": ["2023-06-17", "2023-06-22"],
   "sensor": "sentinel-2",
+  "geometry_kind": "aoi",
   "email": "optional@example.org"
 }
 ```
@@ -46,9 +47,16 @@ Submit an analysis: a fire perimeter, two date windows and, optionally, an email
 - `fire_event_name` matches `^[A-Za-z0-9_-]+$`, at most 128 characters.
 - Each window is `[start, end]`; the end date includes its whole day. Windows are at most 90
   days, and the prefire window ends before the postfire window starts.
-- `geometry` is a Polygon, a MultiPolygon or a Feature. Only its bounds are used: they are
-  buffered and snapped to WebMercatorQuad tiles, and requests that snap to the same tiles (with
-  the same name, windows and sensor) share one job id and one analysis.
+- `geometry` is a Polygon, a MultiPolygon or a Feature. Its bounds place the analysis: they
+  are buffered and snapped to WebMercatorQuad tiles.
+- `geometry_kind` is `"aoi"` (default) or `"perimeter"`.
+  - `"aoi"`: only the bounds are used, and the geometry is never stored. Requests that snap to
+    the same tiles (with the same name, windows and sensor) share one job id and one analysis.
+  - `"perimeter"`: an uploaded fire perimeter the requester wants published, at most 250,000
+    vertices. It is part of the job id (rounded to micro-degrees, Z dropped), so the same file
+    gets the same analysis and any other geometry gets its own. The analysis's catalog holds
+    it as a second collection, `{fire_id}-perimeter` (GeoParquet and PMTiles), and `assets`
+    links both as `perimeter` and `perimeter-tiles`.
 
 Responses:
 

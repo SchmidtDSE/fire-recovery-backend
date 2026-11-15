@@ -40,7 +40,7 @@ from src.v2.service.launcher import (
     Launcher,
     SubprocessLauncher,
 )
-from src.v2.record import record_key
+from src.v2.record import record_key, request_key
 from src.v2.identity.request import SeverityRequest
 from src.v2.sensors import SENSOR_GRIDS
 from src.v2.store import Store
@@ -164,6 +164,18 @@ def read_record(store: Store, job_id: str) -> Optional[Dict[str, Any]]:
         raise HTTPException(503, "The result store is unavailable") from e
 
 
+def store_request(store: Store, job_id: str, canonical_json: str) -> None:
+    """Write the canonical request where the Job reads it.
+
+    Keyed by its own hash, so writing it again writes the same bytes.
+    """
+    try:
+        store.put_text(request_key(job_id), canonical_json)
+    except Exception as e:
+        logger.error(f"Storing the request for {job_id} failed: {e}")
+        raise HTTPException(503, "Storage is unavailable") from e
+
+
 def accepted(job_id: str, state: str, grid: GridInfo, url: str) -> JSONResponse:
     body = SeverityAccepted(job_id=job_id, state=state, grid=grid, status_url=url)  # type: ignore[arg-type]
     return JSONResponse(body.model_dump(mode="json"), status_code=202)
@@ -206,8 +218,9 @@ def submit_severity(
 ) -> JSONResponse:
     """Submit an analysis, or get the existing one for the same key.
 
-    Requests whose perimeters snap to the same tiles, with the same name,
-    windows and sensor, share one job id and one analysis. The status URL
+    Areas of interest that snap to the same tiles, with the same name,
+    windows and sensor, share one job id and one analysis. A perimeter to
+    publish is part of the id, so its analysis is its own. The status URL
     always works; the optional email reaches the requester whose submission
     starts the job.
     """
@@ -261,13 +274,9 @@ def submit_severity(
         if status.finished:
             # A failed run, or a finished Job whose record says it failed: run again.
             launcher.delete(job_id)
+        store_request(store, job_id, canonical.to_json())
         started = launcher.start(
-            JobSpec(
-                job_id=job_id,
-                canonical_json=canonical.to_json(),
-                status_url=url,
-                notify_email=body.email,
-            )
+            JobSpec(job_id=job_id, status_url=url, notify_email=body.email)
         )
     except DispatchUnavailable as e:
         logger.error(f"Dispatch unavailable for {job_id}: {e}")

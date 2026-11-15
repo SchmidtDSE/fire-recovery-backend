@@ -18,8 +18,8 @@ from src.v2.constants import ENV_IMAGE
 
 JobPhase = Literal["pending", "running", "succeeded", "failed", "unknown"]
 
-# The variables a job reads (see src/v2/job/run.py).
-ENV_REQUEST = "SEVERITY_REQUEST"
+# The variables a job reads (see src/v2/job/run.py). Its request is in the
+# bucket, under its job id (src/v2/record.py).
 ENV_JOB_ID = "JOB_ID"
 ENV_NOTIFY_EMAIL = "NOTIFY_EMAIL"
 ENV_STATUS_URL = "STATUS_URL"
@@ -50,16 +50,14 @@ class JobStatus:
 
 @dataclass(frozen=True)
 class JobSpec:
-    """What a job needs: the canonical request, and where to report."""
+    """What a job needs: its id, which names its stored request, and where to report."""
 
     job_id: str
-    canonical_json: str
     status_url: str
     notify_email: Optional[str] = None
 
     def environment(self) -> Dict[str, str]:
         env = {
-            ENV_REQUEST: self.canonical_json,
             ENV_JOB_ID: self.job_id,
             ENV_STATUS_URL: self.status_url,
         }

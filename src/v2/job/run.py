@@ -1,7 +1,8 @@
 """``python -m src.v2.job.run``: one analysis, start to finish (design §1, §2).
 
-The Job's only input is the canonical request, in SEVERITY_REQUEST; the job id
-is derived from it, so the code that computed an id is the code that runs it.
+The Job's only input is the canonical request, which the API stores under the
+job id (src/v2/record.py); the Job re-derives the id from it, so the code that
+computed an id is the code that runs it.
 The run searches, composites, builds and validates the catalog, publishes it,
 writes the result record and emails the requester.
 
@@ -31,14 +32,19 @@ from src.v2.raster.pipeline import compute
 from src.v2.catalog.build import item_directory
 from src.v2.catalog.portolan_plugin import COLLECTION_THUMBNAIL_INDEX, thumbnail_file
 from src.v2.catalog.publish import catalog_prefix, publish
-from src.v2.record import ResultRecord, record_key
+from src.v2.catalog.perimeter import (
+    PERIMETER_FILE,
+    PMTILES_FILE,
+    Perimeter,
+    collection_id,
+)
+from src.v2.record import ResultRecord, record_key, request_key
 from src.v2.catalog.sidecar import build_sidecar
 from src.v2.store import Store
 from src.v2.templates import render
 
 logger = logging.getLogger("src.v2.job.run")
 
-ENV_REQUEST = "SEVERITY_REQUEST"
 ENV_JOB_ID = "JOB_ID"
 ENV_NOTIFY_EMAIL = "NOTIFY_EMAIL"
 ENV_STATUS_URL = "STATUS_URL"
@@ -81,6 +87,13 @@ def summarize(error: BaseException) -> str:
     return text[:ERROR_SUMMARY_CHARS]
 
 
+def perimeter_of(canonical: CanonicalRequest) -> Optional[Perimeter]:
+    geometry = canonical.perimeter_geometry()
+    if geometry is None:
+        return None
+    return Perimeter(fire_event_name=canonical.fire_event_name, geometry=geometry)
+
+
 def analyze(ctx: RunContext, store: Store) -> ResultRecord:
     """Compute, build, validate and publish; return the succeeded record."""
     canonical = ctx.canonical
@@ -107,6 +120,7 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
         ),
         item_datetime=canonical.postfire_window[1],
         source_url=f"{source.api.rstrip('/')}/collections/{source.collection}",
+        perimeter=perimeter_of(canonical),
     )
     catalog_url = publish(catalog.root, ctx.fire_id, store)
     collection_prefix = f"{catalog_prefix(ctx.fire_id)}/{ctx.fire_id}"
@@ -118,6 +132,12 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
     assets["thumbnail"] = store.public_url(
         f"{collection_prefix}/{thumb}/{thumbnail_file(thumb)}"
     )
+    if canonical.perimeter is not None:
+        perimeter_prefix = f"{catalog_prefix(ctx.fire_id)}/{collection_id(ctx.fire_id)}"
+        assets["perimeter"] = store.public_url(f"{perimeter_prefix}/{PERIMETER_FILE}")
+        assets["perimeter-tiles"] = store.public_url(
+            f"{perimeter_prefix}/{PMTILES_FILE}"
+        )
     own, child = peak_rss_mib()
     return ResultRecord(
         job_id=ctx.job_id,
@@ -191,7 +211,7 @@ def notify_failure(
         name=name,
         image=ctx.image,
         git_sha=ctx.git_sha,
-        request=ctx.canonical.to_json(),
+        request=ctx.canonical.summary(),
         trace=trace,
     )
     if report is not None:
@@ -238,29 +258,32 @@ def main(
     store_factory: Callable[[], Store] = Store.from_env,
     mailer_factory: Callable[[], Mailer] = lambda: Mailer(SmtpSettings.from_env()),
 ) -> int:
-    """Read the request from the environment (or --request-file) and run it."""
+    """Read the request stored under $JOB_ID (or --request-file) and run it."""
     parser = argparse.ArgumentParser(prog="python -m src.v2.job.run")
     parser.add_argument(
         "--request-file",
         type=Path,
-        help=f"Canonical request JSON instead of ${ENV_REQUEST}",
+        help=f"Canonical request JSON instead of the one stored under ${ENV_JOB_ID}",
     )
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
 
-    text = (
-        args.request_file.read_text()
-        if args.request_file
-        else os.environ.get(ENV_REQUEST)
-    )
-    if not text:
-        logger.error(f"No request: set {ENV_REQUEST} or pass --request-file")
-        return EXIT_BAD_INPUT
-    canonical = CanonicalRequest.model_validate_json(text)
-    job_id = canonical.job_id()
+    store = store_factory()
     expected = os.environ.get(ENV_JOB_ID)
+    if args.request_file:
+        canonical = CanonicalRequest.model_validate_json(args.request_file.read_text())
+    elif expected:
+        stored = store.get_json(request_key(expected))
+        if stored is None:
+            logger.error(f"No request stored at {request_key(expected)}")
+            return EXIT_BAD_INPUT
+        canonical = CanonicalRequest.model_validate(stored)
+    else:
+        logger.error(f"No request: set {ENV_JOB_ID} or pass --request-file")
+        return EXIT_BAD_INPUT
+    job_id = canonical.job_id()
     if expected and expected != job_id:
         # The API and this image derive ids differently: a version skew. Abort
         # before writing anything under either id.
@@ -280,7 +303,7 @@ def main(
         image=os.environ.get(ENV_IMAGE) or None,
     )
     logger.info(f"Job {job_id}: {ctx.fire_id}")
-    return run(ctx, store_factory(), mailer_factory())
+    return run(ctx, store, mailer_factory())
 
 
 if __name__ == "__main__":
