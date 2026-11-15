@@ -4,7 +4,8 @@ portolan calls these hooks every time ``add`` or a fix writes an item or a
 collection. Each write is a plain assignment, so running them again changes
 nothing. With no sidecar named in the environment the hooks do nothing, so the
 plugin is inert for any other catalog. A submitted perimeter's collection gets
-only its column descriptions (perimeter.py).
+only its column descriptions (perimeter.py); the hex collection, its tables'
+metadata and the windows (hex.py).
 """
 
 import json
@@ -15,6 +16,12 @@ from typing import Any, Callable, Dict, Optional, TypeVar
 from portolan_cli.hookspecs import hookimpl as portolan_hookimpl
 
 from src.v2.raster.indices import EXPRESSION_FORMAT, INDICES, Index
+from src.v2.catalog.hex import (
+    asset_fields,
+    asset_resolution,
+    column_dictionary,
+    is_hex_collection,
+)
 from src.v2.catalog.perimeter import column_descriptions, is_perimeter_collection
 from src.v2.catalog.sidecar import SIDECAR_ENV
 
@@ -72,6 +79,24 @@ def renders() -> Dict[str, Dict[str, Any]]:
     }
 
 
+def add_hex_metadata(collection: Dict[str, Any]) -> None:
+    """Title, describe and declare the H3 resolutions of each table.
+
+    portolan registers the tables as collection assets (``tabular.enabled``)
+    with their Parquet types before this hook runs; this adds what portolan
+    can't know, and the one column dictionary every table's columns are in.
+    """
+    resolutions = []
+    for key, asset in collection.get("assets", {}).items():
+        resolution = asset_resolution(key)
+        if resolution is None:
+            continue
+        asset.update(asset_fields(resolution))
+        resolutions.append(resolution)
+    if resolutions:
+        collection["table:columns"] = column_dictionary(sorted(resolutions))
+
+
 def load_sidecar() -> Optional[Dict[str, Any]]:
     path = os.environ.get(SIDECAR_ENV)
     if not path:
@@ -126,7 +151,8 @@ def portolan_enrich_item(item: Dict[str, Any], context: Any) -> None:
 def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None:
     """Set the temporal extent to the windows; add each index's render.
 
-    The perimeter's collection gets its column descriptions and nothing else.
+    The perimeter's collection gets its column descriptions and nothing else;
+    the hex collection, the windows and its tables' metadata.
     portolan registers the collection thumbnail after this hook runs, by
     adopting COLLECTION_THUMBNAIL_FILE, so the hook never sees it.
     """
@@ -143,6 +169,9 @@ def portolan_enrich_collection(collection: Dict[str, Any], context: Any) -> None
     collection["extent"]["temporal"]["interval"] = [
         [properties["start_datetime"], properties["end_datetime"]]
     ]
+    if is_hex_collection(collection.get("id", "")):
+        add_hex_metadata(collection)
+        return
     collection["renders"] = renders()
     extensions = collection.setdefault("stac_extensions", [])
     if RENDER_EXTENSION not in extensions:

@@ -68,6 +68,12 @@ def test_valid_request_defaults_sensor() -> None:
             }
         },
         {"geometry": {"type": "Feature", "properties": {}, "geometry": None}},
+        {"options": {"h3_resolutions": [7]}},
+        {"options": {"h3_resolutions": [14]}},
+        {"options": {"h3_resolutions": []}},
+        {"options": {"h3_resolutions": [13, 12]}},
+        {"options": {"h3_resolutions": [12, 12]}},
+        {"options": {"h3_resolution": [12]}},
         {"geometry": box(-116.1, 85.06, -116.0, 85.08)},
         {
             "geometry": {
@@ -161,3 +167,14 @@ def test_a_perimeter_over_the_vertex_limit_is_refused(
         SeverityRequest.model_validate(body)
     # An area of interest is only ever reduced to its bounds: no limit.
     SeverityRequest.model_validate(BODY)
+
+
+def test_options_are_optional() -> None:
+    assert SeverityRequest.model_validate(BODY).options is None
+    options = SeverityRequest.model_validate(body(options={})).options
+    assert options is not None and options.h3_resolutions is None
+    request = SeverityRequest.model_validate(
+        body(options={"h3_resolutions": [8, 12, 13]})
+    )
+    assert request.options is not None
+    assert request.options.h3_resolutions == [8, 12, 13]

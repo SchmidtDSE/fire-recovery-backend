@@ -369,6 +369,8 @@ v2/fires/{fire_id}/                  self-contained Portolan catalog
   {fire_id}-perimeter/               only when the request publishes a perimeter
     collection.json  README.md  AGENTS.md  perimeter.parquet  perimeter.pmtiles
     perimeter.thumb.jpg  styles/default.json
+  {fire_id}-hex/                     only when the request asks for H3 tables
+    collection.json  README.md  AGENTS.md  hex-r12.parquet  hex-r13.parquet  ...
 v2/jobs/{job_id}.json                write-once result record
 v2/requests/{job_id}.json            the canonical request, the Job's input (§1)
 ```
@@ -402,6 +404,24 @@ v2/requests/{job_id}.json            the canonical request, the Job's input (§1
     producer, processor and host: a different producer makes the collection a mirror, which
     must link an upstream source (PTL-PRO-001), and an upload has none. The description says
     the geometry is the requester's and wasn't checked. Wording: `config/perimeter.yaml`.
+- **H3 tables are published only when asked, as their own collection** (2026-11-15; replaces
+  the per-index r10 means of PR #46).
+  - `options.h3_resolutions` (8 to 13) is part of the key (§6), absent when unset. GLEN's SQL
+    and its browser-built hex tiles read them; exact numbers stay `zonal_stats` on the COGs,
+    which is why the tables live in their own collection rather than beside the items.
+  - Each cell takes the pixel under its centre: a sample, not a mean. At r12 and r13 cells
+    are smaller than a 20 m pixel, so no cell is empty, and coarser values can be derived from
+    the finest table in SQL. A mean of the pixels whose centres fall in a cell leaves most
+    r12 and r13 cells empty and can't answer threshold counts.
+  - Cells come from the grid's outline in degrees (h3ronpy's polygon fill); their centres are
+    projected to the grid's CRS and read from the COGs in blocks of cells and strips of rows,
+    so memory stays bounded. 15.7M r13 cells took 17 s and 0.7 GiB.
+  - Columns: `h{n}` (uint64, first), `h10` (r11 and finer) and `h8` (uint64), `h0` (int64),
+    `h3` (string), then `dnbr`, `rdnbr`, `rbr` (float32, null at nodata). Sorted by cell, and
+    only cells with at least one valid index.
+  - portolan tracks geometry-less Parquet as collection assets only with `tabular.enabled`.
+    The collection hook adds `h3:native_resolution`, `h3:parent_resolutions`, titles and the
+    `table:columns` dictionary (wording in `config/hex.yaml`). rashid passes with no findings.
 - **A view across fires.**
   - Portolan's way to query items without fetching every JSON is `items.parquet`, the
     collection's "item mirror". It is a SHOULD for every collection with items. portolan-cli
@@ -491,6 +511,7 @@ never uploads it.
       "postfire_window": [start, end],
       "tiles": {"tms": "WebMercatorQuad", "z": z, "x": [x0, x1], "y": [y0, y1]},  # §2, step 2
       "perimeter": [[[[lon, lat], ...], ...], ...],  # only for geometry_kind "perimeter"
+      "h3_resolutions": [12, 13],           # only when options.h3_resolutions is set
   }
   ```
 
@@ -559,6 +580,8 @@ never uploads it.
     Sentinel-2. Snapping adds up to about half again.
   - Each window is at most 90 days.
   - A perimeter to publish has at most 250,000 vertices (about 5.5 MB of request JSON).
+  - An H3 table holds at most 20M cells over the output grid, estimated from the area of the
+    cell at the grid's centre: r13 covers about 880 km² at that, r8 any grid.
   - At most 4 Jobs run at once, counted from the Job API by label. Beyond that the API returns
     `429` with `Retry-After`. Retrying is safe because the id is deterministic.
 - **Access.**

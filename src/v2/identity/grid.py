@@ -10,6 +10,7 @@ native pixel grid (design §2).
 import math
 from typing import Final, Literal
 
+import h3
 import morecantile
 from affine import Affine
 from pydantic import BaseModel, ConfigDict, computed_field
@@ -176,3 +177,17 @@ def buffered_megapixels(bounds: Bounds, resolution: int) -> float:
     """Pixels, in millions, an EPSG:4326 box holds at a resolution in metres."""
     width, height = metric_size(bounds)
     return width * height / resolution**2 / 1e6
+
+
+def h3_cell_count(grid: Grid, resolution: int) -> int:
+    """About how many H3 cells of ``resolution`` cover the grid.
+
+    The grid's area over the area of the cell at its centre: what a hex table
+    for the grid holds before nodata is dropped. H3 cells of one resolution
+    differ in area across the globe, but barely across one grid.
+    """
+    left, bottom, right, top = grid.bounds
+    west, south, east, north = grid.footprint()
+    centre = h3.latlng_to_cell((south + north) / 2, (west + east) / 2, resolution)
+    cell_area = h3.cell_area(centre, unit="m^2")
+    return math.ceil((right - left) * (top - bottom) / cell_area)

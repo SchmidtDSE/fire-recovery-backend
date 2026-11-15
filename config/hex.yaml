@@ -1,0 +1,46 @@
+# Wording for an analysis's H3 tables (options.h3_resolutions): the
+# {fire_id}-hex collection's title and description, each table's asset title
+# and description, and the collection's table:columns dictionary (one
+# description per column name, as data-workflows' verifier and Portolan
+# PORTO-FMT-046/048 expect). Metadata only: edit freely.
+#
+# {fire_event_name} is the request's name, verbatim; {levels} the requested
+# resolutions ("r12, r13"); {resolution} one resolution; {area} its average
+# cell area; {parents} the parent columns a table carries; {title} an index's
+# title.
+
+title: "{fire_event_name} burn severity on H3 cells"
+
+description: >-
+  The dNBR, RdNBR and RBR of this analysis of {fire_event_name} sampled onto
+  H3 cells at {levels}: one table per resolution, one row per cell, holding
+  the pixel under the cell's centre. For SQL and joins with other H3 layers.
+  Each value is a sample, not a statistic; exact area-weighted numbers come
+  from the index COGs in the analysis's own collection.
+
+asset_title: "Indices per H3 resolution {resolution} cell"
+
+asset_description: >-
+  One row per H3 resolution {resolution} cell (about {area} each) whose
+  centre falls in the analysis grid and lands on at least one valid pixel.
+  Each index column holds the pixel under the cell's centre, unscaled, or
+  null at nodata. Cells smaller than a pixel repeat its value; cells larger
+  than a pixel take only the pixel at their centre. Parents: {parents}.
+  Sorted by cell. Join to other GLEN layers on h8.
+
+cell_column: >-
+  H3 cell identifier at resolution {resolution}.
+
+# Added to a cell column's description, by resolution.
+cell_notes:
+  8: >-
+    The shared join key across the GLEN catalog.
+  0: >-
+    The coarsest common join; a signed integer, by the catalog's convention.
+
+string_column: >-
+  The row's own cell (the table's first column) as H3's hexadecimal string.
+
+value_column: >-
+  {title}: the pixel under the cell's centre. Unscaled and dimensionless;
+  null where the pixel is nodata.

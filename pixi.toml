@@ -58,6 +58,10 @@ odc-geo = ">=0.5.0,<0.6"
 # H3 cells recorded for GLEN. Pinned exactly: the covering uses
 # h3shape_to_cells_experimental, which has no stability guarantee.
 h3-py = "==4.5.0"
+# The hex tables' vectorized H3 (polygon fill, cell centres, parents, strings).
+# Pinned exactly: a change in the fill's edge rule changes which cells a table
+# holds.
+h3ronpy = "==0.22.0"
 obstore = ">=0.12.1,<0.13"
 # The text the pipeline publishes (method statement, emails) lives in
 # config/templates/ as Jinja templates. portolan-cli pulls jinja2 in too, but

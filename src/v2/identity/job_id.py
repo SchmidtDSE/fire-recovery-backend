@@ -3,7 +3,8 @@
 A job id is the uuid5 of a canonical JSON form of the request. The form holds
 only what the product depends on: the operation, the pipeline version, the
 name, the sensor, the two windows verbatim, the WebMercatorQuad tile range the
-buffered geometry snaps to, and, for a perimeter to publish, the perimeter.
+buffered geometry snaps to, for a perimeter to publish, the perimeter, and
+the H3 resolutions of any hex tables requested.
 Areas of interest that snap to the same tiles share an id, and so share one
 published analysis; a perimeter's analysis is its own, so its catalog can hold
 it. The Job receives this form and nothing else, so everything it publishes is
@@ -51,6 +52,9 @@ class CanonicalRequest(BaseModel):
     # The normalized perimeter, only when the request publishes one. Left out
     # of the JSON when absent, so an area of interest's id is unchanged.
     perimeter: Optional[QuantizedParts] = None
+    # The H3 tables to publish (options.h3_resolutions), ascending. Left out
+    # of the JSON when absent, like the perimeter.
+    h3_resolutions: Optional[tuple[int, ...]] = None
 
     def to_json(self) -> str:
         """Sorted keys and no whitespace: the exact string the id hashes."""
@@ -113,6 +117,11 @@ def canonical_request(
         tiles=snap_tiles(padded),
         perimeter=(
             request.quantized() if request.geometry_kind == "perimeter" else None
+        ),
+        h3_resolutions=(
+            tuple(request.options.h3_resolutions)
+            if request.options is not None and request.options.h3_resolutions
+            else None
         ),
     )
 

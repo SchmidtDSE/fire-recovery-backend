@@ -20,6 +20,8 @@ from src.util.date_windows import window_bounds
 from src.util.geo_ops import Bounds
 from src.v2.constants import (
     FIRE_EVENT_NAME_MAX_LENGTH,
+    H3_MAX_RESOLUTION,
+    H3_MIN_RESOLUTION,
     MAX_PERIMETER_POSITIONS,
     MAX_WINDOW_DAYS,
 )
@@ -115,6 +117,34 @@ def quantized_parts(geometry: Union[Polygon, MultiPolygon, Feature]) -> Quantize
     ]
 
 
+H3Resolution = Annotated[int, Field(ge=H3_MIN_RESOLUTION, le=H3_MAX_RESOLUTION)]
+
+
+class SeverityOptions(BaseModel):
+    """Optional outputs beyond the index COGs. Each one set is part of the job id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    h3_resolutions: Optional[list[H3Resolution]] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            f"Publish an H3 table of the indices at each of these resolutions "
+            f"({H3_MIN_RESOLUTION} to {H3_MAX_RESOLUTION}), in ascending order: "
+            f"each cell holds the pixel under its centre. Omit for none."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _ascending(self) -> "SeverityOptions":
+        levels = self.h3_resolutions
+        if levels is not None and any(a >= b for a, b in zip(levels, levels[1:])):
+            raise ValueError(
+                "h3_resolutions must be in ascending order, without repeats"
+            )
+        return self
+
+
 def window_days(window: list[str]) -> float:
     """Length of a date window in days, with the end date's whole day included."""
     start, end = window_bounds(window[0], window[1])
@@ -170,6 +200,9 @@ class SeverityRequest(BaseModel):
     sensor: Sensor = Field(
         default=SENSOR_DEFAULT,
         description="Satellite source: 'sentinel-2' (default) or 'landsat'",
+    )
+    options: Optional[SeverityOptions] = Field(
+        default=None, description="Optional outputs beyond the index COGs"
     )
     email: Optional[str] = Field(
         default=None,

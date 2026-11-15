@@ -29,9 +29,16 @@ from src.v2.constants import (
     LOCAL_TARGET,
     MAX_ACTIVE_JOBS,
     MAX_BUFFERED_MEGAPIXELS,
+    MAX_H3_CELLS,
     RATE_WINDOW_SECONDS,
 )
-from src.v2.identity.grid import Grid, TileRange, buffered_megapixels, raster_grid
+from src.v2.identity.grid import (
+    Grid,
+    TileRange,
+    buffered_megapixels,
+    h3_cell_count,
+    raster_grid,
+)
 from src.v2.identity.job_id import buffered_box, canonical_request
 from src.v2.service.k8s import KubernetesLauncher, TargetProfile
 from src.v2.service.launcher import (
@@ -237,8 +244,18 @@ def submit_severity(
         canonical = canonical_request(body, padded=padded)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
+    output_grid = raster_grid(canonical.tiles, canonical.sensor)
+    for level in canonical.h3_resolutions or ():
+        cells = h3_cell_count(output_grid, level)
+        if cells > MAX_H3_CELLS:
+            raise HTTPException(
+                422,
+                f"An H3 r{level} table of this area would hold about {cells:,} "
+                f"cells; the limit is {MAX_H3_CELLS:,}. Ask for a coarser "
+                f"resolution or a smaller area.",
+            )
     job_id = canonical.job_id()
-    grid = GridInfo.of(raster_grid(canonical.tiles, canonical.sensor), canonical.tiles)
+    grid = GridInfo.of(output_grid, canonical.tiles)
     url = status_url(request, job_id)
 
     record = read_record(store, job_id)

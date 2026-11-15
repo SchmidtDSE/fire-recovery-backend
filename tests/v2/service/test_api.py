@@ -141,6 +141,30 @@ def test_no_job_starts_if_the_request_cant_be_stored(
     assert launcher.started == []
 
 
+def test_h3_resolutions_are_part_of_the_job_id(
+    client: TestClient, store: FakeStore
+) -> None:
+    body = client.post(
+        "/v2/severity", json={**BODY, "options": {"h3_resolutions": [12, 13]}}
+    ).json()
+    assert body["job_id"] != JOB_ID
+    stored = json.loads(store.texts[request_key(body["job_id"])])
+    assert stored["h3_resolutions"] == [12, 13]
+
+
+def test_an_h3_table_over_the_cell_limit_is_refused(
+    client: TestClient, launcher: FakeLauncher, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(api, "MAX_H3_CELLS", 1_000_000)
+    coarse = {**BODY, "options": {"h3_resolutions": [10]}}
+    assert client.post("/v2/severity", json=coarse).status_code == 202
+    fine = {**BODY, "options": {"h3_resolutions": [10, 13]}}
+    response = client.post("/v2/severity", json=fine)
+    assert response.status_code == 422
+    assert "r13" in response.json()["detail"]
+    assert len(launcher.started) == 1
+
+
 def test_status_url_can_use_the_public_base(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

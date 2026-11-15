@@ -19,6 +19,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/anyio-4.9.0-pyh29332c3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/argon2-cffi-23.1.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/argon2-cffi-bindings-21.2.0-py312h66e93f0_5.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/arro3-core-0.9.1-py312h9f92c4b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/arrow-1.3.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/asttokens-3.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/attrs-25.3.0-pyh71513ae_0.conda
@@ -102,6 +103,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/h2-4.2.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/h3-4.5.0-hee9eb32_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/h3-py-4.5.0-py312h80505a6_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/h3ronpy-0.22.0-py312h12e396e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/hpack-4.1.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/httpcore-1.0.7-pyh29332c3_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/httptools-0.6.4-py312h66e93f0_0.conda
@@ -693,6 +695,22 @@ packages:
   - pkg:pypi/argon2-cffi-bindings?source=hash-mapping
   size: 34847
   timestamp: 1725356749774
+- conda: https://conda.anaconda.org/conda-forge/linux-64/arro3-core-0.9.1-py312h9f92c4b_0.conda
+  sha256: b2178cc19ae79729b4b730a7e2bca3528fda9e9103edf0bc08617a77662885bc
+  md5: ea06d1c4d25af81344d7f502028595d9
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=15
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  constrains:
+  - __glibc >=2.17
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/arro3-core?source=hash-mapping
+  size: 2195148
+  timestamp: 1791848094097
 - conda: https://conda.anaconda.org/conda-forge/noarch/arrow-1.3.0-pyhd8ed1ab_1.conda
   sha256: c4b0bdb3d5dee50b60db92f99da3e4c524d5240aafc0a5fcc15e45ae2d1a3cd1
   md5: 46b53236fdd990271b03c3978d4218a9
@@ -2037,6 +2055,27 @@ packages:
   - pkg:pypi/h3?source=hash-mapping
   size: 392358
   timestamp: 1788809330769
+- conda: https://conda.anaconda.org/conda-forge/linux-64/h3ronpy-0.22.0-py312h12e396e_1.conda
+  sha256: fcbb6006e827c56fd30fda301001ada80c269be39a51df3f236628e35d4be92f
+  md5: 590df4e0a22646cff6e57d582a959dfc
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - arro3-core >=0.4
+  - libgcc >=13
+  - numpy >=1.24
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  constrains:
+  - polars >=1
+  - geopandas >=1
+  - pyarrow >=15
+  - __glibc >=2.17
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/h3ronpy?source=hash-mapping
+  size: 2445197
+  timestamp: 1736396572762
 - conda: https://conda.anaconda.org/conda-forge/noarch/hpack-4.1.0-pyhd8ed1ab_0.conda
   sha256: 6ad78a180576c706aabeb5b4c8ceb97c0cb25f1e112d76495bff23e3779948ba
   md5: 0a802cb9888dd14eeefc611f05c40b6e

@@ -9,6 +9,7 @@ Layout (design §4)::
         rdnbr/                   rdnbr.json, rdnbr.tif, rdnbr.thumb.jpg
         rbr/                     rbr.json, rbr.tif, rbr.thumb.jpg
       {fire_id}-perimeter/       only with a perimeter to publish (perimeter.py)
+      {fire_id}-hex/             only with H3 resolutions requested (hex.py)
 
 One item per index: Portolan makes each distinct data file its own item, and
 each index gets its own title, thumbnail and band table.
@@ -30,6 +31,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import yaml
 
+from src.v2.catalog.hex import HexTables, write_hex_collection
 from src.v2.catalog.perimeter import Perimeter, write_perimeter_collection
 from src.v2.catalog.portolan_plugin import (
     COLLECTION_THUMBNAIL_FILE,
@@ -156,11 +158,13 @@ def build_catalog(
     item_datetime: str,
     source_url: Optional[str],
     perimeter: Optional[Perimeter] = None,
+    hex_tables: Optional[HexTables] = None,
 ) -> CatalogResult:
     """Lay out the COGs, build the catalog with portolan, validate it with rashid.
 
     The COGs are moved into the catalog. The sidecar is written outside it, so
-    push never uploads it. A perimeter becomes its own collection.
+    push never uploads it. A perimeter becomes its own collection, and so do
+    the H3 tables.
     """
     root = workdir / "catalog" / fire_id
     for name, cog in cogs.items():
@@ -176,6 +180,19 @@ def build_catalog(
         item_directory(workdir, fire_id, COLLECTION_THUMBNAIL_INDEX)
         / thumbnail_file(COLLECTION_THUMBNAIL_INDEX),
         root / fire_id / COLLECTION_THUMBNAIL_FILE,
+    )
+    hex_folder = (
+        write_hex_collection(
+            root,
+            fire_id,
+            {
+                name: item_directory(workdir, fire_id, name) / f"{name}.tif"
+                for name in cogs
+            },
+            hex_tables,
+        )  # fmt: skip
+        if hex_tables is not None
+        else None
     )
     sidecar_path = write_sidecar(sidecar, workdir / "sidecar.json")
     perimeter_folder = (
@@ -206,11 +223,17 @@ def build_catalog(
         root,
         env,
     )
+    if hex_folder is not None:
+        # The hex tables have no geometry: portolan tracks such Parquet files
+        # as collection assets only with tabular support on.
+        run_tool([portolan, "config", "set", "tabular.enabled", "true"], root, env)
     write_metadata(root, source_url, sidecar["properties"].get("processing:lineage"))
     write_collection_metadata(root / fire_id, title, description)
     run_tool([portolan, "add", f"{fire_id}/", "--datetime", item_datetime], root, env)
     if perimeter_folder is not None:
         run_tool([portolan, "add", f"{perimeter_folder.name}/", "--pmtiles"], root, env)
+    if hex_folder is not None:
+        run_tool([portolan, "add", f"{hex_folder.name}/"], root, env)
     run_tool([portolan, "check", "--fix"], root, env)
     run_tool([portolan, "readme"], root, env)
     result = validate(root)
