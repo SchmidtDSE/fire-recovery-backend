@@ -140,10 +140,11 @@ def test_a_perimeter_form_round_trips_to_the_same_id() -> None:
     canonical = canonical_request(SeverityRequest.model_validate(perimeter_body(RING)))
     again = CanonicalRequest.model_validate_json(canonical.to_json())
     assert again.job_id() == canonical.job_id()
-    assert again.perimeter_geometry() == {
-        "type": "MultiPolygon",
-        "coordinates": [[RING]],
-    }
+    geometry = again.perimeter_geometry()
+    assert geometry is not None
+    (polygon,) = geometry.geoms
+    # Degrees again, the ring as sent.
+    assert [list(xy) for xy in polygon.exterior.coords] == RING
 
 
 def test_the_summary_counts_the_perimeter_instead_of_listing_it() -> None:

@@ -24,7 +24,7 @@ from typing import Any, Dict
 
 import geopandas as gpd
 import yaml
-from shapely.geometry import shape
+from shapely.geometry import MultiPolygon
 
 PERIMETER_FILE = "perimeter.parquet"
 # What portolan add --pmtiles names the tiles it makes from PERIMETER_FILE.
@@ -41,7 +41,7 @@ class Perimeter:
     """A perimeter to publish: the request's name and its geometry in degrees."""
 
     fire_event_name: str
-    geometry: Dict[str, Any]
+    geometry: MultiPolygon
 
 
 def collection_id(fire_id: str) -> str:
@@ -82,7 +82,7 @@ def write_perimeter_collection(
     folder.mkdir(parents=True)
     frame = gpd.GeoDataFrame(
         {FIRE_ID_COLUMN: [fire_id], FIRE_EVENT_NAME_COLUMN: [name]},
-        geometry=[shape(perimeter.geometry)],
+        geometry=[perimeter.geometry],
         crs="EPSG:4326",
     )
     frame.to_parquet(
