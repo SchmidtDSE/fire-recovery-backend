@@ -12,7 +12,6 @@ import rasterio
 from pyproj import Transformer
 
 from src.models.provenance import Provenance
-from src.v2.catalog import hex as hexmod
 from src.v2.catalog.build import CatalogResult, build_catalog
 from src.v2.catalog.hex import (
     HexTables,
@@ -153,10 +152,9 @@ def test_r13_covers_the_valid_area_at_its_cell_size(r13: Path) -> None:
     assert estimate == pytest.approx(full, rel=0.01)
 
 
-def test_blocks_and_strips_make_the_same_table(
-    tmp_path: Path, cogs: Dict[str, Path], r13: Path, monkeypatch: pytest.MonkeyPatch
+def test_small_blocks_make_the_same_table(
+    tmp_path: Path, cogs: Dict[str, Path], r13: Path
 ) -> None:
-    monkeypatch.setattr(hexmod, "STRIP_ROWS", 7)
     small = tmp_path / "small.parquet"
     write_hex_table(cogs, small, 13, block_cells=997)
     assert pq.read_table(small).equals(pq.read_table(r13))

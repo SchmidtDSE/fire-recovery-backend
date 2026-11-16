@@ -26,9 +26,9 @@ index is valid:
 - ``h3`` (string): the cell as H3's hex string.
 - one float32 column per index: the pixel under the centre, null at nodata.
 
-Sampling holds the cell ids, one block of cell centres and one strip of pixel
-rows at a time, so memory stays bounded at the largest table the request
-limits allow (about 0.7 GiB for 16M cells).
+Sampling holds the cell ids, one block of cell centres and one index band at
+a time. The H3 cell cap (MAX_H3_CELLS) bounds both: a grid with many cells is
+small, and the largest grid holds few cells.
 """
 
 from dataclasses import dataclass
@@ -43,12 +43,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import rasterio
 import yaml
-from affine import Affine
 from h3ronpy.vector import cells_to_coordinates, geometry_to_cells
+from odc.geo.crs import CRS
+from odc.geo.geobox import GeoBox
 from pyproj import Transformer
-from rasterio.crs import CRS
-from rasterio.windows import Window
-from shapely.geometry import Polygon
+from rasterio.transform import rowcol
 
 from src.v2.raster.indices import INDICES
 
@@ -59,12 +58,9 @@ WORDING_FILE = Path(__file__).resolve().parents[3] / "config" / "hex.yaml"
 # finest level the GLEN catalog uses, its join key, and the root.
 PARENT_RESOLUTIONS = (10, 8, 0)
 STRING_COLUMN = "h3"
-# Cells sampled per block, and pixel rows read per strip within a block.
+# Cells sampled per block.
 BLOCK_CELLS = 1_000_000
-STRIP_ROWS = 256
 ROW_GROUP_ROWS = 100_000
-# Points per edge when projecting the grid's outline to degrees.
-DENSIFY_POINTS = 64
 # table:columns types, as portolan writes them from the Parquet schema.
 CELL_TYPE = "uint64"
 ROOT_TYPE = "int64"
@@ -198,53 +194,40 @@ def asset_resolution(key: str) -> Optional[int]:
     return None
 
 
-@dataclass(frozen=True)
-class Raster:
-    """The grid every index COG shares."""
-
-    crs: CRS
-    transform: Affine
-    width: int
-    height: int
-
-
-def shared_raster(cogs: Mapping[str, Path]) -> Raster:
-    """The COGs' common grid.
+def shared_geobox(cogs: Mapping[str, Path]) -> GeoBox:
+    """The grid every index COG shares.
 
     Raises:
         ValueError: if the COGs are not on one grid.
     """
-    grids = set()
+    geoboxes = []
     for path in cogs.values():
         with rasterio.open(path) as src:
-            grids.add((src.crs.to_wkt(), src.transform, src.width, src.height))
-    if len(grids) != 1:
+            geoboxes.append(GeoBox.from_rio(src))
+    if any(other != geoboxes[0] for other in geoboxes[1:]):
         raise ValueError("The index COGs are not on one grid")
-    ((wkt, transform, width, height),) = grids
-    return Raster(CRS.from_wkt(wkt), transform, width, height)
+    return geoboxes[0]
 
 
-def footprint(raster: Raster) -> Polygon:
-    """The raster's outline in degrees, densified so it follows the projected edges."""
-    left, top = raster.transform @ (0, 0)
-    right, bottom = raster.transform @ (raster.width, raster.height)
-    steps = np.linspace(0.0, 1.0, DENSIFY_POINTS, endpoint=False)
-    xs = np.concatenate([
-        left + (right - left) * steps, np.full(steps.size, right),
-        right - (right - left) * steps, np.full(steps.size, left),
-    ])  # fmt: skip
-    ys = np.concatenate([
-        np.full(steps.size, top), top - (top - bottom) * steps,
-        np.full(steps.size, bottom), bottom + (top - bottom) * steps,
-    ])  # fmt: skip
-    to_degrees = Transformer.from_crs(raster.crs, "EPSG:4326", always_xy=True)
-    lon, lat = to_degrees.transform(xs, ys)
-    return Polygon(zip(lon, lat))
+def grid_crs(geobox: GeoBox) -> CRS:
+    """The grid's CRS.
+
+    Raises:
+        ValueError: if the COGs have none.
+    """
+    if geobox.crs is None:
+        raise ValueError("The index COGs have no CRS")
+    return geobox.crs
 
 
-def grid_cells(raster: Raster, resolution: int) -> np.ndarray:
-    """Every cell whose centre is in the raster's footprint, sorted."""
-    cells = np.asarray(geometry_to_cells(footprint(raster), resolution))
+def grid_cells(geobox: GeoBox, resolution: int) -> np.ndarray:
+    """Every cell whose centre is in the grid's footprint, sorted.
+
+    The footprint is the grid's outline in degrees, densified so it follows
+    the projected edges.
+    """
+    outline = geobox.footprint("EPSG:4326").geom
+    cells = np.asarray(geometry_to_cells(outline, resolution))
     return np.unique(cells.astype(np.uint64))
 
 
@@ -253,44 +236,38 @@ def as_numpy(array: Any) -> np.ndarray:
     return np.asarray(pa.array(array))
 
 
-def pixel_of(raster: Raster, cells: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """Row and column of the pixel under each cell's centre (-1 outside the raster)."""
+def pixel_of(
+    geobox: GeoBox, cells: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Row and column of the pixel under each cell's centre, and which are inside."""
     coordinates = cells_to_coordinates(pa.array(cells, pa.uint64()))
     lat = as_numpy(coordinates.column("lat"))
     lng = as_numpy(coordinates.column("lng"))
-    to_raster = Transformer.from_crs("EPSG:4326", raster.crs, always_xy=True)
-    x, y = to_raster.transform(lng, lat)
-    col, row = ~raster.transform @ (np.asarray(x), np.asarray(y))
-    row = np.floor(row).astype(np.int64)
-    col = np.floor(col).astype(np.int64)
-    outside = (row < 0) | (row >= raster.height) | (col < 0) | (col >= raster.width)
-    row[outside] = -1
-    col[outside] = -1
-    return row, col
+    to_grid = Transformer.from_crs(
+        "EPSG:4326", grid_crs(geobox).to_wkt(), always_xy=True
+    )
+    x, y = to_grid.transform(lng, lat)
+    rows, cols = rowcol(geobox.transform, x, y)
+    height, width = geobox.shape
+    inside = (rows >= 0) & (rows < height) & (cols >= 0) & (cols < width)
+    return np.where(inside, rows, 0), np.where(inside, cols, 0), inside
 
 
 def sample(
-    sources: Mapping[str, Any], row: np.ndarray, col: np.ndarray
+    cogs: Mapping[str, Path], rows: np.ndarray, cols: np.ndarray, inside: np.ndarray
 ) -> Dict[str, np.ndarray]:
-    """Each index's value at the pixels, NaN at nodata or outside, strip by strip."""
-    values = {name: np.full(row.size, np.nan, np.float32) for name in sources}
-    order = np.argsort(row, kind="stable")
-    rows = row[order]
-    start = int(np.searchsorted(rows, 0))
-    if start == rows.size:
-        return values
-    for row0 in range(int(rows[start]), int(rows[-1]) + 1, STRIP_ROWS):
-        lo, hi = np.searchsorted(rows, [row0, row0 + STRIP_ROWS])
-        if lo == hi:
-            continue
-        picked = order[lo:hi]
-        c = col[picked]
-        c0, c1 = int(c.min()), int(c.max()) + 1
-        window = Window(c0, row0, c1 - c0, int(rows[hi - 1]) - row0 + 1)
-        for name, src in sources.items():
-            strip = src.read(1, window=window, masked=True)
-            data = np.ma.filled(strip.astype(np.float32), np.nan)
-            values[name][picked] = data[row[picked] - row0, c - c0]
+    """Each index's value at the pixels, NaN at nodata or outside the grid.
+
+    Reads one band whole at a time: the H3 cell cap keeps a grid with many
+    cells small, and a large grid has few.
+    """
+    values = {}
+    for name, path in cogs.items():
+        with rasterio.open(path) as src:
+            band = src.read(1, masked=True)
+        picked = np.ma.filled(band[rows, cols].astype(np.float32), np.nan)
+        picked[~inside] = np.nan
+        values[name] = picked
     return values
 
 
@@ -298,23 +275,17 @@ def table_blocks(
     cogs: Mapping[str, Path], resolution: int, block_cells: int = BLOCK_CELLS
 ) -> Iterator[pa.Table]:
     """The table for one resolution, block by block in cell order."""
-    raster = shared_raster(cogs)
-    cells = grid_cells(raster, resolution)
-    names = [index.name for index in INDICES if index.name in cogs]
-    sources = {name: rasterio.open(cogs[name]) for name in names}
-    try:
-        for start in range(0, cells.size, block_cells):
-            block = cells[start : start + block_cells]
-            row, col = pixel_of(raster, block)
-            values = sample(sources, row, col)
-            keep = np.logical_or.reduce([~np.isnan(v) for v in values.values()])
-            if not keep.any():
-                continue
-            kept = {name: value[keep] for name, value in values.items()}
-            yield block_table(block[keep], kept, resolution)
-    finally:
-        for src in sources.values():
-            src.close()
+    geobox = shared_geobox(cogs)
+    cells = grid_cells(geobox, resolution)
+    ordered = {index.name: cogs[index.name] for index in INDICES if index.name in cogs}
+    for start in range(0, cells.size, block_cells):
+        block = cells[start : start + block_cells]
+        values = sample(ordered, *pixel_of(geobox, block))
+        keep = np.logical_or.reduce([~np.isnan(v) for v in values.values()])
+        if not keep.any():
+            continue
+        kept = {name: value[keep] for name, value in values.items()}
+        yield block_table(block[keep], kept, resolution)
 
 
 def block_table(
@@ -386,7 +357,7 @@ def write_hex_collection(
             words["processing_notes"],
             lineage=lineage,
             levels=levels,
-            crs=shared_raster(cogs).crs.to_string(),
+            crs=f"EPSG:{grid_crs(shared_geobox(cogs)).epsg}",
         ),
     }
     (folder / ".portolan").mkdir()
