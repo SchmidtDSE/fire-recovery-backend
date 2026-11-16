@@ -13,29 +13,24 @@ from typing import Tuple
 
 import numpy as np
 import rasterio
+from matplotlib import colormaps
+from matplotlib.colors import Normalize
 from rasterio.enums import Resampling
 from rasterio.errors import NotGeoreferencedWarning
 
 MAX_SIZE = 512
 JPEG_QUALITY = 85
-# ColorBrewer YlOrRd (5 classes): pale yellow at the low end, dark red at the high.
-RAMP_COLORS = np.array(
-    [[255, 255, 178], [254, 204, 92], [253, 141, 60], [240, 59, 32], [189, 0, 38]],
-    dtype=np.float32,
-)
-NODATA_COLOR = np.array([255, 255, 255], dtype=np.float32)
+# matplotlib's YlOrRd: the ramp the collection's renders name for TiTiler
+# (portolan_plugin.RENDER_COLORMAP), so a thumbnail matches the map.
+COLORMAP = "YlOrRd"
+NODATA_COLOR = "white"
 
 
 def colorize(values: np.ndarray, low: float, high: float) -> np.ndarray:
     """(3, h, w) uint8 RGB for values stretched from low to high; NaN is white."""
-    position = np.clip((values - low) / (high - low), 0.0, 1.0)
-    stops = np.linspace(0.0, 1.0, len(RAMP_COLORS))
-    filled = np.nan_to_num(position, nan=0.0)
-    rgb = np.stack(
-        [np.interp(filled, stops, RAMP_COLORS[:, channel]) for channel in range(3)]
-    )
-    rgb[:, np.isnan(values)] = NODATA_COLOR[:, None]
-    return np.round(rgb).astype(np.uint8)
+    ramp = colormaps[COLORMAP].with_extremes(bad=NODATA_COLOR)
+    rgba = ramp(Normalize(low, high, clip=True)(values), bytes=True)
+    return np.moveaxis(rgba[..., :3], -1, 0)
 
 
 def render_thumbnail(
