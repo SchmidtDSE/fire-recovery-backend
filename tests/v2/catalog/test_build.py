@@ -50,6 +50,8 @@ def test_build_catalog_passes_rashid(
         description="dNBR, RdNBR and RBR for Geology_Fire.",
         item_datetime=canonical.postfire_window[1],
         source_url="https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a",
+        fire_event_name="Geology_Fire",
+        catalog_url=f"https://example.org/{fid}",
     )
     assert result.warnings == 0
 
@@ -115,6 +117,12 @@ def test_build_catalog_passes_rashid(
     }
     assert (result.root / fid / "items.parquet").exists()
     assert (result.root / "README.md").exists()
+    # Our AGENTS.md beside the catalog and the collection, not portolan's
+    # empty prompts.
+    for folder in (result.root, collection_dir):
+        text = (folder / "AGENTS.md").read_text()
+        assert "<!--" not in text
+        assert f"https://example.org/{fid}/{fid}/rbr/rbr.tif" in text
     # The sidecar stays outside the catalog, so push never uploads it.
     assert not list(result.root.rglob("sidecar.json"))
 

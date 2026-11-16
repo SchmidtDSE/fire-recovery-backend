@@ -46,6 +46,8 @@ def built(
         description="dNBR, RdNBR and RBR for Geology_Fire.",
         item_datetime=canonical.postfire_window[1],
         source_url="https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a",
+        fire_event_name="Geology_Fire",
+        catalog_url=f"https://example.org/{fid}",
         perimeter=Perimeter(fire_event_name="Geology_Fire", geometry=shape(GEOMETRY)),
     )
 
@@ -107,3 +109,10 @@ def test_the_parquet_holds_the_geometry_as_sent(built: CatalogResult) -> None:
     (polygon,) = row.geometry.geoms
     assert len(polygon.interiors) == 1
     assert [list(xy) for xy in polygon.exterior.coords] == RING
+
+
+def test_the_collection_has_our_agents_md(built: CatalogResult) -> None:
+    fid = built.root.name
+    text = (built.root / collection_id(fid) / "AGENTS.md").read_text()
+    assert "<!--" not in text  # not portolan's empty prompts
+    assert f"https://example.org/{fid}/{fid}-perimeter/perimeter.parquet" in text
