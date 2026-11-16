@@ -179,6 +179,8 @@ def built(
         description="dNBR, RdNBR and RBR for Geology_Fire.",
         item_datetime=canonical.postfire_window[1],
         source_url="https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a",
+        fire_event_name="Geology_Fire",
+        catalog_url=f"https://example.org/{fid}",
         hex_tables=HexTables(fire_event_name="Geology_Fire", resolutions=(9, 12)),
     )
 
@@ -225,3 +227,11 @@ def test_the_tables_are_a_collection_and_rashid_passes(built: CatalogResult) -> 
     analysis = json.loads((built.root / fid / "collection.json").read_text())
     assert not [key for key in analysis["assets"] if key.startswith("hex-")]
     assert set(analysis["renders"]) == {"dnbr", "rdnbr", "rbr"}
+
+
+def test_the_collection_has_our_agents_md(built: CatalogResult) -> None:
+    fid = built.root.name
+    text = (built.root / collection_id(fid) / "AGENTS.md").read_text()
+    assert "<!--" not in text  # not portolan's empty prompts
+    assert "at r9, r12," in text
+    assert f"https://example.org/{fid}/{fid}-hex/hex-r12.parquet" in text

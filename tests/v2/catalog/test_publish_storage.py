@@ -65,6 +65,8 @@ def test_push_a_catalog_with_a_large_cog_and_a_perimeter(
         description="Push check.",
         item_datetime=canonical.postfire_window[1],
         source_url=None,
+        fire_event_name="Storage_Test",
+        catalog_url=f"https://example.org/{fid}",
         perimeter=Perimeter(
             fire_event_name="Storage_Test",
             geometry=MultiPolygon(

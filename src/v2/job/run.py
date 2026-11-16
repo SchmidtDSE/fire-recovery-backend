@@ -130,6 +130,8 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
         ),
         item_datetime=canonical.postfire_window[1],
         source_url=f"{source.api.rstrip('/')}/collections/{source.collection}",
+        fire_event_name=canonical.fire_event_name,
+        catalog_url=store.public_url(catalog_prefix(ctx.fire_id)),
         perimeter=perimeter_of(canonical),
         hex_tables=hex_tables_of(canonical),
     )

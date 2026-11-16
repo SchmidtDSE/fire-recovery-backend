@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import yaml
 
+from src.v2.catalog import agents
 from src.v2.catalog.hex import HexTables, write_hex_collection
 from src.v2.catalog.perimeter import Perimeter, write_perimeter_collection
 from src.v2.catalog.portolan_plugin import (
@@ -157,6 +158,8 @@ def build_catalog(
     description: str,
     item_datetime: str,
     source_url: Optional[str],
+    fire_event_name: str,
+    catalog_url: str,
     perimeter: Optional[Perimeter] = None,
     hex_tables: Optional[HexTables] = None,
 ) -> CatalogResult:
@@ -164,7 +167,8 @@ def build_catalog(
 
     The COGs are moved into the catalog. The sidecar is written outside it, so
     push never uploads it. A perimeter becomes its own collection, and so do
-    the H3 tables.
+    the H3 tables. ``catalog_url`` is the public URL the catalog's folder will
+    be published at, without a trailing slash: each AGENTS.md links to it.
     """
     root = workdir / "catalog" / fire_id
     for name, cog in cogs.items():
@@ -201,6 +205,21 @@ def build_catalog(
         if perimeter is not None
         else None
     )
+    names = {
+        "fire_id": fire_id,
+        "fire_event_name": fire_event_name,
+        "catalog_url": catalog_url,
+    }
+    agents.write_agents(root, agents.CATALOG, **names)
+    agents.write_agents(root / fire_id, agents.INDICES, **names)
+    if perimeter_folder is not None:
+        agents.write_agents(perimeter_folder, agents.PERIMETER, **names)
+    if hex_folder is not None and hex_tables is not None:
+        levels = ", ".join(f"r{r}" for r in hex_tables.resolutions)
+        finest = max(hex_tables.resolutions)
+        agents.write_agents(
+            hex_folder, agents.HEX, levels=levels, finest=finest, **names
+        )
 
     env = {**os.environ, SIDECAR_ENV: str(sidecar_path)}
     # portolan runs tippecanoe from PATH: this environment's, first.
