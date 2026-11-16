@@ -11,6 +11,7 @@ every direction regardless of latitude.
 from typing import Any, Dict, Tuple
 
 from geojson_pydantic import Polygon, MultiPolygon, Feature
+from odc.geo.geom import BoundingBox
 from pydantic import BaseModel
 from rasterio.crs import CRS
 from rasterio.warp import transform_bounds
@@ -65,9 +66,14 @@ def local_metric_crs(bounds: Bounds) -> CRS:
     same thing in every direction regardless of latitude.
     """
     minx, miny, maxx, maxy = bounds
-    return CRS.from_proj4(
-        f"+proj=aeqd +lat_0={(miny + maxy) / 2} +lon_0={(minx + maxx) / 2} "
-        f"+datum=WGS84 +units=m +no_defs"
+    return CRS.from_dict(
+        {
+            "proj": "aeqd",
+            "lat_0": (miny + maxy) / 2,
+            "lon_0": (minx + maxx) / 2,
+            "datum": "WGS84",
+            "units": "m",
+        }
     )
 
 
@@ -93,20 +99,10 @@ def buffered_bounds(
     """
     bounds = _shapely_geometry(geometry).bounds
     metric_crs = local_metric_crs(bounds)
-    metric_bounds = transform_bounds(WGS84, metric_crs, *bounds)
-
-    longest_side = max(
-        metric_bounds[2] - metric_bounds[0],
-        metric_bounds[3] - metric_bounds[1],
-    )
+    metric = BoundingBox(*transform_bounds(WGS84, metric_crs, *bounds))
+    longest_side = max(metric.span_x, metric.span_y)
     buffer_meters = min(max(longest_side * fraction, minimum), maximum)
-
-    padded = (
-        metric_bounds[0] - buffer_meters,
-        metric_bounds[1] - buffer_meters,
-        metric_bounds[2] + buffer_meters,
-        metric_bounds[3] + buffer_meters,
-    )
+    padded = metric.buffered(buffer_meters)
 
     # transform_bounds densifies the edges, so the returned box contains the
     # projected rectangle rather than just its corners.
