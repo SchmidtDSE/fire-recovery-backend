@@ -2,7 +2,8 @@
 
 tests/fixtures/v2_spatial_golden.json holds that code's outputs for random
 inputs (its "description" says where they came from). Anything that differs
-here changes published grids, buffers or cells for an existing job id.
+here changes published grids, buffers or cells for an existing job id. Results
+are compared exactly, except buffers, which pass through PROJ as floats.
 """
 
 import json
@@ -47,10 +48,17 @@ def test_raster_grids() -> None:
         ), case
 
 
+# PROJ's projections differ in the last bits across CPUs and maths libraries
+# (seen on CI: 1e-15 degrees). A millimetre is about 1e-8 degrees.
+DEGREES = 1e-12
+METRES = 1e-6
+
+
 def test_buffered_bounds() -> None:
     for case in GOLDEN["buffered_bounds"]:
         padded, metres = buffered_bounds(box_polygon(case["bounds"]))
-        assert (list(padded), metres) == (case["padded"], case["buffer_metres"]), case
+        assert list(padded) == pytest.approx(case["padded"], rel=0, abs=DEGREES), case
+        assert metres == pytest.approx(case["buffer_metres"], rel=0, abs=METRES), case
 
 
 def test_h3_covers() -> None:

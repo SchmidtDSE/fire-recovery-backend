@@ -1,5 +1,5 @@
 {
- "description": "Outputs of the hand-written spatial code these functions replaced, at d9f3a27 (before odc-geo, rasterio, shapely and h3 calls took over). Random inputs, seed 20261116. The library versions must reproduce them exactly. raster_grid keeps every case where odc-geo's default tol would snap an edge inward. snap_tiles is not here: its zoom rule changed on purpose (PIPELINE_VERSION 4); the job id vectors cover it.",
+ "description": "Outputs of the hand-written spatial code these functions replaced, at d9f3a27 (before odc-geo, rasterio, shapely and h3 calls took over). Random inputs, seed 20261116. The library versions must reproduce them exactly (buffered_bounds to within PROJ's last-bit differences across machines). raster_grid keeps every case where odc-geo's default tol would snap an edge inward. snap_tiles is not here: its zoom rule changed on purpose (PIPELINE_VERSION 4); the job id vectors cover it.",
  "utm": [
   {"lon":-104.2097626400276,"lat":-44.909396080577075,"epsg":32713},
   {"lon":-34.350954852237436,"lat":72.58932581039426,"epsg":32625},
