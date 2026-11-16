@@ -1,19 +1,22 @@
 """The tile snap and the output raster grid."""
 
+import morecantile
 import pytest
 
 from src.util.geo_ops import Bounds
 from src.v2.constants import SNAP_TILES_PER_SIDE
 from src.v2.identity.grid import (
+    TMS_NAME,
     TileRange,
     buffered_megapixels,
     check_extent,
-    metric_size,
     raster_grid,
     snap_tiles,
     tile_bounds,
     utm_epsg,
 )
+
+TMS = morecantile.tms.get(TMS_NAME)
 
 BOXES = {
     "7 km": (-116.11, 33.87, -116.01, 33.94),
@@ -41,10 +44,13 @@ def test_tiles_cover_the_box(bounds: Bounds) -> None:
 @pytest.mark.parametrize("bounds", BOXES.values(), ids=BOXES.keys())
 def test_tile_size_is_near_the_target_fraction(bounds: Bounds) -> None:
     tiles = snap_tiles(bounds)
-    snapped_width, snapped_height = metric_size(tile_bounds(tiles))
-    tile_metres = snapped_width / (tiles.x[1] - tiles.x[0] + 1)
-    target = max(metric_size(bounds)) / SNAP_TILES_PER_SIDE
-    # The zoom is rounded in log2, so a tile is within a factor of sqrt(2).
+    tile = TMS.xy_bounds(morecantile.Tile(tiles.x[0], tiles.y[0], tiles.z))
+    tile_metres = tile.right - tile.left
+    west, south, east, north = bounds
+    left, bottom = TMS.xy(west, south)
+    right, top = TMS.xy(east, north)
+    target = max(right - left, top - bottom) / SNAP_TILES_PER_SIDE
+    # The zoom is the nearest on a log scale, so a tile is within sqrt(2).
     assert target / 2**0.5 <= tile_metres <= target * 2**0.5
 
 
@@ -82,7 +88,10 @@ def test_tile_range_round_trips_through_json() -> None:
         (-180.0, 10.0, 32601),
         (179.99, 10.0, 32660),
         (180.0, -1.0, 32760),
-        (0.0, 0.0, 32631),
+        # On a zone line, the western zone; on the equator, the northern one.
+        (0.0, 0.0, 32630),
+        (-120.0, 10.0, 32610),
+        (6.0, -1.0, 32731),
     ],
 )
 def test_utm_epsg(lon: float, lat: float, epsg: int) -> None:

@@ -13,8 +13,10 @@ from typing import Final, Literal
 import h3
 import morecantile
 from affine import Affine
+from odc.geo import xy_
+from odc.geo.crs import CRS
+from odc.geo.geobox import GeoBox
 from pydantic import BaseModel, ConfigDict, computed_field
-from rasterio.crs import CRS
 from rasterio.warp import transform_bounds
 
 from src.util.geo_ops import WGS84, Bounds, local_metric_crs
@@ -24,19 +26,11 @@ from src.v2.sensors import SENSOR_GRIDS
 TMS_NAME: Final = "WebMercatorQuad"
 _TMS = morecantile.tms.get(TMS_NAME)
 
-# Length of the equator on the sphere WebMercatorQuad projects onto, in
-# metres: the ground width of its single zoom-0 tile.
-EQUATOR_METRES = 2 * math.pi * 6378137.0
 MAX_ZOOM = 24
 # WebMercatorQuad stops at about ±85.05° latitude.
 MAX_LATITUDE = 85.0511287798066
 # Points per edge when projecting a box, so the result contains its curved image.
 DENSIFY_POINTS = 21
-
-UTM_NORTH_EPSG_BASE = 32600
-UTM_SOUTH_EPSG_BASE = 32700
-UTM_ZONE_WIDTH_DEGREES = 6
-UTM_ZONES = 60
 
 
 class TileRange(BaseModel):
@@ -77,7 +71,7 @@ class Grid(BaseModel):
     def footprint(self) -> Bounds:
         """The grid's extent in EPSG:4326, containing its projected outline."""
         return transform_bounds(
-            CRS.from_epsg(self.epsg), WGS84, *self.bounds, densify_pts=DENSIFY_POINTS
+            f"EPSG:{self.epsg}", WGS84, *self.bounds, densify_pts=DENSIFY_POINTS
         )
 
 
@@ -111,18 +105,19 @@ def snap_tiles(bounds: Bounds) -> TileRange:
     """Snap an EPSG:4326 box outward to WebMercatorQuad tiles.
 
     The zoom is the one whose tiles are closest to 1/SNAP_TILES_PER_SIDE of the
-    box's longer side, at the box's mid-latitude.
+    box's longer side, both in Web Mercator metres (morecantile's
+    ``zoom_for_res``, "auto" strategy: nearest on a log scale).
 
     Raises:
         ValueError: see check_extent.
     """
     check_extent(bounds)
     west, south, east, north = bounds
-    width, height = metric_size(bounds)
-    target_tile_metres = max(width, height) / SNAP_TILES_PER_SIDE
-    zoom_zero_metres = EQUATOR_METRES * math.cos(math.radians((south + north) / 2))
-    zoom = round(math.log2(zoom_zero_metres / target_tile_metres))
-    zoom = min(max(zoom, 0), MAX_ZOOM)
+    left, bottom = _TMS.xy(west, south)
+    right, top = _TMS.xy(east, north)
+    tile_metres = max(right - left, top - bottom) / SNAP_TILES_PER_SIDE
+    pixel_metres = tile_metres / _TMS.matrix(0).tileWidth
+    zoom = _TMS.zoom_for_res(pixel_metres, max_z=MAX_ZOOM, zoom_level_strategy="auto")
     upper_left = _TMS.tile(west, north, zoom)
     lower_right = _TMS.tile(east, south, zoom)
     return TileRange(
@@ -138,38 +133,46 @@ def tile_bounds(tiles: TileRange) -> Bounds:
 
 
 def utm_epsg(lon: float, lat: float) -> int:
-    """EPSG code of the standard WGS84 UTM zone containing a point."""
-    zone = min(int((lon + 180) // UTM_ZONE_WIDTH_DEGREES) + 1, UTM_ZONES)
-    return (UTM_NORTH_EPSG_BASE if lat >= 0 else UTM_SOUTH_EPSG_BASE) + zone
+    """EPSG code of the WGS84 UTM zone containing a point (odc-geo's ``CRS.utm``).
+
+    Plain 6° zones, without the Norway and Svalbard exceptions. On a zone line
+    the lower code wins: the western zone, and the northern one on the equator.
+    """
+    epsg = CRS.utm(lon, lat).epsg
+    if epsg is None:
+        raise ValueError(f"No UTM zone found for ({lon}, {lat})")
+    return epsg
 
 
 def raster_grid(tiles: TileRange, sensor: str) -> Grid:
     """The output grid covering a tile range, aligned to the sensor's pixels.
 
     The tiles' box is projected to the UTM zone of its centre, then each edge
-    moves outward to the nearest native pixel edge.
+    moves outward to the nearest native pixel edge (odc-geo's
+    ``GeoBox.from_bbox``). ``tol=0`` is what makes every edge move outward:
+    the default tolerance snaps an edge within 1% of a pixel inward.
     """
     west, south, east, north = tile_bounds(tiles)
     epsg = utm_epsg((west + east) / 2, (south + north) / 2)
-    left, bottom, right, top = transform_bounds(
-        WGS84, CRS.from_epsg(epsg), west, south, east, north, densify_pts=DENSIFY_POINTS
+    crs = f"EPSG:{epsg}"
+    projected = transform_bounds(
+        WGS84, crs, west, south, east, north, densify_pts=DENSIFY_POINTS
     )
     native = SENSOR_GRIDS[sensor]
-
-    def outward(value: float, rounding: int) -> int:
-        steps = (value - native.offset) / native.resolution
-        whole = math.floor(steps) if rounding < 0 else math.ceil(steps)
-        return whole * native.resolution + native.offset
-
+    # Pixel edges sit at offset + k * resolution: the offset as a fraction of a pixel.
+    anchor = (native.offset % native.resolution) / native.resolution
+    geobox = GeoBox.from_bbox(
+        projected,
+        crs,
+        resolution=native.resolution,
+        anchor=xy_(anchor, anchor),
+        tol=0,
+    )
+    left, bottom, right, top = geobox.boundingbox
     return Grid(
         epsg=epsg,
         resolution=native.resolution,
-        bounds=(
-            outward(left, -1),
-            outward(bottom, -1),
-            outward(right, 1),
-            outward(top, 1),
-        ),
+        bounds=(round(left), round(bottom), round(right), round(top)),
     )
 
 
