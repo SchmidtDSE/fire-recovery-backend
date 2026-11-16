@@ -19,6 +19,12 @@ MAX_BUFFERED_MEGAPIXELS = 100.0
 # Vertices in a perimeter to publish (geometry_kind "perimeter"). It's part of
 # the canonical request, stored as JSON at about 22 bytes a vertex.
 MAX_PERIMETER_POSITIONS = 250_000
+# H3 tables a request may ask for (options.h3_resolutions): resolutions from
+# r8 (~0.74 km² cells) to r13 (~44 m²), and at most this many cells in one
+# table over the output grid. 20M r13 cells cover about 880 km².
+H3_MIN_RESOLUTION = 8
+H3_MAX_RESOLUTION = 13
+MAX_H3_CELLS = 20_000_000
 
 # The snapped tiles are about this fraction of the buffered box's longer side.
 # A coarser snap keeps more keys stable but adds more area (design §6). Part of

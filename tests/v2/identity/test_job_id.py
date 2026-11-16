@@ -156,3 +156,41 @@ def test_the_summary_counts_the_perimeter_instead_of_listing_it() -> None:
 
 def test_an_aoi_summary_is_its_form(canonical: CanonicalRequest) -> None:
     assert canonical.summary() == canonical.to_json()
+
+
+def test_without_h3_resolutions_the_form_and_id_are_unchanged(
+    canonical: CanonicalRequest,
+) -> None:
+    # So every id from before options existed, AOI or perimeter, still holds.
+    assert "h3_resolutions" not in json.loads(canonical.to_json())
+    no_options = canonical_request(
+        SeverityRequest.model_validate({**BODY, "options": {}})
+    )
+    assert no_options.job_id() == canonical.job_id()
+    perimeter = perimeter_body(RING)
+    assert job_id_of({**perimeter, "options": {}}) == job_id_of(perimeter)
+
+
+def test_h3_resolutions_are_part_of_the_id(canonical: CanonicalRequest) -> None:
+    def with_levels(levels: list[int]) -> CanonicalRequest:
+        body = {**BODY, "options": {"h3_resolutions": levels}}
+        return canonical_request(SeverityRequest.model_validate(body))
+
+    r13 = with_levels([13])
+    assert json.loads(r13.to_json())["h3_resolutions"] == [13]
+    assert r13.h3_resolutions == (13,)
+    ids = {canonical.job_id(), r13.job_id(), with_levels([12, 13]).job_id()}
+    assert len(ids) == 3
+    # A set: order and repeats don't change the id.
+    assert with_levels([13, 12, 12]).job_id() == with_levels([12, 13]).job_id()
+    assert with_levels([13, 12]).h3_resolutions == (12, 13)
+    assert CanonicalRequest.model_validate_json(r13.to_json()).job_id() == r13.job_id()
+
+
+def test_a_canonical_form_holds_resolutions_sorted_and_unique(
+    canonical: CanonicalRequest,
+) -> None:
+    for levels in ([13, 12], [12, 12]):
+        form = {**json.loads(canonical.to_json()), "h3_resolutions": levels}
+        with pytest.raises(ValidationError):
+            CanonicalRequest.model_validate(form)

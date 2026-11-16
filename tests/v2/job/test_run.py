@@ -12,6 +12,7 @@ from src.models.provenance import Provenance
 from src.v2.job import run as runner
 from src.v2.catalog.build import item_directory
 from src.v2.identity.grid import Grid
+from src.v2.catalog.hex import HexTables
 from src.v2.catalog.perimeter import Perimeter
 from src.v2.identity.job_id import CanonicalRequest, fire_id
 from src.v2.record import record_key, request_key
@@ -58,7 +59,9 @@ def stages(
     monkeypatch: pytest.MonkeyPatch, grid: Grid, provenance: Provenance
 ) -> Dict[str, Any]:
     """Replace the pipeline stages with fast fakes that count their calls."""
-    calls: Dict[str, Any] = {"compute": 0, "publish": 0, "perimeter": None}
+    calls: Dict[str, Any] = {
+        "compute": 0, "publish": 0, "perimeter": None, "hex_tables": None,
+    }  # fmt: skip
 
     def compute(canonical: Any, workdir: Path, threads: int) -> Any:
         calls["compute"] += 1
@@ -76,6 +79,7 @@ def stages(
 
     def build_catalog(workdir: Path, *args: Any, **kwargs: Any) -> Any:
         calls["perimeter"] = kwargs.get("perimeter")
+        calls["hex_tables"] = kwargs.get("hex_tables")
         return SimpleNamespace(root=workdir, warnings=0)
 
     monkeypatch.setattr(runner, "build_catalog", build_catalog)
@@ -154,6 +158,32 @@ def test_without_a_perimeter_none_is_built(
     assert run(ctx, store, FakeMailer()) == EXIT_OK  # type: ignore[arg-type]
     assert stages["perimeter"] is None
     assert "perimeter" not in store.objects[record_key(ctx.job_id)]["assets"]
+
+
+def test_hex_tables_are_built_and_linked_in_the_record(
+    ctx: RunContext, stages: Dict[str, Any]
+) -> None:
+    with_hex = replace(
+        ctx, canonical=ctx.canonical.model_copy(update={"h3_resolutions": (12, 13)})
+    )
+    store = FakeStore()
+    assert run(with_hex, store, FakeMailer()) == EXIT_OK  # type: ignore[arg-type]
+
+    assert stages["hex_tables"] == HexTables("Geology_Fire", (12, 13))
+    assets = store.objects[record_key(ctx.job_id)]["assets"]
+    folder = f"{ctx.fire_id}/{ctx.fire_id}-hex"
+    assert assets["hex-r12"].endswith(f"{folder}/hex-r12.parquet")
+    assert assets["hex-r13"].endswith(f"{folder}/hex-r13.parquet")
+
+
+def test_without_h3_resolutions_no_tables_are_built(
+    ctx: RunContext, stages: Dict[str, Any]
+) -> None:
+    store = FakeStore()
+    assert run(ctx, store, FakeMailer()) == EXIT_OK  # type: ignore[arg-type]
+    assert stages["hex_tables"] is None
+    assets = store.objects[record_key(ctx.job_id)]["assets"]
+    assert not [key for key in assets if key.startswith("hex-")]
 
 
 def test_failure_is_recorded_reported_and_not_retried(

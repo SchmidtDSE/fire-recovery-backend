@@ -32,6 +32,7 @@ from src.v2.raster.pipeline import compute
 from src.v2.catalog.build import item_directory
 from src.v2.catalog.portolan_plugin import COLLECTION_THUMBNAIL_INDEX, thumbnail_file
 from src.v2.catalog.publish import catalog_prefix, publish
+from src.v2.catalog import hex as hex_tables
 from src.v2.catalog.perimeter import (
     PERIMETER_FILE,
     PMTILES_FILE,
@@ -94,6 +95,15 @@ def perimeter_of(canonical: CanonicalRequest) -> Optional[Perimeter]:
     return Perimeter(fire_event_name=canonical.fire_event_name, geometry=geometry)
 
 
+def hex_tables_of(canonical: CanonicalRequest) -> Optional[hex_tables.HexTables]:
+    if not canonical.h3_resolutions:
+        return None
+    return hex_tables.HexTables(
+        fire_event_name=canonical.fire_event_name,
+        resolutions=canonical.h3_resolutions,
+    )
+
+
 def analyze(ctx: RunContext, store: Store) -> ResultRecord:
     """Compute, build, validate and publish; return the succeeded record."""
     canonical = ctx.canonical
@@ -121,6 +131,7 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
         item_datetime=canonical.postfire_window[1],
         source_url=f"{source.api.rstrip('/')}/collections/{source.collection}",
         perimeter=perimeter_of(canonical),
+        hex_tables=hex_tables_of(canonical),
     )
     catalog_url = publish(catalog.root, ctx.fire_id, store)
     collection_prefix = f"{catalog_prefix(ctx.fire_id)}/{ctx.fire_id}"
@@ -137,6 +148,13 @@ def analyze(ctx: RunContext, store: Store) -> ResultRecord:
         assets["perimeter"] = store.public_url(f"{perimeter_prefix}/{PERIMETER_FILE}")
         assets["perimeter-tiles"] = store.public_url(
             f"{perimeter_prefix}/{PMTILES_FILE}"
+        )
+    hex_prefix = (
+        f"{catalog_prefix(ctx.fire_id)}/{hex_tables.collection_id(ctx.fire_id)}"
+    )
+    for resolution in canonical.h3_resolutions or ():
+        assets[hex_tables.hex_asset_key(resolution)] = store.public_url(
+            f"{hex_prefix}/{hex_tables.hex_file(resolution)}"
         )
     own, child = peak_rss_mib()
     return ResultRecord(

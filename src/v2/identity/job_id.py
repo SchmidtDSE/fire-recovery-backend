@@ -3,7 +3,8 @@
 A job id is the uuid5 of a canonical JSON form of the request. The form holds
 only what the product depends on: the operation, the pipeline version, the
 name, the sensor, the two windows verbatim, the WebMercatorQuad tile range the
-buffered geometry snaps to, and, for a perimeter to publish, the perimeter.
+buffered geometry snaps to, for a perimeter to publish, the perimeter, and
+the H3 resolutions of any hex tables requested.
 Areas of interest that snap to the same tiles share an id, and so share one
 published analysis; a perimeter's analysis is its own, so its catalog can hold
 it. The Job receives this form and nothing else, so everything it publishes is
@@ -19,7 +20,7 @@ import uuid
 from typing import Final, Literal, Optional
 
 import shapely
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from shapely.geometry import MultiPolygon, Polygon
 
 from src.util.geo_ops import Bounds, buffered_bounds
@@ -53,6 +54,16 @@ class CanonicalRequest(BaseModel):
     # The normalized perimeter, only when the request publishes one. Left out
     # of the JSON when absent, so an area of interest's id is unchanged.
     perimeter: Optional[QuantizedParts] = None
+    # The H3 tables to publish (options.h3_resolutions), sorted and unique. Left out
+    # of the JSON when absent, like the perimeter.
+    h3_resolutions: Optional[tuple[int, ...]] = None
+
+    @model_validator(mode="after")
+    def _resolutions_are_canonical(self) -> "CanonicalRequest":
+        levels = self.h3_resolutions
+        if levels is not None and list(levels) != sorted(set(levels)):
+            raise ValueError("h3_resolutions must be sorted and unique")
+        return self
 
     def to_json(self) -> str:
         """Sorted keys and no whitespace: the exact string the id hashes."""
@@ -117,6 +128,9 @@ def canonical_request(
         tiles=snap_tiles(padded),
         perimeter=(
             request.quantized() if request.geometry_kind == "perimeter" else None
+        ),
+        h3_resolutions=(
+            request.options.resolutions() if request.options is not None else None
         ),
     )
 

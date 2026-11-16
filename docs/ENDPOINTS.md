@@ -40,6 +40,7 @@ Submit an analysis: a fire perimeter, two date windows and, optionally, an email
   "postfire_window": ["2023-06-17", "2023-06-22"],
   "sensor": "sentinel-2",
   "geometry_kind": "aoi",
+  "options": {"h3_resolutions": [12, 13]},
   "email": "optional@example.org"
 }
 ```
@@ -57,6 +58,13 @@ Submit an analysis: a fire perimeter, two date windows and, optionally, an email
     gets the same analysis and any other geometry gets its own. The analysis's catalog holds
     it as a second collection, `{fire_id}-perimeter` (GeoParquet and PMTiles), and `assets`
     links both as `perimeter` and `perimeter-tiles`.
+- `options` is optional. `options.h3_resolutions` asks for H3 tables of the indices, one per
+  resolution (8 to 13; a set, so order and repeats don't matter). Each row is a cell whose centre falls in the
+  output grid, with the dNBR, RdNBR and RBR pixel under that centre (null at nodata), its
+  parents (`h10` for r11 and finer, `h8`, `h0`) and its hex string `h3`. The catalog holds them
+  as a third collection, `{fire_id}-hex`, and `assets` links each as `hex-r{n}`. The
+  resolutions are part of the job id; without them, ids are unchanged. A table may hold at
+  most 20M cells over the grid (r13 covers about 880 km² at that).
 
 Responses:
 
@@ -64,7 +72,7 @@ Responses:
 |---|---|
 | `200` | Already computed: `{job_id, state: "succeeded", grid, catalog_url, assets}` |
 | `202` | Queued or running: `{job_id, state, grid, status_url}`. Poll `status_url`. |
-| `422` | Invalid request, or the buffered area exceeds 100 Mpx at the sensor's resolution |
+| `422` | Invalid request, the buffered area exceeds 100 Mpx at the sensor's resolution, or an H3 table would exceed 20M cells |
 | `429` | Too many analyses running, or too many new ones from this address; see `Retry-After`. An `X-API-Key` lifts the per-address limit. |
 | `503` | Storage or job dispatch unavailable |
 

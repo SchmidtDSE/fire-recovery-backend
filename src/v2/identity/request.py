@@ -1,7 +1,8 @@
 """The POST /v2/severity request: validation and geometry normalization.
 
 The server validates and never transforms what reaches the job id (D8, D20).
-The geometry is the exception, by design. An area of interest enters the key
+The geometry is the exception, by design, and so are the H3 resolutions, a set
+whose order and repeats mean nothing: they enter the key sorted and unique. An area of interest enters the key
 only through its bounds (design §6); a perimeter to publish enters it whole.
 Both go through the same normalization, the deterministic-job-id D10 steps
 that matter for either: unwrapping a Feature, dropping Z, and quantizing to
@@ -20,6 +21,8 @@ from src.util.date_windows import window_bounds
 from src.util.geo_ops import Bounds
 from src.v2.constants import (
     FIRE_EVENT_NAME_MAX_LENGTH,
+    H3_MAX_RESOLUTION,
+    H3_MIN_RESOLUTION,
     MAX_PERIMETER_POSITIONS,
     MAX_WINDOW_DAYS,
 )
@@ -115,6 +118,32 @@ def quantized_parts(geometry: Union[Polygon, MultiPolygon, Feature]) -> Quantize
     ]
 
 
+H3Resolution = Annotated[int, Field(ge=H3_MIN_RESOLUTION, le=H3_MAX_RESOLUTION)]
+
+
+class SeverityOptions(BaseModel):
+    """Optional outputs beyond the index COGs. Each one set is part of the job id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    h3_resolutions: Optional[list[H3Resolution]] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            f"Publish an H3 table of the indices at each of these resolutions "
+            f"({H3_MIN_RESOLUTION} to {H3_MAX_RESOLUTION}): each cell holds the "
+            f"pixel under its centre. A set: order and repeats don't matter. "
+            f"Omit for none."
+        ),
+    )
+
+    def resolutions(self) -> Optional[tuple[int, ...]]:
+        """The requested resolutions as a set: sorted, without repeats."""
+        if not self.h3_resolutions:
+            return None
+        return tuple(sorted(set(self.h3_resolutions)))
+
+
 def window_days(window: list[str]) -> float:
     """Length of a date window in days, with the end date's whole day included."""
     start, end = window_bounds(window[0], window[1])
@@ -170,6 +199,9 @@ class SeverityRequest(BaseModel):
     sensor: Sensor = Field(
         default=SENSOR_DEFAULT,
         description="Satellite source: 'sentinel-2' (default) or 'landsat'",
+    )
+    options: Optional[SeverityOptions] = Field(
+        default=None, description="Optional outputs beyond the index COGs"
     )
     email: Optional[str] = Field(
         default=None,
