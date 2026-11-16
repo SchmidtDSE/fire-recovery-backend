@@ -6,7 +6,9 @@
 # 2: one processing per Sentinel-2 acquisition, each scene scaled with its own
 # offset (2026-11). 3: an observation is clear only if both reflectances are
 # above 0, as designed; DN 1-1000 under the -0.1 offset no longer pass (2026-11).
-PIPELINE_VERSION = 3
+# 4: spatial steps by library calls; the tile zoom from morecantile, measured in
+# Web Mercator, and thumbnails on matplotlib's YlOrRd (2026-11).
+PIPELINE_VERSION = 4
 
 # Environment variables the deploy sets, reported by GET /version.
 ENV_GIT_SHA = "GIT_SHA"

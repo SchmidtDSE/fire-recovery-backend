@@ -14,8 +14,10 @@ import math
 from datetime import timedelta
 from typing import Annotated, Any, Literal, Optional, Union
 
+import numpy as np
 from geojson_pydantic import Feature, MultiPolygon, Polygon
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from shapely.geometry import MultiPoint, box, mapping
 
 from src.util.date_windows import window_bounds
 from src.util.geo_ops import Bounds
@@ -245,23 +247,10 @@ class SeverityRequest(BaseModel):
     def bounds(self) -> Bounds:
         """Bounds of the normalized geometry, in degrees."""
         positions = [p for poly in self.quantized() for ring in poly for p in ring]
-        lons = [p[0] for p in positions]
-        lats = [p[1] for p in positions]
-        return (
-            min(lons) / MICRODEGREES_PER_DEGREE,
-            min(lats) / MICRODEGREES_PER_DEGREE,
-            max(lons) / MICRODEGREES_PER_DEGREE,
-            max(lats) / MICRODEGREES_PER_DEGREE,
-        )
+        degrees = np.asarray(positions, dtype=np.float64) / MICRODEGREES_PER_DEGREE
+        west, south, east, north = MultiPoint(degrees).bounds
+        return west, south, east, north
 
     def bounds_geometry(self) -> dict[str, Any]:
         """The normalized bounds as a GeoJSON Polygon."""
-        west, south, east, north = self.bounds()
-        ring = [
-            [west, south],
-            [east, south],
-            [east, north],
-            [west, north],
-            [west, south],
-        ]
-        return {"type": "Polygon", "coordinates": [ring]}
+        return dict(mapping(box(*self.bounds())))

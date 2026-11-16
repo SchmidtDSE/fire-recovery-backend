@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import h3
 import rasterio
 import yaml
+from shapely.geometry import box
 
 from src.models.provenance import Provenance
 from src.util.date_windows import window_bounds
@@ -79,11 +80,8 @@ def h3_cover(footprint: Bounds) -> Tuple[int, List[str]]:
         ),
         default=0,
     )
-    west, south, east, north = footprint
-    polygon = h3.LatLngPoly(
-        [(south, west), (south, east), (north, east), (north, west)]
-    )
-    cells = h3.h3shape_to_cells_experimental(polygon, resolution, contain="overlap")
+    shape = h3.geo_to_h3shape(box(*footprint))
+    cells = h3.h3shape_to_cells_experimental(shape, resolution, contain="overlap")
     return resolution, sorted(cells)
 
 

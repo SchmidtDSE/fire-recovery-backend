@@ -1,5 +1,5 @@
 {
- "pipeline_version": 3,
+ "pipeline_version": 4,
  "vectors": [
   {
    "name": "base_polygon",
@@ -44,7 +44,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -67,7 +67,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "feature_with_properties_id_bbox",
@@ -126,7 +126,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -149,7 +149,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "multipolygon_of_same_ring",
@@ -197,7 +197,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -220,7 +220,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "clockwise_ring",
@@ -266,7 +266,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -289,7 +289,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "z_coordinates",
@@ -340,7 +340,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -363,7 +363,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "sensor_explicit_default",
@@ -410,7 +410,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -433,7 +433,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "numeric_string_coordinates",
@@ -479,7 +479,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -502,7 +502,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "unknown_extra_key",
@@ -549,7 +549,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -572,7 +572,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "below_microdegree_difference",
@@ -618,7 +618,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -641,7 +641,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "small_shift_same_tiles",
@@ -687,7 +687,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -710,7 +710,7 @@
      "z": 15
     }
    },
-   "job_id": "6509b015-a454-5277-b8cb-12c7d465d329"
+   "job_id": "89092ff6-f64a-53fc-8ee1-e02db7fd05a3"
   },
   {
    "name": "landsat",
@@ -757,7 +757,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -780,7 +780,7 @@
      "z": 15
     }
    },
-   "job_id": "8c7e4bc8-404b-5fba-8b60-4f344181dc38"
+   "job_id": "e69a8154-30d9-5291-acc5-47b972d2d639"
   },
   {
    "name": "other_fire_event_name",
@@ -826,7 +826,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire_2",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -849,7 +849,7 @@
      "z": 15
     }
    },
-   "job_id": "dd7339c9-876f-5a62-88d5-98fd0407941a"
+   "job_id": "90e87c76-b68e-5d2e-8090-ecac196a78dc"
   },
   {
    "name": "other_prefire_window",
@@ -895,7 +895,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -918,7 +918,7 @@
      "z": 15
     }
    },
-   "job_id": "83ffa7a6-9f7a-53c9-995b-a871ee6f70ab"
+   "job_id": "2adc6e7d-3780-5af8-a2e8-bd53522a5a51"
   },
   {
    "name": "datetime_string_for_same_date",
@@ -964,7 +964,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -987,7 +987,7 @@
      "z": 15
     }
    },
-   "job_id": "adb2c18c-8d6b-5854-8680-ea999dafb36d"
+   "job_id": "3dee3364-0c8f-5dce-81bc-e3137f857237"
   },
   {
    "name": "shift_across_tile_edges",
@@ -1033,7 +1033,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -1056,7 +1056,7 @@
      "z": 15
     }
    },
-   "job_id": "62a3ecca-c1f5-5dfb-8a4b-62849c81f859"
+   "job_id": "f36fc55a-f3d6-5dbe-8fec-017de66845a4"
   },
   {
    "name": "near_zero_coordinates",
@@ -1101,7 +1101,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -1124,7 +1124,7 @@
      "z": 18
     }
    },
-   "job_id": "e76b8c76-366e-5b92-94b5-0c5faca67409"
+   "job_id": "96fff975-c6bb-5298-8878-87647e4e3a60"
   },
   {
    "name": "southern_hemisphere",
@@ -1169,7 +1169,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -1192,7 +1192,7 @@
      "z": 14
     }
    },
-   "job_id": "b50cc952-2439-540a-905f-5c4635068c65"
+   "job_id": "4d6a7ea2-33e4-5010-ac79-929031298523"
   },
   {
    "name": "straddles_utm_zones_10_and_11",
@@ -1237,7 +1237,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -1260,7 +1260,7 @@
      "z": 14
     }
    },
-   "job_id": "d69108ee-40bb-5f84-8ca7-f17f786daeb5"
+   "job_id": "9ed507df-95fd-5a80-8b58-7e479203defe"
   },
   {
    "name": "about_100_km_box",
@@ -1305,7 +1305,7 @@
    "canonical": {
     "fire_event_name": "Geology_Fire",
     "operation": "fire_severity_v2",
-    "pipeline_version": 3,
+    "pipeline_version": 4,
     "postfire_window": [
      "2023-06-17",
      "2023-06-22"
@@ -1328,7 +1328,7 @@
      "z": 11
     }
    },
-   "job_id": "93c6cb1a-cf3b-5110-8445-c0b9e1634b0a"
+   "job_id": "aaae751d-8205-5540-93fd-74cf1ca19540"
   }
  ]
 }
