@@ -13,11 +13,11 @@ import math
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 import rasterio
-from odc.geo.geobox import GeoBox
+from odc.geo.geobox import GeoBox, GeoboxTiles
 from pystac import Item
 from rasterio.windows import Window
 
@@ -77,19 +77,6 @@ class Observations:
         return nir, swir
 
 
-@dataclass(frozen=True)
-class Block:
-    """A rectangle of output pixels: its offsets and size."""
-
-    row: int
-    col: int
-    height: int
-    width: int
-
-    def window(self) -> Window:
-        return Window(self.col, self.row, self.width, self.height)
-
-
 def block_side(days: int) -> int:
     """The largest block side, in pixels, that keeps one band within budget."""
     side = math.sqrt(BLOCK_BUDGET_BYTES / (max(days, 1) * BYTES_PER_SAMPLE))
@@ -106,11 +93,16 @@ def loaded_days(window: Sequence[ScaledScenes]) -> int:
     return sum(acquisition_days(group.items) for group in window)
 
 
-def blocks(height: int, width: int, side: int) -> Iterator[Block]:
-    """The grid's blocks, row by row; edge blocks are clipped."""
-    for row in range(0, height, side):
-        for col in range(0, width, side):
-            yield Block(row, col, min(side, height - row), min(side, width - col))
+def blocks(full: GeoBox, side: int) -> Iterator[Tuple[GeoBox, Window]]:
+    """The grid's blocks, row by row, each with its window in the output.
+
+    odc-geo's GeoboxTiles cuts the square blocks; edge blocks are clipped.
+    """
+    tiles = GeoboxTiles(full, (side, side))
+    for row in range(tiles.shape.y):
+        for col in range(tiles.shape.x):
+            rows, cols = tiles.roi[row, col]
+            yield full[rows, cols], Window.from_slices(rows, cols)
 
 
 def window_medians(
@@ -240,16 +232,12 @@ def compute_rasters(
     try:
         for index in indices:
             sinks[index.name].set_band_description(1, index.name)
-        all_blocks = list(blocks(grid.height, grid.width, side))
+        all_blocks = list(blocks(full, side))
         logger.info(
             f"Computing {grid.width}x{grid.height} px in {len(all_blocks)} block(s) "
             f"of up to {side} px"
         )
-        for number, block in enumerate(all_blocks, start=1):
-            sub = full[
-                block.row : block.row + block.height,
-                block.col : block.col + block.width,
-            ]
+        for number, (sub, window) in enumerate(all_blocks, start=1):
             pre_nir, pre_swir = window_medians(prefire, provider, sensor, sub, threads)
             post_nir, post_swir = window_medians(
                 postfire, provider, sensor, sub, threads
@@ -258,7 +246,7 @@ def compute_rasters(
             for index in indices:
                 values = index.compute(composites)
                 values[~np.isfinite(values)] = NODATA
-                sinks[index.name].write(values, 1, window=block.window())
+                sinks[index.name].write(values, 1, window=window)
             logger.debug(f"Block {number}/{len(all_blocks)} written")
     finally:
         for sink in sinks.values():

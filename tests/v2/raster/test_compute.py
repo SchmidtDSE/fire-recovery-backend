@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import rasterio
 import xarray as xr
+from affine import Affine
 from odc.geo.geobox import GeoBox
 
 from src.stac.stac_endpoint_handler import StacProviderConfig
@@ -39,9 +40,12 @@ def test_block_side(days: int, side: int) -> None:
 
 
 def test_blocks_tile_the_grid_exactly_once() -> None:
+    full = GeoBox((300, 470), Affine(20, 0, 500000, 0, -20, 4000000), "EPSG:32611")
     covered = np.zeros((300, 470), dtype=int)
-    for b in blocks(300, 470, 128):
-        covered[b.row : b.row + b.height, b.col : b.col + b.width] += 1
+    for sub, window in blocks(full, 128):
+        rows, cols = window.toslices()
+        covered[rows, cols] += 1
+        assert sub == full[rows, cols]
     assert (covered == 1).all()
 
 
@@ -131,7 +135,7 @@ def test_block_loop_matches_whole_array(
     expected = Composites.from_medians(
         *whole_array_medians("pre"), *whole_array_medians("post")
     )
-    n_blocks = len(list(blocks(GRID.height, GRID.width, 64)))
+    n_blocks = len(list(blocks(geobox(GRID), 64)))
     assert calls["n"] == 2 * n_blocks
     for index in INDICES:
         with rasterio.open(paths[index.name]) as ds:
